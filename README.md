@@ -13,10 +13,13 @@ The implementation UI will use shadcn/ui components shared with the fictional de
 
 ## Current status
 
-This repository contains the **initial setup only**: WXT, React, strict TypeScript, a Chrome Manifest
-V3 configuration, and a side panel that honestly displays the setup status. Conversation access,
-search, description ranking, storage, automated feature tests, CI, demo, and release packaging are
-not implemented. A successful build verifies the scaffold; it does not verify logged-in integrations.
+This repository contains the extension scaffold and **shared contract/test foundation**: WXT, React,
+strict TypeScript, a Chrome Manifest V3 configuration, a setup-status side panel, Valibot runtime
+schemas, normalized provider/search/model/storage ports, synthetic contract tests, and ESLint.
+Contracts validate query bounds, session scopes/generations, evidence, dates, outcomes, and model
+references. Conversation access, search orchestration, model inference, persistent storage, CI,
+demo, and release packaging are not implemented. Builds and synthetic tests do not verify logged-in
+integrations.
 
 Earlier read-only website probes on October 13, 2026 observed search capability in both providers.
 Their internal interfaces are undocumented and may change. Request schemas and operation inside an
@@ -29,6 +32,8 @@ Use Node.js 22.12 or later within the Node 22 release line and npm. Dependencies
 
 ```sh
 npm ci
+npm test
+npm run lint
 npm run check
 npm run build
 ```
@@ -38,6 +43,9 @@ npm run build
 | `npm run dev`          | Start WXT's Chrome development build/browser workflow |
 | `npm run prepare`      | Generate WXT TypeScript configuration                 |
 | `npm run typecheck`    | Prepare and check TypeScript without emitting files   |
+| `npm test`             | Run synthetic TypeScript tests once                   |
+| `npm run test:watch`   | Watch and rerun synthetic tests                       |
+| `npm run lint`         | Run ESLint with zero warnings allowed                 |
 | `npm run format`       | Format public/source project files                    |
 | `npm run format:check` | Check formatting                                      |
 | `npm run check`        | Run type checking and formatting checks               |
@@ -61,4 +69,4 @@ opt-in explanation of which excerpts leave the browser and separate infrastructu
 
 The future static demo will use fictional conversations and share suitable UI/search code without
 provider access or private storage. Extension ZIP packaging, GitHub Pages readiness, and CI are
-planned. No remote repository, public deployment, or store submission has been created.
+planned. Public demo deployment and store submission remain future actions.

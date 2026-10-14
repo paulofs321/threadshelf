@@ -8,4 +8,5 @@ node_modules/
 .output/
 dist/
 coverage/
+.vitest/
 package-lock.json
