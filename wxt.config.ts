@@ -18,9 +18,13 @@ export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   manifest: {
     name: 'ThreadShelf',
-    description: 'ThreadShelf setup baseline. Conversation search is not implemented yet.',
+    description: 'Select site access for ThreadShelf. Conversation search is not implemented yet.',
     minimum_chrome_version: '114',
     permissions: ['sidePanel'],
+    optional_permissions: ['scripting'],
+    optional_host_permissions: ['https://chatgpt.com/*', 'https://www.google.com/*'],
+    action: { default_title: 'Open ThreadShelf' },
+    incognito: 'not_allowed',
   },
   vite: () => ({ build: { sourcemap: false } }),
   zip: {

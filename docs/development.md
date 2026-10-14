@@ -5,15 +5,16 @@
 | Path                            | Role                                                          |
 | ------------------------------- | ------------------------------------------------------------- |
 | `src/entrypoints/`              | WXT background and side panel entrypoints                     |
-| `src/ui/`                       | React presentation; currently only setup status               |
+| `src/ui/`                       | Injected React setup/status and connection controls           |
 | `src/contracts/`                | Normalized runtime schemas, validation helpers and ports      |
-| `src/platform/`                 | Reserved for Chrome session/message/access boundaries         |
+| `src/platform/`                 | Selected-tab broker, context validation and access lifecycle  |
 | `src/providers/chatgpt/`        | Reserved for ChatGPT transport and parsing                    |
 | `src/providers/google-ai-mode/` | Reserved for Google Search AI Mode transport and parsing      |
 | `src/search/`                   | Reserved for provider-independent search orchestration        |
 | `src/description/`              | Reserved for interpretation, ranking, and evidence validation |
 | `src/storage/`                  | Reserved for isolated optional local storage                  |
 | `tests/contracts/`              | Synthetic contract and boundary regression tests              |
+| `tests/platform/`               | Synthetic broker, panel client and Chrome API wiring tests    |
 | `tests/fixtures/`               | Handwritten fictional normalized data and link policies       |
 | `demo/`                         | Reserved for the future synthetic static demo                 |
 | `public/`                       | Only deliberately public extension assets                     |
@@ -35,6 +36,7 @@ Run the established checks with the synthetic tests and lint:
 
 ```sh
 npm test -- tests/contracts
+npm test -- tests/platform
 npm test
 npm run lint
 npm run check
@@ -43,9 +45,10 @@ npm run build
 
 `npm test` uses Vitest's non-watch runner. `npm run test:watch` watches the same suites. Test discovery
 uses `tests/**/*.test.ts` in the Node environment with explicit imports; no browser/network access is
-needed. Missing suites and focused `.only` tests fail. These checks prove contract behavior and the
-extension scaffold, without establishing authenticated provider access. Demo, CI and ZIP commands
-remain planned.
+needed. Missing suites and focused `.only` tests fail. These checks prove contracts and access
+boundary behavior using handwritten fictional metadata and injected/mocked Chrome APIs. They do
+not establish actual installed-extension behavior or authenticated provider access. Demo, CI and
+ZIP commands remain planned.
 
 ESLint uses its recommended core rules and Babel 7's TypeScript syntax parser. The pinned TypeScript
 7 compiler owns type checking, name resolution and unused declarations via `npm run check`.
@@ -120,6 +123,97 @@ references, not the semantic relevance of an excerpt or resistance of an actual 
 
 The synthetic fixtures use invented account partitions/content and reserved `.invalid` links.
 Their policies exercise origin/path/ID validation without making real provider endpoint assumptions.
+
+## Selected-site access foundation
+
+`src/platform/policy.ts` owns exact candidate origins and runtime context rules. `protocol.ts`
+defines a strict versioned port protocol. `broker.ts` owns selected documents, generations,
+cancellation and bounded operations through an injected `SelectedTabAccessPort`. `chrome-access.ts`
+binds that port to Chrome APIs and lifecycle events. `client.ts` owns panel-side deadlines and
+interruption handling. `document-probe.ts` contains the self-contained serialized isolated-world
+function. It reads only origin/top-level status; it reads no page text, cookies, tokens, or identity.
+The side panel composition owns browser interactions; shared React presentation imports no browser
+or authenticated transport implementation. The current native connection controls extend the
+development view; shadcn/ui configuration and the full search UI remain planned.
+
+| Permission                 | Purpose and activation                                                                       |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
+| `sidePanel`                | Required to display the panel; toolbar action uses `setPanelBehavior`                        |
+| `scripting`                | Optional; requested together with a site from the Connect button's synchronous click handler |
+| `https://chatgpt.com/*`    | Optional exact ChatGPT origin; requested only when connecting ChatGPT                        |
+| `https://www.google.com/*` | Optional candidate Search AI Mode origin; requested only when connecting that provider       |
+
+There is no required host access, `tabs`, `activeTab`, `cookies`, `debugger`, `webNavigation`,
+storage permission, wildcard host, persistent content script, external message endpoint, or fetch
+bridge. Host permissions supply matching tab URL access; most tab events/query operations do not
+need `tabs`. Host-pattern paths do not constrain network access, so the operation allowlist remains
+essential. See Chrome's [tabs permission documentation](https://developer.chrome.com/docs/extensions/reference/api/tabs),
+[scripting API](https://developer.chrome.com/docs/extensions/reference/api/scripting),
+[optional permission API](https://developer.chrome.com/docs/extensions/reference/api/permissions), and
+[runtime contexts](https://developer.chrome.com/docs/extensions/reference/api/runtime).
+
+Only `runtime.connect` ports named `threadshelf:selected-tab:v1` are accepted. Chrome-supplied
+sender ID, exact panel URL/origin, active document ID, and top-level/non-tab sender are validated.
+`runtime.getContexts` must independently find that regular-profile side panel and its window before
+and after document checks. Missing or unexpected context metadata fails closed. The broker queries
+only the active tab of that panel's window and checks its exact provider origin, completed load, and
+regular profile. No caller can supply a tab, URL, header, body, or executable argument.
+
+| Operation         | Allowed payload and result                                                                     |
+| ----------------- | ---------------------------------------------------------------------------------------------- |
+| `connect`         | Bounded request ID and provider; selects the current document, with a fresh ephemeral scope    |
+| `inspect-context` | Request ID/provider/current ephemeral scope; checks the pinned document and replaces its scope |
+| `disconnect`      | Request ID/provider/current scope; clears the in-memory selection                              |
+| `cancel`          | Existing request ID; aborts/discards pending work in that port                                 |
+
+Search/list/evidence operations are absent until their owning adapters establish actual transport
+and identity evidence. A `selected` reply always carries `session: 'unverified'`; it is neither a
+`SessionOutcome` with authenticated readiness nor a successful provider search. Failures report
+permission-needed, unavailable, scope-changed, timeout, cancelled, interrupted, or busy, without
+private exception text or fabricated results. Panel reply validation checks provider/request IDs
+and refuses reused partitions/generations, malformed output, and success after invalidation.
+
+Initial document checks target frame 0. Chrome's injection metadata supplies the document ID;
+confirmation and subsequent inspection target that exact ID, reject other frames/origins, and
+recheck the tab, permission, and owning panel before returning. Both checks run in `ISOLATED`;
+no main-world or extension-origin fetch is implemented. No authentication behavior is inferred from
+the document marker. The broker allows one pending operation per provider per panel, at most four
+panel brokers, and 256 unique operation IDs per port. Duplicate IDs or malformed requests close the
+port. Requests expire after 10 seconds in the worker and 12 seconds independently in the panel.
+There are no retries. Cancellation cannot undo an already dispatched Chrome injection, but it
+aborts the operation signal, prevents further checks, and discards later output.
+
+Navigation/loading, URL changes, removed/replaced tabs, active-tab changes, window focus changes,
+permission removal, and port loss invalidate selections and pending work. Focus/activation and
+permission events conservatively invalidate both providers. Invalidation reaches the panel before
+terminal worker replies. Panel-owned timers cover a suspended/unresponsive worker; reconnect is
+explicit through the Connect action. Incognito is disabled. Listeners for disconnected ports,
+timers, abort subscriptions, and scopes are released.
+Invalidation events carry generations; delayed cancellation/navigation events cannot clear a newer
+selection or cause its fresh reply to be discarded.
+
+Every document check creates a new opaque ephemeral partition/generation, including checks in the
+same document. There is no private-data cache or persistence. Same-document account/workspace
+switches and logout are not yet observed or verified; no account data is read and no verified scope
+is produced. Future adapters must establish identity around real reads and invalidate through the
+broker before any result is displayed or cached. Unknown identity cannot reuse an earlier check's
+data. A Chrome permission prompt itself cannot be cancelled by this code; cancelling prevents the
+subsequent broker operation and retry waits until that prompt settles.
+
+## Pending live Chrome acceptance
+
+No unpacked-extension probe was performed for this foundation. The available environment has no
+connected browser automation surface or isolated extension test browser. Installed API declarations,
+synthetic mocks, and generated-manifest inspection are separate evidence from a real Chrome run.
+
+For a bounded manual check, load the production build, open the toolbar panel, connect one selected
+provider tab, and confirm the exact-site permission prompt and explicit unverified status. Check
+navigation (including same-URL reload), tab/window changes, permission revocation, cancellation, and
+worker interruption; selections must clear and late replies must not reappear. A metadata mismatch
+must produce unavailable/interrupted behavior. Keep only structural pass/fail notes and remove any
+temporary test profile, tabs, or instrumentation. Authenticated same-origin reads, account/workspace
+identity, actual Google host requirements, and comparison with extension-origin access remain
+adapter verification work; do not infer login or complete-history support from a selected document.
 
 ## Data and artifacts
 

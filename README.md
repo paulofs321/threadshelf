@@ -13,13 +13,17 @@ The implementation UI will use shadcn/ui components shared with the fictional de
 
 ## Current status
 
-This repository contains the extension scaffold and **shared contract/test foundation**: WXT, React,
-strict TypeScript, a Chrome Manifest V3 configuration, a setup-status side panel, Valibot runtime
-schemas, normalized provider/search/model/storage ports, synthetic contract tests, and ESLint.
-Contracts validate query bounds, session scopes/generations, evidence, dates, outcomes, and model
-references. Conversation access, search orchestration, model inference, persistent storage, CI,
-demo, and release packaging are not implemented. Builds and synthetic tests do not verify logged-in
-integrations.
+This repository contains the extension scaffold, **shared contracts**, and a **selected-site access
+foundation**: WXT, React, strict TypeScript, Chrome Manifest V3, Valibot schemas, normalized ports,
+synthetic tests, and ESLint. The toolbar opens the side panel. Connect requests optional permission
+for one provider site and scripting, then checks its selected top-level document. The broker validates
+the sending panel, correlates requests, and clears access on navigation, revocation, cancellation,
+timeout, or worker interruption. Unknown identity receives a fresh ephemeral scope on every check.
+
+Selecting a site does not verify login or enable conversation access. Provider authentication,
+search, model inference, persistent storage, CI, demo, and release packaging remain unimplemented.
+Actual unpacked-extension behavior and authenticated access are unverified; synthetic tests and
+builds establish code behavior only. shadcn/ui setup remains planned for the full search UI.
 
 Earlier read-only website probes on October 13, 2026 observed search capability in both providers.
 Their internal interfaces are undocumented and may change. Request schemas and operation inside an
@@ -49,12 +53,16 @@ npm run build
 | `npm run format`       | Format public/source project files                    |
 | `npm run format:check` | Check formatting                                      |
 | `npm run check`        | Run type checking and formatting checks               |
-| `npm run build`        | Build the setup scaffold to `.output/chrome-mv3/`     |
+| `npm run build`        | Build the extension to `.output/chrome-mv3/`          |
 
-For manual scaffold inspection, open `chrome://extensions`, enable Developer mode, choose **Load
-unpacked**, and select `.output/chrome-mv3/`. Open ThreadShelf using Chrome's side panel selection.
-The scaffold currently requests only `sidePanel`; it requests no provider host access.
-No browser smoke test is claimed by this setup. See [developer notes](docs/development.md).
+For manual inspection, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**,
+and select `.output/chrome-mv3/`. Click the ThreadShelf toolbar action or select it in Chrome's side
+panel menu. Open the provider in the selected tab of that window, then click **Connect** in the panel.
+Chrome requests optional `scripting` and either `https://chatgpt.com/*` or `https://www.google.com/*`.
+Only `sidePanel` is required at installation. Google locale hosts and the Gemini app are unsupported.
+**Clear selection** releases the in-memory context; revoke granted site access in Chrome's extension
+settings. Incognito is disabled. No live browser smoke test is claimed. See
+[developer notes](docs/development.md) for permissions, protocol, and remaining verification.
 
 ## Planned boundaries
 
