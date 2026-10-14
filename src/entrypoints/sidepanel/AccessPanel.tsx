@@ -31,12 +31,11 @@ export function AccessPanel() {
   function getClient(): AccessClient {
     if (!client.current || client.current.isClosed) {
       const connection = browser.runtime.connect({ name: accessPortName });
-      // Consume the runtime error on the platform boundary without exposing error text.
-      connection.onDisconnect.addListener(() => {
-        void browser.runtime.lastError;
-      });
       client.current = new AccessClient(connection, () => crypto.randomUUID());
       client.current.subscribe((event: AccessEvent) => {
+        // Interruption is published inside the port callback; consume Chrome's error there.
+        // Keeping this on the client's subscription lets close remove every port listener.
+        if (event.status === 'interrupted') void browser.runtime.lastError;
         if (mounted.current)
           setStates((previous) => ({
             ...previous,

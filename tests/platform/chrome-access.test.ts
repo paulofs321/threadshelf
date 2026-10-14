@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { accessPortName } from '../../src/platform/protocol';
 import { registerChromeAccess } from '../../src/platform/chrome-access';
-import { event, probe, tab } from './helpers';
+import { deferred, event, probe, tab } from './helpers';
 
 const chrome = vi.hoisted(() => {
   function channel<Args extends unknown[]>() {
@@ -59,9 +59,9 @@ const context = {
   frameId: 0,
   windowId: 3,
 };
-function connection(patch = {}) {
+function connection(patch = {}, name: string = accessPortName) {
   const port = {
-    name: accessPortName,
+    name,
     sender: { ...sender, ...patch },
     postMessage: vi.fn(),
     disconnect: vi.fn(),
@@ -139,6 +139,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     { contexts: [] },
     { contexts: [{ ...context, incognito: true }] },
     { contexts: [{ ...context, documentId: 'another-panel' }] },
+    { contexts: [context, context] },
   ])('refuses a disappeared/mismatched/incognito owner', async ({ contexts }) => {
     chrome.runtime.getContexts.mockResolvedValue(contexts);
     const port = connection();
@@ -212,5 +213,107 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     const next = connection();
     expect(next.disconnect).not.toHaveBeenCalled();
     next.onDisconnect.emit();
+  });
+  it('refuses the wrong port name before any site or context lookup', () => {
+    const port = connection({}, 'fiction-arbitrary-fetch');
+    expect(port.disconnect).toHaveBeenCalledOnce();
+    expect(chrome.runtime.getContexts).not.toHaveBeenCalled();
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+  });
+  it.each([{ tabs: [] }, { tabs: [tab, { ...tab, id: 8 }] }])(
+    'refuses missing/ambiguous active tabs',
+    async ({ tabs }) => {
+      chrome.tabs.query.mockResolvedValue(tabs);
+      const port = connection();
+      port.onMessage.emit({
+        operation: 'connect',
+        requestId: 'fiction-request',
+        provider: 'chatgpt',
+      });
+      await vi.waitFor(() =>
+        expect(port.postMessage).toHaveBeenCalledWith({
+          kind: 'reply',
+          requestId: 'fiction-request',
+          status: 'unavailable',
+        }),
+      );
+      expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+      port.onDisconnect.emit();
+    },
+  );
+  it('keeps a selected scope for completed non-navigation tab updates', async () => {
+    const port = connection();
+    await select(port);
+    const count = port.postMessage.mock.calls.length;
+    chrome.tabs.onUpdated.emit(7, { status: 'complete' });
+    chrome.tabs.onUpdated.emit(8, { status: 'loading' });
+    expect(port.postMessage).toHaveBeenCalledTimes(count);
+    port.onDisconnect.emit();
+  });
+  it('releases a broker and its listeners if Chrome refuses to send its reply', async () => {
+    const port = connection();
+    port.postMessage.mockImplementation(() => {
+      throw new Error('fiction-private-port-detail');
+    });
+    port.onMessage.emit({
+      operation: 'connect',
+      requestId: 'fiction-request',
+      provider: 'chatgpt',
+    });
+    await vi.waitFor(() => expect(port.disconnect).toHaveBeenCalledOnce());
+    expect(port.onMessage.size()).toBe(0);
+    expect(port.onDisconnect.size()).toBe(0);
+  });
+  it('discards Chrome injection output that resolves after permission removal', async () => {
+    const held = deferred<unknown>();
+    chrome.scripting.executeScript.mockReturnValueOnce(held.promise);
+    const port = connection();
+    port.onMessage.emit({
+      operation: 'connect',
+      requestId: 'fiction-request',
+      provider: 'chatgpt',
+    });
+    await vi.waitFor(() => expect(chrome.scripting.executeScript).toHaveBeenCalledOnce());
+    chrome.permissions.onRemoved.emit();
+    expect(port.postMessage).toHaveBeenLastCalledWith({
+      kind: 'reply',
+      requestId: 'fiction-request',
+      status: 'permission-needed',
+    });
+    const count = port.postMessage.mock.calls.length;
+    held.resolve([probe]);
+    await held.promise;
+    expect(port.postMessage).toHaveBeenCalledTimes(count);
+    expect(chrome.scripting.executeScript).toHaveBeenCalledOnce();
+    port.onDisconnect.emit();
+  });
+  it('uses the separate exact Google origin/permission and still labels session access unverified', async () => {
+    chrome.tabs.query.mockResolvedValue([{ ...tab, url: 'https://www.google.com/' }]);
+    chrome.scripting.executeScript.mockResolvedValue([
+      { ...probe, result: { origin: 'https://www.google.com', topLevel: true } },
+    ]);
+    const port = connection();
+    port.onMessage.emit({
+      operation: 'connect',
+      requestId: 'fiction-google',
+      provider: 'google-ai-mode',
+    });
+    await vi.waitFor(() =>
+      expect(port.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'selected',
+          session: 'unverified',
+          scope: expect.objectContaining({ provider: 'google-ai-mode' }),
+        }),
+      ),
+    );
+    expect(chrome.permissions.contains).toHaveBeenCalledWith({
+      permissions: ['scripting'],
+      origins: ['https://www.google.com/*'],
+    });
+    expect(chrome.scripting.executeScript.mock.calls[0]?.[0].args).toEqual([
+      'https://www.google.com',
+    ]);
+    port.onDisconnect.emit();
   });
 });

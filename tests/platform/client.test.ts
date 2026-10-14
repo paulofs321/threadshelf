@@ -4,7 +4,7 @@ import type { AccessReply, AccessRequest } from '../../src/platform/protocol';
 import { clientTimeoutMs, maximumRequestsPerPort } from '../../src/platform/protocol';
 import { event } from './helpers';
 
-function harness() {
+function harness(freshId?: () => string) {
   let counter = 0;
   const connection = {
     postMessage: vi.fn<(request: AccessRequest) => void>(),
@@ -12,7 +12,7 @@ function harness() {
     onMessage: event<[unknown]>(),
     onDisconnect: event<[]>(),
   };
-  const client = new AccessClient(connection, () => `fiction-request-${++counter}`);
+  const client = new AccessClient(connection, freshId ?? (() => `fiction-request-${++counter}`));
   const signal = new AbortController();
   const subscriber = vi.fn();
   client.subscribe(subscriber);
@@ -250,5 +250,78 @@ describe('panel-owned access lifecycle', () => {
     const reply: AccessReply = await h.client.connect('chatgpt', h.signal.signal);
     expect(reply.status).toBe('interrupted');
     expect(JSON.stringify(reply)).not.toContain('fiction private');
+  });
+  it('removes abort subscriptions after success so a later abort cannot cancel completed work', async () => {
+    const h = harness();
+    const remove = vi.spyOn(h.signal.signal, 'removeEventListener');
+    await connect(h);
+    expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+    h.signal.abort();
+    expect(h.connection.postMessage).toHaveBeenCalledOnce();
+    expect(h.subscriber).not.toHaveBeenCalled();
+    h.client.close();
+  });
+  it('unsubscribes event consumers and closes idempotently without duplicate notifications', () => {
+    const h = harness();
+    const listener = vi.fn();
+    const unsubscribe = h.client.subscribe(listener);
+    unsubscribe();
+    h.client.close();
+    h.client.close();
+    expect(listener).not.toHaveBeenCalled();
+    expect(h.connection.disconnect).toHaveBeenCalledOnce();
+    expect(h.subscriber).toHaveBeenCalledTimes(2);
+  });
+  it('rejects disconnected replies to connect operations and selected replies to disconnect operations', async () => {
+    const first = harness();
+    const pending = first.client.connect('chatgpt', first.signal.signal);
+    first.connection.onMessage.emit({
+      kind: 'reply',
+      requestId: 'fiction-request-1',
+      status: 'disconnected',
+    });
+    expect((await pending).status).toBe('interrupted');
+    const second = harness();
+    const scope = await connect(second);
+    const disconnect = second.client.disconnectSelection('chatgpt', scope, second.signal.signal);
+    second.connection.onMessage.emit(selection('fiction-request-2', 2, 'fiction-new-partition'));
+    expect((await disconnect).status).toBe('interrupted');
+  });
+  it('fails closed on duplicate pending IDs even when the provider differs', async () => {
+    const h = harness(() => 'fiction-reused-id');
+    const first = h.client.connect('chatgpt', h.signal.signal);
+    const second = h.client.connect('google-ai-mode', h.signal.signal);
+    expect((await first).status).toBe('interrupted');
+    expect((await second).status).toBe('interrupted');
+    expect(h.connection.postMessage).toHaveBeenCalledOnce();
+  });
+  it('preserves cancellation but interrupts other work if cancellation cannot reach the worker', async () => {
+    const h = harness();
+    const other = new AbortController();
+    const chat = h.client.connect('chatgpt', h.signal.signal);
+    const google = h.client.connect('google-ai-mode', other.signal);
+    h.connection.postMessage.mockImplementation(() => {
+      throw new Error('fiction-private-cancel-detail');
+    });
+    h.signal.abort();
+    expect((await chat).status).toBe('cancelled');
+    expect((await google).status).toBe('interrupted');
+    expect(h.client.isClosed).toBe(true);
+    expect(h.connection.onMessage.size()).toBe(0);
+  });
+  it.each([
+    null,
+    {},
+    { kind: 'unrecognized' },
+    { kind: 'invalidated', provider: 'chatgpt', generation: 0, status: 'scope-changed' },
+  ])('closes on malformed protocol messages without exposing raw payloads', async (input) => {
+    const h = harness();
+    const pending = h.client.connect('chatgpt', h.signal.signal);
+    h.connection.onMessage.emit(input);
+    expect(await pending).toEqual({
+      kind: 'reply',
+      requestId: 'fiction-request-1',
+      status: 'interrupted',
+    });
   });
 });

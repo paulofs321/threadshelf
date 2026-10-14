@@ -38,17 +38,21 @@ Run the established checks with the synthetic tests and lint:
 npm test -- tests/contracts
 npm test -- tests/platform
 npm test
+npm run test:coverage
 npm run lint
 npm run check
 npm run build
 ```
 
 `npm test` uses Vitest's non-watch runner. `npm run test:watch` watches the same suites. Test discovery
-uses `tests/**/*.test.ts` in the Node environment with explicit imports; no browser/network access is
+uses `tests/**/*.test.{ts,tsx}` with explicit imports. Contract/platform suites run in Node; panel/view
+suites opt into jsdom with React Testing Library and explicit teardown. No provider/network access is
 needed. Missing suites and focused `.only` tests fail. These checks prove contracts and access
 boundary behavior using handwritten fictional metadata and injected/mocked Chrome APIs. They do
 not establish actual installed-extension behavior or authenticated provider access. Demo, CI and
 ZIP commands remain planned.
+See [testing](testing.md) for the complete defective-scenario matrix, coverage thresholds and ignored
+reports, and [technical foundation](foundation.md) for the implemented data and request flow.
 
 ESLint uses its recommended core rules and Babel 7's TypeScript syntax parser. The pinned TypeScript
 7 compiler owns type checking, name resolution and unused declarations via `npm run check`.

@@ -44,7 +44,9 @@ export function SetupScreen(props: SetupScreenProps) {
       {props.providers.map((item) => (
         <section key={item.provider} aria-labelledby={`${item.provider}-label`}>
           <h2 id={`${item.provider}-label`}>{labels[item.provider]}</h2>
-          <p role="status">{statuses[item.status] ?? statuses.unavailable}</p>
+          <p role="status">
+            {Object.hasOwn(statuses, item.status) ? statuses[item.status] : statuses.unavailable}
+          </p>
           <div className="actions">
             <button
               type="button"

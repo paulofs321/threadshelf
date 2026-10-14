@@ -22,10 +22,14 @@ export function deferred<T>() {
   let resolve: (value: T) => void = () => {
     throw new Error('Uninitialized deferred.');
   };
-  const promise = new Promise<T>((done) => {
+  let reject: (reason?: unknown) => void = () => {
+    throw new Error('Uninitialized deferred.');
+  };
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 export function brokerHarness(panel = 'one') {

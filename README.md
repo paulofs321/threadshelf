@@ -37,23 +37,25 @@ Use Node.js 22.12 or later within the Node 22 release line and npm. Dependencies
 ```sh
 npm ci
 npm test
+npm run test:coverage
 npm run lint
 npm run check
 npm run build
 ```
 
-| Command                | Available behavior                                    |
-| ---------------------- | ----------------------------------------------------- |
-| `npm run dev`          | Start WXT's Chrome development build/browser workflow |
-| `npm run prepare`      | Generate WXT TypeScript configuration                 |
-| `npm run typecheck`    | Prepare and check TypeScript without emitting files   |
-| `npm test`             | Run synthetic TypeScript tests once                   |
-| `npm run test:watch`   | Watch and rerun synthetic tests                       |
-| `npm run lint`         | Run ESLint with zero warnings allowed                 |
-| `npm run format`       | Format public/source project files                    |
-| `npm run format:check` | Check formatting                                      |
-| `npm run check`        | Run type checking and formatting checks               |
-| `npm run build`        | Build the extension to `.output/chrome-mv3/`          |
+| Command                 | Available behavior                                    |
+| ----------------------- | ----------------------------------------------------- |
+| `npm run dev`           | Start WXT's Chrome development build/browser workflow |
+| `npm run prepare`       | Generate WXT TypeScript configuration                 |
+| `npm run typecheck`     | Prepare and check TypeScript without emitting files   |
+| `npm test`              | Run synthetic TypeScript tests once                   |
+| `npm run test:coverage` | Run all tests and enforce runtime source coverage     |
+| `npm run test:watch`    | Watch and rerun synthetic tests                       |
+| `npm run lint`          | Run ESLint with zero warnings allowed                 |
+| `npm run format`        | Format public/source project files                    |
+| `npm run format:check`  | Check formatting                                      |
+| `npm run check`         | Run type checking and formatting checks               |
+| `npm run build`         | Build the extension to `.output/chrome-mv3/`          |
 
 For manual inspection, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**,
 and select `.output/chrome-mv3/`. Click the ThreadShelf toolbar action or select it in Chrome's side
@@ -63,6 +65,8 @@ Only `sidePanel` is required at installation. Google locale hosts and the Gemini
 **Clear selection** releases the in-memory context; revoke granted site access in Chrome's extension
 settings. Incognito is disabled. No live browser smoke test is claimed. See
 [developer notes](docs/development.md) for permissions, protocol, and remaining verification.
+See the [technical foundation](docs/foundation.md) for the implemented architecture and
+[regression test matrix](docs/testing.md) for comprehensive failure coverage and its limits.
 
 ## Planned boundaries
 

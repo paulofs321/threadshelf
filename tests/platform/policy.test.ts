@@ -50,6 +50,7 @@ describe('selected context policy', () => {
     'https://chatgpt.com',
     'javascript:alert(1)',
     'x'.repeat(2049),
+    'not-a-url',
   ])('rejects another/unsafe/noncanonical origin: %s', (url) => {
     expect(permittedUrl('chatgpt', url)).toBe(false);
   });
