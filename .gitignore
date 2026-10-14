@@ -1,0 +1,27 @@
+# Local agent instructions, research, plans, skills, and handoffs
+.ai/
+.agents/
+.codex/
+.claude/
+**/AGENTS.md
+
+# Dependencies and generated output
+node_modules/
+.wxt/
+.output/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Private configuration and local captures
+.env
+.env.*
+!.env.example
+*.log
+*.har
+*.heapsnapshot
+.DS_Store
+*.zip
+*.crx

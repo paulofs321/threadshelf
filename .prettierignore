@@ -1,0 +1,11 @@
+.ai/
+.agents/
+.codex/
+.claude/
+**/AGENTS.md
+node_modules/
+.wxt/
+.output/
+dist/
+coverage/
+package-lock.json
