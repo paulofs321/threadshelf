@@ -11,6 +11,7 @@ node_modules/
 .output/
 dist/
 coverage/
+.vitest/
 playwright-report/
 test-results/
 *.tsbuildinfo
