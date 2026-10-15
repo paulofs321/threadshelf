@@ -6,6 +6,7 @@ import {
   providerPermission,
   validatePanelContext,
   validatePanelSender,
+  validatePanelSource,
   validateProbe,
 } from '../../src/platform/policy';
 import {
@@ -32,6 +33,27 @@ const context = {
   frameId: 0,
   windowId: -1,
 };
+
+describe('optional Chrome sender metadata', () => {
+  it('requires the exact extension source and validates every supplied document field', () => {
+    expect(
+      validatePanelSource(
+        { ...sender, documentId: undefined, documentLifecycle: undefined },
+        sender.id,
+      ),
+    ).toMatchObject({ id: sender.id });
+    for (const patch of [
+      { id: 'other' },
+      { origin: 'https://evil.invalid' },
+      { url: 'chrome-extension://fiction-extension/other.html' },
+      { documentId: '' },
+      { documentLifecycle: 'prerender' },
+      { tab: {} },
+      { frameId: 1 },
+    ])
+      expect(validatePanelSource({ ...sender, ...patch }, sender.id)).toBeNull();
+  });
+});
 
 describe('selected context policy', () => {
   it('requests only scripting and the selected exact origin', () => {

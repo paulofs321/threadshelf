@@ -552,4 +552,53 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     ]);
     port.onDisconnect.emit();
   });
+  it('resolves omitted sender document metadata only from one canonical SIDE_PANEL context', async () => {
+    const port = connection({ documentId: undefined, documentLifecycle: undefined });
+    await select(port);
+    expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ status: 'selected' }));
+    expect(chrome.runtime.getContexts).toHaveBeenCalledWith({ documentUrls: [sender.url] });
+    port.onDisconnect.emit();
+  });
+  it.each([
+    { name: 'tab only', contexts: [{ ...context, contextType: 'TAB', tabId: 7 }] },
+    { name: 'panel plus tab', contexts: [context, { ...context, contextType: 'TAB', tabId: 7 }] },
+    { name: 'multiple panels', contexts: [context, { ...context, documentId: 'second-panel' }] },
+    { name: 'missing identity', contexts: [{ ...context, documentId: undefined }] },
+  ])('rejects ambiguous/unproved fallback contexts: $name', async ({ contexts }) => {
+    chrome.runtime.getContexts.mockResolvedValue(contexts);
+    const port = connection({ documentId: undefined, documentLifecycle: undefined });
+    port.onMessage.emit({
+      operation: 'connect',
+      requestId: 'fiction-fallback',
+      provider: 'chatgpt',
+    });
+    await vi.waitFor(() =>
+      expect(port.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'interrupted' }),
+      ),
+    );
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+    port.onDisconnect.emit();
+  });
+  it('pins the independently resolved panel ID and rejects a replacement at the same URL', async () => {
+    chrome.runtime.getContexts
+      .mockResolvedValueOnce([context])
+      .mockResolvedValue([{ ...context, documentId: 'replacement-panel' }]);
+    const port = connection({ documentId: undefined, documentLifecycle: undefined });
+    useSite('chatgpt');
+    port.onMessage.emit({
+      operation: 'connect',
+      requestId: 'fiction-replacement',
+      provider: 'chatgpt',
+    });
+    await vi.waitFor(() =>
+      expect(port.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'interrupted' }),
+      ),
+    );
+    expect(port.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'interrupted' }),
+    );
+    port.onDisconnect.emit();
+  });
 });

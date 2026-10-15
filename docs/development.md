@@ -9,7 +9,7 @@
 | `src/contracts/`                | Normalized runtime schemas, validation helpers and ports                   |
 | `src/platform/`                 | Selected-tab broker, context validation and access lifecycle               |
 | `src/providers/chatgpt/`        | Verified personal-account ChatGPT reads, normalization and identity checks |
-| `src/providers/google-ai-mode/` | Reserved for Google Search AI Mode transport and parsing                   |
+| `src/providers/google-ai-mode/` | Verified Google read adapter, wire parsing and document reader             |
 | `src/search/`                   | Reserved for provider-independent search orchestration                     |
 | `src/description/`              | Reserved for interpretation, ranking, and evidence validation              |
 | `src/storage/`                  | Reserved for isolated optional local storage                               |
@@ -190,6 +190,15 @@ permission-needed, unavailable, scope-changed, timeout, cancelled, interrupted, 
 private exception text or fabricated results. Panel reply validation checks provider/request IDs
 and refuses reused partitions/generations, malformed output, and success after invalidation.
 
+Chrome may omit document ID/lifecycle fields on an otherwise valid extension connection. The broker
+still requires the exact extension ID/origin/panel URL and rejects supplied invalid lifecycle/frame/tab
+metadata. When the sender omits its document ID, it queries **all** extension context types at the
+canonical panel URL and admits only one actual regular `SIDE_PANEL` context. A same-URL extension
+tab, multiple panels or missing identity fails closed. The independently resolved document ID is
+pinned and rechecked, including against replacements at the same URL. This conservative fallback
+cannot disambiguate multiple panels when Chrome supplies no sender document ID; close other panels
+before reconnecting in that environment. It adds no page-provided context selector.
+
 Initial document checks target frame 0. Chrome's injection metadata supplies the document ID;
 confirmation and subsequent inspection target that exact ID, reject other frames/origins, and
 recheck the tab, permission, and owning panel before returning. Both checks run in `ISOLATED`;
@@ -211,10 +220,12 @@ Invalidation events carry generations; delayed cancellation/navigation events ca
 selection or cause its fresh reply to be discarded.
 
 Every document check creates a new opaque ephemeral partition/generation, including checks in the
-same document. There is no private-data cache or persistence. These setup checks read no account
-data and do not verify same-document account/workspace switches or logout. The ChatGPT reader
-adds fresh identity checks around its own reads and rejects changed sessions. Its ephemeral scope
-does not enable reuse or persistence. A Chrome permission prompt itself cannot be cancelled by this code; cancelling prevents the
+same document. There is no private-data cache or persistence. This access foundation does not itself
+read account data or produce a verified account scope. Both provider readers add fresh identity checks
+around their own reads within ephemeral selections and reject changed sessions. Lifecycle owners
+must retire adapters with their broker selections before displaying or reusing results. Unknown
+identity cannot reuse an earlier check's data. A Chrome permission prompt itself cannot be cancelled
+by this code; cancelling prevents the
 subsequent broker operation and retry waits until that prompt settles.
 
 ## ChatGPT adapter
@@ -239,60 +250,113 @@ query, and a partial 50-row list. Original-link reopen and same-account/source-p
 passed. Rendered message equivalence and live forced logout/workspace/error scenarios were not
 established. Search orchestration and panel UI remain separate tasks.
 
-## Google Search AI Mode provider boundary (partial implementation)
+## Google Search AI Mode adapter
 
-`src/providers/google-ai-mode/adapter.ts` implements `ProviderPort` as `GoogleAiModeProvider`.
-It snapshots one normalized Google Search AI Mode scope and exposes the same failure-only lifecycle
-as the ChatGPT boundary above. Valid matching searches return `unavailable`; already aborted searches
-return `cancelled`; mismatched or retired scopes return `scope-changed`. Malformed scopes/requests
-reject with `Invalid contract context.` before cancellation is considered. Session inspection never
-reports `ready`; after permanent `invalidate()` it reports `scope-changed`. These methods perform no
-network/browser work and return no candidates, snippets, URLs, dates or successful coverage.
+`src/providers/google-ai-mode/adapter.ts` implements `GoogleAiModeProvider` with an injected
+`GoogleAiModeReadPort`. A missing port keeps the original unavailable behavior. `search(request,
+context)` and `list(request, context)` validate the normalized request and selected scope, then
+validate the port result and provider response. `inspectSession` reports ready only after a valid
+identity inspection. The platform now supplies a concrete Chrome host. Search orchestration and panel search controls
+remain outside this adapter; the development panel still selects access only.
 
-The frozen `googleAiModeAvailability` diagnostic in `availability.ts` records these missing observations:
+`wire.ts` owns the observed GET forms, XSSI JSON parsing, positional records, link policy and HTTP
+failure mapping. Native verification on October 15, 2026 established keyword matches whose
+titles omit the keyword, and normalized the bounded native list. Search has an
+observed 30-record request limit; listing has no verified continuation. Search coverage is unknown,
+and hitting a provider/application result bound is partial. Neither operation promises complete
+history. Empty native search returns `[]`; malformed or missing envelopes never become empty success.
 
-- Native ListThreads/SearchThreads request and response contracts and actual extension context.
-- Selected Google account identity and account selection across reads.
-- Original conversation links and timestamp meanings.
-- Provider failure semantics and continuation/coverage limits.
-- Complete-message access or a bounded rendered-evidence path with resource cleanup.
+Titles remain exact when within the shared budget; absent or overlong titles are omitted. Native
+snippets stay plain text, including instruction-like or HTML-like content, with bounded exact
+substring extraction that preserves surrogate pairs. Duplicate threads merge distinct snippets;
+conflicting identity/link/title metadata fails validation. Candidate and total evidence budgets
+remain enforced. Original links use only the observed four metadata pairs on the exact Google
+`/search` route, with the short ID bound to `mtid` and the long state bound to `mstk`. Duplicate,
+unknown, mismatched or unsafe link parameters are rejected. A native temporary-tab check verified
+that the metadata-only link reopens the saved thread under the same account.
 
-No runtime flag enables transport. A caller-supplied `verified` scope does not establish ownership
-or make the provider ready. Scope comparison includes all normalized account/workspace partitions
-without asserting that Google exposes workspaces. Future composition must connect account/document
-changes to invalidation, obtain a new scope and validate replies against the current request. The
-current class does not detect account switches or logout. It is not wired into the panel or broker;
-no platform operation, permission or dependency was added.
+The two timestamp pairs lack verified creation/update meanings. They are omitted from normalized
+dates, and a date constraint adds `unknown-dates` coverage. The adapter never invents a timezone,
+midnight instant, creation date or last-update semantic from positional numbers or relative labels.
 
-The historical 300-record list does not establish complete history. Pagination beyond that list,
-native search reach, full-message retrieval, exact host/account selectors and reopen metadata remain
-unresolved. No offset, cursor, endpoint parameter, timestamp mapping or link format is inferred.
-Rendered-thread enrichment is not implemented: there are no temporary evidence tabs or listeners.
-The Gemini app at `gemini.google.com` is a separate product and is not a substitute integration.
+`document-read.ts` is self-contained code serialized into Chrome’s isolated world. It performs
+only fixed same-origin GET operations with browser-managed authentication, manual redirects, an
+8-second deadline, a 3 MB streaming response cap, bounded document concurrency and explicit abort
+cleanup. Before and after a data read, it fetches a fresh AI Mode landing page and compares its
+account control with the selected document. Only a local partition-salted SHA-256 fingerprint can
+leave the identity check; account email/labels are not returned or logged. A changed/missing identity
+prevents success. Nondefault account selectors are currently unavailable rather than silently read
+through the default account. This reader passed native and actual unpacked-extension isolated-world checks using the existing
+Google session. It requires the exact `/search?udm=50` context on `www.google.com`.
 
-Tests under `tests/providers/google-ai-mode/` exercise normalized inputs from
-`tests/fixtures/google-ai-mode/`, request/scope validation, cancellation, retirement, stale account
-replies and independent ChatGPT/Google outcomes. Both unavailable providers produce aggregate
-failure with unknown coverage, never successful no-matches. These are synthetic boundary tests;
-native snippet matching (including keywords absent from titles), malformed HTTP envelopes,
-missing/duplicate wire records, unsafe original links, login/rate-limit/schema/timeout mappings,
-account rechecks around reads and rendered-evidence teardown require observed transport first.
+HTTP 401 maps to `login-expired`, 429 to `rate-limited` with a bounded valid Retry-After hint, and other
+non-200 statuses to `unavailable`. A 200 response with an unexpected content type or malformed JSON
+is `schema-changed`. Manual/opaque redirects remain unavailable because their destination cannot be
+verified. Transport exceptions, cancellation, timeout and scope changes have separate safe outcomes.
+These failure mappings have synthetic tests; native probes observed successful 200 responses only.
 
-## Pending live Chrome acceptance
+The adapter independently times out unresponsive ports after 10 seconds, aborts obsolete work on
+replacement/invalidation and rejects changed identity around or between operations. A regression
+caught replacement cancellation retiring the newer operation; cancelled obsolete reads now remain
+separate from an actual account invalidation. Candidate inventories are memory-only, bounded,
+snapshotted and bound to the exact originating request/query; failed or replacement retrieval clears
+old evidence access.
 
-The original access foundation was tested synthetically. The later ChatGPT adapter verification
-used a temporary trusted extension diagnostic with real Chrome APIs; it did not verify the actual
-side-panel sender handshake. Installed API declarations, mocks, and build checks remain separate
-evidence from browser acceptance. The existing panel still shows setup status.
+`messages(request, conversationId, context)` accepts only a candidate retrieved by that instance for
+the same request, then uses the host's optional `openEvidence` capability. It cannot accept arbitrary
+URLs or fabricate full messages. The reader supports only bounded exact text from the observed
+rendered last-turn block. Native reopening showed two saved answers, but no complete-message API was
+observed. Evidence coverage remains unknown with `missing-evidence`. The concrete host owns the temporary tab, validates its URL and Chrome document ID, rechecks the
+source context/account, and closes the tab in `finally`, including late creation after cancellation.
+It creates passive tabs so the selected source tab remains active.
 
-For a bounded manual check, load the production build, open the toolbar panel, connect one selected
-provider tab, and confirm the exact-site permission prompt and explicit unverified status. Check
-navigation (including same-URL reload), tab/window changes, permission revocation, cancellation, and
-worker interruption; selections must clear and late replies must not reappear. A metadata mismatch
-must produce unavailable/interrupted behavior. Keep only structural pass/fail notes and remove any
-temporary test profile, tabs, or instrumentation. Authenticated same-origin reads, account/workspace
-identity, actual Google host requirements, and comparison with extension-origin access remain
-adapter verification work; do not infer login or complete-history support from a selected document.
+`src/platform/google-ai-mode.ts` exports `createGoogleAiModeProvider(binding)` and
+`ChromeGoogleAiModeReadPort`. Trusted composition obtains an in-process capability from
+`AccessBroker.bindSelectedDocument(scope)`. That method accepts only the current selected scope,
+snapshots its tab/document metadata and supplies lifecycle/owning-panel checks. The capability is
+never serialized into a page or runtime message. Source reads revalidate the owning panel window,
+optional permission, selected regular tab, exact URL, current scope and pinned top-level document.
+Each data injection validates Chrome’s returned frame/document metadata separately from its payload.
+
+The host observes navigation, removal/replacement, activation/focus and permission removal during
+operations. It aborts the isolated reader, discards late output, settles unresponsive Chrome calls
+within 9.5 seconds and removes operation listeners/timers. Rendered evidence additionally checks
+the original source identity before opening and after reading the temporary thread. The adapter’s
+independent 10-second deadline protects callers of other injected ports. Neither layer retries.
+
+`availability.ts` records structural verification in Chrome’s isolated world and the remaining
+nondefault-account/date/continuation limits. This diagnostic grants no session: without a bound
+port the adapter remains unavailable, and `inspectSession` requires a fresh successful identity
+check before returning ready. No permission, dependency or public runtime operation was added.
+The Gemini app remains outside this integration.
+
+## Live Chrome evidence and remaining acceptance
+
+On October 15, 2026, read-only tests ran in the existing native Google Search session and the actual
+unpacked extension in Chrome 155.0.8059.40. The user loaded the local build and granted optional
+Google/scripting access. Actual `ISOLATED` injections passed with Chrome-supplied frame/document
+IDs pinned across operations: three search matches whose titles omitted the keyword, a deliberate
+no-match query returning zero, 100 normalized candidates from the 300-row list and ready identity
+inspection. Listing disclosed `partial`/`result-limit`; search retained `unknown-reach`.
+
+The actual toolbar panel initially interrupted its connection because sender document metadata was
+absent. A temporary service-worker diagnostic confirmed Chrome supplied only extension ID/URL/origin.
+After the conservative context-resolution fix and reload, the panel’s Connect action selected the
+site. Its setup-only message still says account/search access is unverified: it does not invoke the
+new provider adapter. This selection check is distinct from the isolated provider-read evidence.
+
+The concrete host then reopened one retrieved original link in an owned background tab, returned
+one exact 2,000-character rendered excerpt, closed the tab and preserved the source URL. This is
+partial rendered evidence, not complete-message access. Only structural counts/statuses were
+retained; no account labels, conversation identifiers, live bodies or text entered fixtures/logs.
+Temporary diagnostic assets, tabs and in-memory instrumentation were removed after verification.
+Native development automation is not a runtime dependency or an installation requirement.
+
+Synthetic tests separately cover HTTP failures, account changes, cancellation, invalid Chrome
+metadata and cleanup. Live tests observed successful HTTP 200 reads; they did not force logout,
+429 responses or account switches. Full panel search, multi-window interaction, comprehensive
+accessibility, ChatGPT authentication, locale hosts and nondefault Google accounts still need their
+own implementation/acceptance. No extension-origin fetch or main-world bridge is used.
 
 ## Data and artifacts
 

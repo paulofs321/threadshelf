@@ -1,3 +1,4 @@
+import { requireValid, PartitionIdSchema } from '../../src/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { maximumRequestsPerPort, operationTimeoutMs } from '../../src/platform/protocol';
 import { brokerHarness, deferred, probe, selected, tab } from './helpers';
@@ -279,6 +280,44 @@ describe('selected-tab broker', () => {
       status: 'unavailable',
     });
     expect(JSON.stringify(h.messages)).not.toContain('fiction private');
+    h.broker.close();
+  });
+});
+
+describe('trusted selected-document binding', () => {
+  it('binds only the current scope, snapshots metadata and retires the capability on replacement/close', async () => {
+    const h = brokerHarness();
+    const scope = await selected(h);
+    expect(h.broker.bindSelectedDocument({ ...scope, generation: 999 })).toBeNull();
+    const binding = h.broker.bindSelectedDocument(scope);
+    if (!binding) throw new Error('Expected selected binding');
+    expect(binding.tab.id).toBe(tab.id);
+    expect(binding.documentId).toBe(probe.documentId);
+    expect(binding.isCurrent()).toBe(true);
+    expect(await binding.ownerWindow()).toBe(3);
+    Object.assign(binding.scope, { generation: 999 });
+    Object.assign(binding.tab, { id: 999 });
+    expect(h.broker.bindSelectedDocument(scope)?.tab.id).toBe(tab.id);
+    const replacement = await h.connect('fiction-replacement');
+    expect(replacement.status).toBe('selected');
+    expect(binding.isCurrent()).toBe(false);
+    expect(h.broker.bindSelectedDocument(scope)).toBeNull();
+    if (replacement.status !== 'selected') throw new Error('Expected replacement');
+    const next = h.broker.bindSelectedDocument(replacement.scope);
+    h.broker.close();
+    expect(next?.isCurrent()).toBe(false);
+    expect(h.broker.bindSelectedDocument(replacement.scope)).toBeNull();
+  });
+  it('cannot bind a provider that has never been selected', () => {
+    const h = brokerHarness();
+    expect(
+      h.broker.bindSelectedDocument({
+        kind: 'ephemeral',
+        provider: 'chatgpt',
+        generation: 1,
+        partition: requireValid(PartitionIdSchema, 'fiction-partition'),
+      }),
+    ).toBeNull();
     h.broker.close();
   });
 });

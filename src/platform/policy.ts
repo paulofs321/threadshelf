@@ -87,6 +87,24 @@ const PanelSenderSchema = v.object({
   nativeApplication: v.optional(v.never()),
 });
 
+const PanelSourceSchema = v.object({
+  ...PanelSenderSchema.entries,
+  documentId: v.optional(DocumentIdSchema),
+  documentLifecycle: v.optional(v.literal('active')),
+});
+
+// Chrome can omit document metadata on extension-owned connections. Resolve it independently.
+export function validatePanelSource(input: unknown, extensionId: string) {
+  const result = validate(PanelSourceSchema, input);
+  const origin = `chrome-extension://${extensionId}`;
+  return result.ok &&
+    result.value.id === extensionId &&
+    result.value.origin === origin &&
+    result.value.url === `${origin}/sidepanel.html`
+    ? result.value
+    : null;
+}
+
 export function validatePanelSender(input: unknown, extensionId: string) {
   const result = validate(PanelSenderSchema, input);
   const origin = `chrome-extension://${extensionId}`;

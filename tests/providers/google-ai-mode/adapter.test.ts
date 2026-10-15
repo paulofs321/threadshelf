@@ -22,16 +22,14 @@ const context = () => ({ signal: new AbortController().signal });
 describe('Google Search AI Mode verification gate', () => {
   it('publishes concrete missing observations without an enable switch', () => {
     expect(googleAiModeAvailability).toEqual({
-      status: 'unavailable',
-      reason: 'verification-required',
+      status: 'verified',
+      context: 'chrome-isolated-world',
+      requires: 'selected-document-binding',
+      messageEvidence: 'partial-rendered',
       missingEvidence: [
-        'selected-extension-context',
-        'account-selection-and-identity',
-        'native-list-search-contracts',
-        'original-links-and-timestamps',
-        'failure-semantics',
+        'nondefault-account-selection',
+        'timestamp-semantics',
         'continuation-and-coverage',
-        'complete-message-or-bounded-rendered-evidence',
       ],
     });
     expect(Object.isFrozen(googleAiModeAvailability)).toBe(true);

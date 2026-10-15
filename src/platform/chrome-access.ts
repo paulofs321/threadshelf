@@ -9,16 +9,19 @@ import {
   providerOrigins,
   providerPermission,
   validatePanelContext,
-  validatePanelSender,
+  validatePanelSource,
 } from './policy';
 
 export function registerChromeAccess(): void {
   const brokers = new Set<AccessBroker>();
   browser.runtime.onConnect.addListener((connection) => {
-    const documentId = validatePanelSender(connection.sender, browser.runtime.id);
+    const sender = validatePanelSource(connection.sender, browser.runtime.id);
+    let documentId = sender?.documentId;
+    const needsLookup = documentId === undefined;
     const windowId = panelWindowId(connection.name);
 
-    if (windowId === null || !documentId || brokers.size >= 4) {
+
+    if (windowId === null || !sender || brokers.size >= 4) {
       connection.disconnect();
 
       return;
@@ -33,16 +36,24 @@ export function registerChromeAccess(): void {
 
         if (!window.ok || window.value.id !== windowId) return null;
 
-        const contexts = await browser.runtime.getContexts({
-          contextTypes: ['SIDE_PANEL'],
-          documentIds: [documentId],
-        });
-
+        const contexts = await browser.runtime.getContexts(
+          needsLookup
+            ? {
+                // Include TAB and other types: a tab at the same URL must make this ambiguous/invalid.
+                documentUrls: [sender.url],
+              }
+            : { contextTypes: ['SIDE_PANEL'], documentIds: [documentId as string] },
+        );
         if (contexts.length !== 1) return null;
 
-        return validatePanelContext(contexts[0], documentId, browser.runtime.id, windowId)
-          ? windowId
-          : null;
+        const candidateId = documentId ?? contexts[0]?.documentId;
+        if (
+          !candidateId ||
+          !validatePanelContext(contexts[0], candidateId, browser.runtime.id, windowId)
+        )
+          return null;
+        documentId = candidateId;
+        return windowId;
       },
       hasPermission: (provider) => browser.permissions.contains(providerPermission(provider)),
       async selectedTab(windowId) {
