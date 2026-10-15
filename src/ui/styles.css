@@ -34,3 +34,37 @@ p {
   border-radius: 0.5rem;
   background: #fff;
 }
+
+section {
+  margin-top: 1.5rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #8b9ba7;
+  border-radius: 0.35rem;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+button:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 3px;
+}
