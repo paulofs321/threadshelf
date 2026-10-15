@@ -8,7 +8,7 @@ The goal is to find sessions by keyword or description without manually saving o
 conversation. Examples include “Where did I compare deployment options for my portfolio?” and
 “Which sessions did I discuss authentication last month?” Results will show their provider, title,
 available date, matching excerpt, original conversation link, and evidence for description matches.
-Provider and date filters, cancellation, and explicit failure/partial-result states are planned.
+The shared keyword engine implements provider/date filters, cancellation and explicit failure/partial outcomes.
 The implementation UI will use shadcn/ui components shared with the fictional demo.
 
 ## Current status
@@ -22,7 +22,9 @@ timeout, or worker interruption. Unknown identity receives a fresh ephemeral sco
 
 Selecting a site checks browser context only. Both provider adapters now support authenticated
 reads through trusted selected-document bindings; the panel still provides setup controls rather
-than conversation search. Search orchestration and the full shadcn/ui search UI remain separate work.
+than conversation search. The [keyword search engine](docs/keyword-search.md) now coordinates injected
+providers with validated filters, scoped deduplication, bounded work and truthful aggregate outcomes.
+The full shadcn/ui search UI and its browser composition remain separate work.
 
 The ChatGPT adapter implements personal-account keyword/list/API-message reads, exact evidence,
 original links, UTC updated dates and identity checks around reads. Actual unpacked-extension

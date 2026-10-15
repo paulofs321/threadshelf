@@ -15,3 +15,7 @@ verification. Its deliberately fake credential is a test canary, never a live to
 `google-ai-mode/wire.ts` contains handcrafted positional records based on native structural observations.
 Every title, snippet, ID, state token and timestamp is fictional. Parsing/failure tests remain separate
 from native and actual extension observations.
+
+`search/providers.ts` supplies fictional normalized provider ports, request factories and deferred
+responses. Search integration tests reuse the handwritten provider wire fixtures with the actual
+adapters; they perform no browser or network reads.

@@ -10,7 +10,7 @@
 | `src/platform/`                 | Selected-tab broker, context validation and access lifecycle               |
 | `src/providers/chatgpt/`        | Verified personal-account ChatGPT reads, normalization and identity checks |
 | `src/providers/google-ai-mode/` | Verified Google read adapter, wire parsing and document reader             |
-| `src/search/`                   | Reserved for provider-independent search orchestration                     |
+| `src/search/`                   | Keyword orchestration, scoped deduplication, cancellation and date filters |
 | `src/description/`              | Reserved for interpretation, ranking, and evidence validation              |
 | `src/storage/`                  | Reserved for isolated optional local storage                               |
 | `tests/contracts/`              | Synthetic contract and boundary regression tests                           |
@@ -227,6 +227,16 @@ must retire adapters with their broker selections before displaying or reusing r
 identity cannot reuse an earlier check's data. A Chrome permission prompt itself cannot be cancelled
 by this code; cancelling prevents the
 subsequent broker operation and retry waits until that prompt settles.
+
+## Keyword search
+
+`KeywordSearch` composes normalized provider ports and link verifiers without UI or Chrome imports.
+It validates keyword requests, applies provider and available-date filters, coalesces scoped
+conversations and retains independent failures and coverage. Cancellation, query replacement,
+scope retirement, deadlines, call/result budgets and rate-limit cooldowns bound work. See the
+[engine reference](keyword-search.md) for policy defaults, timezone helpers and lifecycle ownership.
+The development panel does not yet compose this engine. Tests use fictional ports and real
+adapters with synthetic transports; live panel search acceptance remains separate.
 
 ## ChatGPT adapter
 

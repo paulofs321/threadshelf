@@ -14,6 +14,7 @@ npm run build
 `npm test -- tests/contracts`, `npm test -- tests/platform`, or
 `npm test -- tests/ui tests/entrypoints`. Run provider suites with
 `npm test -- tests/providers/chatgpt` or `npm test -- tests/providers/google-ai-mode`.
+Run `npm test -- tests/search` for pure keyword orchestration and synthetic adapter composition.
 
 The combined suite covers both provider adapters and their Chrome hosts, with synthetic contract,
 transport, parser, identity, lifecycle and evidence regressions. All fixtures are handwritten fiction;
@@ -40,6 +41,16 @@ Google read/parser suites also cover native snippets absent from titles, genuine
 malformed XSSI/JSON, duplicate records, hostile links/text, missing metadata, result/text bounds,
 HTTP/Retry-After mapping, before/after account changes, internal abort cleanup, obsolete replies,
 exact evidence inventory ownership and closure-free document serialization.
+
+Search suites exercise all 100 two-provider terminal-status combinations through the engine,
+useful partial matches and partial zero matches, actual adapters with synthetic transports, strict
+input/output/link validation, scoped deduplication and conflicting metadata/evidence. Fake timers
+cover queued/active cancellation, replacement with reused IDs, ports that ignore abort, total and
+provider deadlines, occupied concurrency slots, rate-limit cooldowns, logout and generation races,
+including invalidating an already completed provider while another remains pending. Calendar cases
+cover browser-timezone month/year/leap boundaries, fractional offsets, 23/25-hour days, midnight
+transitions and a skipped civil date. Available-date meanings, unknown-date exclusions and all
+coverage reasons remain visible. Every fake-timer lifecycle test checks for zero remaining timers.
 
 Coverage includes every runtime TypeScript/TSX source file under `src`, including the panel and
 entrypoints. `npm run test:coverage` writes ignored text/JSON/HTML reports under `coverage/`; open

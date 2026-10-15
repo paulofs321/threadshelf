@@ -2,7 +2,8 @@
 
 ThreadShelf currently has a validated data model and a bounded Chrome document-access layer.
 The [ChatGPT adapter](chatgpt-adapter.md) adds verified personal-account reads and transient identity
-checks. Search orchestration, model inference and persistent storage remain unavailable. The
+checks. The [keyword engine](keyword-search.md) coordinates injected providers, filters, deduplication,
+cancellation and bounded outcomes. Model inference and persistent storage remain unavailable. The
 current panel still checks browser context only and reports an unverified selection; it does not
 yet invoke the adapter.
 
