@@ -239,6 +239,45 @@ query, and a partial 50-row list. Original-link reopen and same-account/source-p
 passed. Rendered message equivalence and live forced logout/workspace/error scenarios were not
 established. Search orchestration and panel UI remain separate tasks.
 
+## Google Search AI Mode provider boundary (partial implementation)
+
+`src/providers/google-ai-mode/adapter.ts` implements `ProviderPort` as `GoogleAiModeProvider`.
+It snapshots one normalized Google Search AI Mode scope and exposes the same failure-only lifecycle
+as the ChatGPT boundary above. Valid matching searches return `unavailable`; already aborted searches
+return `cancelled`; mismatched or retired scopes return `scope-changed`. Malformed scopes/requests
+reject with `Invalid contract context.` before cancellation is considered. Session inspection never
+reports `ready`; after permanent `invalidate()` it reports `scope-changed`. These methods perform no
+network/browser work and return no candidates, snippets, URLs, dates or successful coverage.
+
+The frozen `googleAiModeAvailability` diagnostic in `availability.ts` records these missing observations:
+
+- Native ListThreads/SearchThreads request and response contracts and actual extension context.
+- Selected Google account identity and account selection across reads.
+- Original conversation links and timestamp meanings.
+- Provider failure semantics and continuation/coverage limits.
+- Complete-message access or a bounded rendered-evidence path with resource cleanup.
+
+No runtime flag enables transport. A caller-supplied `verified` scope does not establish ownership
+or make the provider ready. Scope comparison includes all normalized account/workspace partitions
+without asserting that Google exposes workspaces. Future composition must connect account/document
+changes to invalidation, obtain a new scope and validate replies against the current request. The
+current class does not detect account switches or logout. It is not wired into the panel or broker;
+no platform operation, permission or dependency was added.
+
+The historical 300-record list does not establish complete history. Pagination beyond that list,
+native search reach, full-message retrieval, exact host/account selectors and reopen metadata remain
+unresolved. No offset, cursor, endpoint parameter, timestamp mapping or link format is inferred.
+Rendered-thread enrichment is not implemented: there are no temporary evidence tabs or listeners.
+The Gemini app at `gemini.google.com` is a separate product and is not a substitute integration.
+
+Tests under `tests/providers/google-ai-mode/` exercise normalized inputs from
+`tests/fixtures/google-ai-mode/`, request/scope validation, cancellation, retirement, stale account
+replies and independent ChatGPT/Google outcomes. Both unavailable providers produce aggregate
+failure with unknown coverage, never successful no-matches. These are synthetic boundary tests;
+native snippet matching (including keywords absent from titles), malformed HTTP envelopes,
+missing/duplicate wire records, unsafe original links, login/rate-limit/schema/timeout mappings,
+account rechecks around reads and rendered-evidence teardown require observed transport first.
+
 ## Pending live Chrome acceptance
 
 The original access foundation was tested synthetically. The later ChatGPT adapter verification
