@@ -101,7 +101,16 @@ export function registerChromeAccess(): void {
   browser.windows.onFocusChanged.addListener(() => {
     for (const broker of brokers) broker.invalidateAll('scope-changed');
   });
-  browser.permissions.onRemoved.addListener(() => {
-    for (const broker of brokers) broker.invalidateAll('permission-needed');
+  browser.permissions.onRemoved.addListener((removed) => {
+    for (const broker of brokers) {
+      for (const provider of ['chatgpt', 'google-ai-mode'] as const) {
+        if (
+          removed.permissions?.includes('scripting') ||
+          removed.origins?.includes(`${providerOrigins[provider]}/*`)
+        ) {
+          broker.invalidate(provider, 'permission-needed');
+        }
+      }
+    }
   });
 }

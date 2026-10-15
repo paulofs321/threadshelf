@@ -158,10 +158,11 @@ essential. See Chrome's [tabs permission documentation](https://developer.chrome
 
 Only `runtime.connect` ports named `threadshelf:selected-tab:v1` are accepted. Chrome-supplied
 sender ID, exact panel URL/origin, active document ID, and top-level/non-tab sender are validated.
-`runtime.getContexts` must independently find that regular-profile side panel and its window before
-and after document checks. Missing or unexpected context metadata fails closed. The broker queries
-only the active tab of that panel's window and checks its exact provider origin, completed load, and
-regular profile. No caller can supply a tab, URL, header, body, or executable argument.
+The manifest requires Chrome 116 or later for `runtime.getContexts`. That API must independently
+find the regular-profile side panel and its window before and after document checks. Missing or
+unexpected context metadata fails closed. The broker queries only the active tab of that panel's
+window and checks its exact provider origin, completed load, and regular profile. No caller can
+supply a tab, URL, header, body, or executable argument.
 
 | Operation         | Allowed payload and result                                                                     |
 | ----------------- | ---------------------------------------------------------------------------------------------- |
@@ -188,8 +189,9 @@ There are no retries. Cancellation cannot undo an already dispatched Chrome inje
 aborts the operation signal, prevents further checks, and discards later output.
 
 Navigation/loading, URL changes, removed/replaced tabs, active-tab changes, window focus changes,
-permission removal, and port loss invalidate selections and pending work. Focus/activation and
-permission events conservatively invalidate both providers. Invalidation reaches the panel before
+permission removal, and port loss invalidate selections and pending work. Focus/activation events
+invalidate both providers. Removing a site's permission invalidates only that provider; removing
+the shared `scripting` permission invalidates both. Invalidation reaches the panel before
 terminal worker replies. Panel-owned timers cover a suspended/unresponsive worker; reconnect is
 explicit through the Connect action. Incognito is disabled. Listeners for disconnected ports,
 timers, abort subscriptions, and scopes are released.

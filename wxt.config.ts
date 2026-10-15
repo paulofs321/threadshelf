@@ -19,7 +19,7 @@ export default defineConfig({
   manifest: {
     name: 'ThreadShelf',
     description: 'Select site access for ThreadShelf. Conversation search is not implemented yet.',
-    minimum_chrome_version: '114',
+    minimum_chrome_version: '116',
     permissions: ['sidePanel'],
     optional_permissions: ['scripting'],
     optional_host_permissions: ['https://chatgpt.com/*', 'https://www.google.com/*'],

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ProviderId } from '../../src/contracts/primitives';
+import type { AccessMessage } from '../../src/platform/protocol';
 import { accessPortName } from '../../src/platform/protocol';
 import { registerChromeAccess } from '../../src/platform/chrome-access';
 import { deferred, event, probe, tab } from './helpers';
@@ -28,7 +30,10 @@ const chrome = vi.hoisted(() => {
       onConnect: channel<[unknown]>(),
       lastError: undefined,
     },
-    permissions: { contains: vi.fn(), onRemoved: channel<[]>() },
+    permissions: {
+      contains: vi.fn(),
+      onRemoved: channel<[{ permissions?: string[]; origins?: string[] }]>(),
+    },
     scripting: { executeScript: vi.fn() },
     tabs: {
       query: vi.fn(),
@@ -63,7 +68,7 @@ function connection(patch = {}, name: string = accessPortName) {
   const port = {
     name,
     sender: { ...sender, ...patch },
-    postMessage: vi.fn(),
+    postMessage: vi.fn<(message: AccessMessage) => void>(),
     disconnect: vi.fn(),
     onMessage: event<[unknown]>(),
     onDisconnect: event<[]>(),
@@ -71,15 +76,39 @@ function connection(patch = {}, name: string = accessPortName) {
   chrome.runtime.onConnect.emit(port);
   return port;
 }
-async function select(port: ReturnType<typeof connection>) {
+const sites = {
+  chatgpt: { tab, probe },
+  'google-ai-mode': {
+    tab: { ...tab, id: 8, url: 'https://www.google.com/' },
+    probe: {
+      ...probe,
+      documentId: 'fiction-google-document',
+      result: { origin: 'https://www.google.com', topLevel: true },
+    },
+  },
+};
+function useSite(provider: ProviderId) {
+  chrome.tabs.query.mockResolvedValue([sites[provider].tab]);
+  chrome.scripting.executeScript.mockResolvedValue([sites[provider].probe]);
+}
+async function select(port: ReturnType<typeof connection>, provider: ProviderId = 'chatgpt') {
+  useSite(provider);
+  const requestId = `fiction-select-${provider}`;
   port.onMessage.emit({
     operation: 'connect',
-    requestId: 'fiction-request-one',
-    provider: 'chatgpt',
+    requestId,
+    provider,
   });
   await vi.waitFor(() =>
-    expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ status: 'selected' })),
+    expect(port.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId, status: 'selected' }),
+    ),
   );
+  const reply = port.postMessage.mock.lastCall?.[0];
+  if (reply?.kind !== 'reply' || reply.status !== 'selected') {
+    throw new Error('Expected synthetic selection.');
+  }
+  return reply.scope;
 }
 
 beforeEach(() => {
@@ -168,7 +197,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
       else if (change === 'replaced') chrome.tabs.onReplaced.emit(8, 7);
       else if (change === 'activated') chrome.tabs.onActivated.emit();
       else if (change === 'focus') chrome.windows.onFocusChanged.emit();
-      else chrome.permissions.onRemoved.emit();
+      else chrome.permissions.onRemoved.emit({ permissions: ['scripting'] });
       expect(port.postMessage).toHaveBeenLastCalledWith({
         kind: 'invalidated',
         provider: 'chatgpt',
@@ -264,29 +293,126 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     expect(port.onMessage.size()).toBe(0);
     expect(port.onDisconnect.size()).toBe(0);
   });
-  it('discards Chrome injection output that resolves after permission removal', async () => {
-    const held = deferred<unknown>();
-    chrome.scripting.executeScript.mockReturnValueOnce(held.promise);
+  it.each([{ permissions: ['scripting'] }, { origins: ['https://chatgpt.com/*'] }])(
+    'discards late Chrome injection output after removal of %j',
+    async (removed) => {
+      const held = deferred<unknown>();
+      chrome.scripting.executeScript.mockReturnValueOnce(held.promise);
+      const port = connection();
+      port.onMessage.emit({
+        operation: 'connect',
+        requestId: 'fiction-request',
+        provider: 'chatgpt',
+      });
+      await vi.waitFor(() => expect(chrome.scripting.executeScript).toHaveBeenCalledOnce());
+      chrome.permissions.onRemoved.emit(removed);
+      expect(port.postMessage).toHaveBeenLastCalledWith({
+        kind: 'reply',
+        requestId: 'fiction-request',
+        status: 'permission-needed',
+      });
+      const count = port.postMessage.mock.calls.length;
+      held.resolve([probe]);
+      await held.promise;
+      expect(port.postMessage).toHaveBeenCalledTimes(count);
+      expect(chrome.scripting.executeScript).toHaveBeenCalledOnce();
+      port.onDisconnect.emit();
+    },
+  );
+  it.each([
+    {
+      name: 'ChatGPT host',
+      removed: { origins: ['https://chatgpt.com/*'] },
+      affected: ['chatgpt'],
+    },
+    {
+      name: 'Google host',
+      removed: { origins: ['https://www.google.com/*'] },
+      affected: ['google-ai-mode'],
+    },
+    {
+      name: 'both hosts',
+      removed: { origins: ['https://chatgpt.com/*', 'https://www.google.com/*'] },
+      affected: ['chatgpt', 'google-ai-mode'],
+    },
+    {
+      name: 'shared scripting permission',
+      removed: { permissions: ['scripting'] },
+      affected: ['chatgpt', 'google-ai-mode'],
+    },
+    {
+      name: 'scripting and one host together',
+      removed: { permissions: ['scripting'], origins: ['https://chatgpt.com/*'] },
+      affected: ['chatgpt', 'google-ai-mode'],
+    },
+    { name: 'no permission fields', removed: {}, affected: [] },
+    { name: 'empty lists', removed: { permissions: [], origins: [] }, affected: [] },
+    {
+      name: 'unrelated permission and origin',
+      removed: { permissions: ['storage'], origins: ['https://fiction.invalid/*'] },
+      affected: [],
+    },
+  ])('invalidates only affected selections when removing $name', async ({ removed, affected }) => {
     const port = connection();
-    port.onMessage.emit({
-      operation: 'connect',
-      requestId: 'fiction-request',
-      provider: 'chatgpt',
-    });
-    await vi.waitFor(() => expect(chrome.scripting.executeScript).toHaveBeenCalledOnce());
-    chrome.permissions.onRemoved.emit();
-    expect(port.postMessage).toHaveBeenLastCalledWith({
-      kind: 'reply',
-      requestId: 'fiction-request',
-      status: 'permission-needed',
-    });
-    const count = port.postMessage.mock.calls.length;
-    held.resolve([probe]);
-    await held.promise;
-    expect(port.postMessage).toHaveBeenCalledTimes(count);
-    expect(chrome.scripting.executeScript).toHaveBeenCalledOnce();
+    const scopes = [await select(port), await select(port, 'google-ai-mode')];
+    port.postMessage.mockClear();
+    chrome.permissions.onRemoved.emit(removed);
+    expect(port.postMessage.mock.calls.map(([message]) => message)).toEqual(
+      affected.map((provider) => ({
+        kind: 'invalidated',
+        provider,
+        generation: 2,
+        status: 'permission-needed',
+      })),
+    );
+    // The original scope must still work for a provider whose permission was retained.
+    for (const scope of scopes) {
+      const requestId = `fiction-disconnect-${scope.provider}`;
+      port.onMessage.emit({
+        operation: 'disconnect',
+        requestId,
+        provider: scope.provider,
+        scope,
+      });
+      expect(port.postMessage).toHaveBeenLastCalledWith({
+        kind: 'reply',
+        requestId,
+        status: affected.some((provider) => provider === scope.provider)
+          ? 'scope-changed'
+          : 'disconnected',
+      });
+    }
     port.onDisconnect.emit();
   });
+  it.each(['chatgpt', 'google-ai-mode'] as const)(
+    'preserves a pending %s operation when the other provider loses host access',
+    async (provider) => {
+      const other = provider === 'chatgpt' ? 'google-ai-mode' : 'chatgpt';
+      const port = connection();
+      await select(port, other);
+      useSite(provider);
+      const held = deferred<unknown>();
+      chrome.scripting.executeScript.mockClear().mockReturnValueOnce(held.promise);
+      port.postMessage.mockClear();
+      port.onMessage.emit({ operation: 'connect', requestId: 'fiction-pending', provider });
+      await vi.waitFor(() => expect(chrome.scripting.executeScript).toHaveBeenCalledOnce());
+      chrome.permissions.onRemoved.emit({ origins: [`${sites[other].probe.result.origin}/*`] });
+      expect(port.postMessage.mock.calls.map(([message]) => message)).toEqual([
+        { kind: 'invalidated', provider: other, generation: 2, status: 'permission-needed' },
+      ]);
+      held.resolve([sites[provider].probe]);
+      await vi.waitFor(() =>
+        expect(port.postMessage).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            requestId: 'fiction-pending',
+            status: 'selected',
+            scope: expect.objectContaining({ provider, generation: 1 }),
+          }),
+        ),
+      );
+      port.onDisconnect.emit();
+    },
+  );
   it('uses the separate exact Google origin/permission and still labels session access unverified', async () => {
     chrome.tabs.query.mockResolvedValue([{ ...tab, url: 'https://www.google.com/' }]);
     chrome.scripting.executeScript.mockResolvedValue([

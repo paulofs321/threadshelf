@@ -31,6 +31,8 @@ actual extension still need verification; complete-history coverage is not estab
 
 ## Development
 
+The extension requires Chrome 116 or later.
+
 Use Node.js 22.12 or later within the Node 22 release line and npm. Dependencies are pinned in
 `package.json` and `package-lock.json`.
 
