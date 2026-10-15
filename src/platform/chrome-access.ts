@@ -2,8 +2,10 @@ import { browser } from 'wxt/browser';
 import { AccessBroker } from './broker';
 import type { SelectedTabAccessPort } from './broker';
 import { inspectSelectedDocument } from './document-probe';
-import { accessPortName } from './protocol';
+import { validate } from '../contracts/validation';
 import {
+  panelWindowId,
+  PanelWindowSchema,
   providerOrigins,
   providerPermission,
   validatePanelContext,
@@ -14,18 +16,26 @@ export function registerChromeAccess(): void {
   const brokers = new Set<AccessBroker>();
   browser.runtime.onConnect.addListener((connection) => {
     const documentId = validatePanelSender(connection.sender, browser.runtime.id);
-    if (connection.name !== accessPortName || !documentId || brokers.size >= 4) {
+    const windowId = panelWindowId(connection.name);
+    if (windowId === null || !documentId || brokers.size >= 4) {
       connection.disconnect();
       return;
     }
     const access: SelectedTabAccessPort = {
       async ownerWindow() {
+        const window = validate(
+          PanelWindowSchema,
+          await browser.windows.get(windowId, { populate: false }).catch(() => null),
+        );
+        if (!window.ok || window.value.id !== windowId) return null;
         const contexts = await browser.runtime.getContexts({
           contextTypes: ['SIDE_PANEL'],
           documentIds: [documentId],
         });
         if (contexts.length !== 1) return null;
-        return validatePanelContext(contexts[0], documentId, browser.runtime.id);
+        return validatePanelContext(contexts[0], documentId, browser.runtime.id, windowId)
+          ? windowId
+          : null;
       },
       hasPermission: (provider) => browser.permissions.contains(providerPermission(provider)),
       async selectedTab(windowId) {
@@ -69,6 +79,7 @@ export function registerChromeAccess(): void {
         brokers.delete(broker);
         connection.onMessage.removeListener(receive);
         connection.onDisconnect.removeListener(disconnect);
+        browser.windows.onRemoved.removeListener(windowRemoved);
         connection.disconnect();
       },
       () => crypto.randomUUID(),
@@ -79,9 +90,13 @@ export function registerChromeAccess(): void {
       void browser.runtime.lastError;
       broker.close();
     };
+    const windowRemoved = (removedId: number) => {
+      if (removedId === windowId) broker.close();
+    };
     brokers.add(broker);
     connection.onMessage.addListener(receive);
     connection.onDisconnect.addListener(disconnect);
+    browser.windows.onRemoved.addListener(windowRemoved);
   });
 
   browser.tabs.onUpdated.addListener((tabId, change) => {

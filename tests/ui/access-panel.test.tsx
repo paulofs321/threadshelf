@@ -10,6 +10,7 @@ import { deferred, event } from '../platform/helpers';
 const chrome = vi.hoisted(() => ({
   permissions: { request: vi.fn() },
   runtime: { connect: vi.fn(), lastError: undefined },
+  windows: { getCurrent: vi.fn() },
 }));
 vi.mock('wxt/browser', () => ({ browser: chrome }));
 
@@ -66,6 +67,7 @@ async function select(region = chat(), generation = 1, partition = 'fiction-pane
 beforeEach(() => {
   vi.resetAllMocks();
   chrome.permissions.request.mockResolvedValue(true);
+  chrome.windows.getCurrent.mockResolvedValue({ id: 3, incognito: false });
   chrome.runtime.connect.mockImplementation(() => {
     const port = connection();
     ports.push(port);
@@ -117,7 +119,10 @@ describe('side-panel permission and operation flow with real AccessClient', () =
       await act(async () => {
         permission.resolve(true);
       });
-      expect(chrome.runtime.connect).toHaveBeenCalledWith({ name: 'threadshelf:selected-tab:v1' });
+      expect(chrome.windows.getCurrent).toHaveBeenCalledWith({ populate: false });
+      expect(chrome.runtime.connect).toHaveBeenCalledWith({
+        name: 'threadshelf:selected-tab:v1:window:3',
+      });
       expect(lastRequest()).toMatchObject({ operation: 'connect', provider });
     },
   );
@@ -341,4 +346,70 @@ describe('side-panel permission and operation flow with real AccessClient', () =
     });
     expect(chrome.runtime.connect).not.toHaveBeenCalled();
   });
+  it('binds concurrent provider actions to one port for the calling panel window', async () => {
+    const owner = deferred<unknown>();
+    chrome.windows.getCurrent.mockReturnValue(owner.promise);
+    render(<AccessPanel />);
+    await act(async () => {
+      fireEvent.click(connectButton(chat()));
+      fireEvent.click(connectButton(google()));
+    });
+    expect(chrome.runtime.connect).not.toHaveBeenCalled();
+    await act(async () => {
+      owner.resolve({ id: 4, incognito: false });
+    });
+    expect(chrome.runtime.connect).toHaveBeenCalledOnce();
+    expect(chrome.runtime.connect).toHaveBeenCalledWith({
+      name: 'threadshelf:selected-tab:v1:window:4',
+    });
+    expect(ports[0]?.postMessage.mock.calls.map(([request]) => request)).toEqual([
+      expect.objectContaining({ operation: 'connect', provider: 'chatgpt' }),
+      expect.objectContaining({ operation: 'connect', provider: 'google-ai-mode' }),
+    ]);
+  });
+  it.each(['invalid', 'rejected', 'timeout'] as const)(
+    'fails without opening a port when the panel window lookup is %s',
+    async (cause) => {
+      vi.useFakeTimers();
+      if (cause === 'invalid')
+        chrome.windows.getCurrent.mockResolvedValue({ id: -1, incognito: false });
+      else if (cause === 'rejected')
+        chrome.windows.getCurrent.mockRejectedValue(new Error('fiction-private-window-error'));
+      else chrome.windows.getCurrent.mockReturnValue(new Promise(() => {}));
+      render(<AccessPanel />);
+      await act(async () => {
+        fireEvent.click(connectButton());
+      });
+      if (cause === 'timeout') {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(clientTimeoutMs);
+        });
+      }
+      expect(within(chat()).getByRole('status').textContent).toContain('interrupted');
+      expect(chrome.runtime.connect).not.toHaveBeenCalled();
+      expect(document.body.textContent).not.toContain('fiction-private-window-error');
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+  it.each(['cancel', 'unmount'] as const)(
+    'prevents late window metadata from opening a broker after %s',
+    async (stop) => {
+      vi.useFakeTimers();
+      const owner = deferred<unknown>();
+      chrome.windows.getCurrent.mockReturnValue(owner.promise);
+      const rendered = render(<AccessPanel />);
+      await act(async () => {
+        fireEvent.click(connectButton());
+      });
+      if (stop === 'unmount') rendered.unmount();
+      else fireEvent.click(within(chat()).getByRole('button', { name: 'Cancel' }));
+      await act(async () => {
+        owner.resolve({ id: 3, incognito: false });
+      });
+      expect(chrome.runtime.connect).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+      if (stop === 'cancel')
+        expect(within(chat()).getByRole('status').textContent).toContain('cancelled');
+    },
+  );
 });

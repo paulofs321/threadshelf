@@ -133,8 +133,9 @@ Their policies exercise origin/path/ID validation without making real provider e
 `src/platform/policy.ts` owns exact candidate origins and runtime context rules. `protocol.ts`
 defines a strict versioned port protocol. `broker.ts` owns selected documents, generations,
 cancellation and bounded operations through an injected `SelectedTabAccessPort`. `chrome-access.ts`
-binds that port to Chrome APIs and lifecycle events. `client.ts` owns panel-side deadlines and
-interruption handling. `document-probe.ts` contains the self-contained serialized isolated-world
+binds that port to Chrome APIs and lifecycle events. `panel-window.ts` resolves the calling panel's
+browser window with cancellation and a 12-second deadline. `client.ts` owns panel-side request
+deadlines and interruption handling. `document-probe.ts` contains the self-contained serialized isolated-world
 function. It reads only origin/top-level status; it reads no page text, cookies, tokens, or identity.
 The side panel composition owns browser interactions; shared React presentation imports no browser
 or authenticated transport implementation. The current native connection controls extend the
@@ -156,13 +157,20 @@ essential. See Chrome's [tabs permission documentation](https://developer.chrome
 [optional permission API](https://developer.chrome.com/docs/extensions/reference/api/permissions), and
 [runtime contexts](https://developer.chrome.com/docs/extensions/reference/api/runtime).
 
-Only `runtime.connect` ports named `threadshelf:selected-tab:v1` are accepted. Chrome-supplied
-sender ID, exact panel URL/origin, active document ID, and top-level/non-tab sender are validated.
-The manifest requires Chrome 116 or later for `runtime.getContexts`. That API must independently
-find the regular-profile side panel and its window before and after document checks. Missing or
-unexpected context metadata fails closed. The broker queries only the active tab of that panel's
-window and checks its exact provider origin, completed load, and regular profile. No caller can
-supply a tab, URL, header, body, or executable argument.
+Only `runtime.connect` ports named `threadshelf:selected-tab:v1:window:<id>` are accepted, with a
+canonical nonnegative integer ID. Trusted panel code obtains that ID from
+[`windows.getCurrent({ populate: false })`](https://developer.chrome.com/docs/extensions/reference/api/windows#method-getCurrent)
+in its own document before opening the port; a worker's current/last-focused window is not used.
+Chrome-supplied sender ID, exact panel URL/origin, active document ID, and top-level/non-tab sender
+are validated independently of the port name. The worker rechecks the bound window's existence and
+regular profile before and after document checks; closing it disconnects the broker and aborts work.
+
+The manifest requires Chrome 116 or later for `runtime.getContexts`. That API independently finds
+the live regular-profile side panel, but global panels report `windowId: -1`, which carries no window
+binding. If it supplies a nonnegative window ID, that value must agree with the binding. Missing or
+unexpected context metadata fails closed. The broker queries only the active tab of the bound
+window and checks its exact provider origin, completed load, and regular profile. Provider operation
+messages cannot supply a window, tab, URL, header, body, or executable argument.
 
 | Operation         | Allowed payload and result                                                                     |
 | ----------------- | ---------------------------------------------------------------------------------------------- |

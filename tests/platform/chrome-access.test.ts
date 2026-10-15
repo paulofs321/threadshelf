@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderId } from '../../src/contracts/primitives';
 import type { AccessMessage } from '../../src/platform/protocol';
-import { accessPortName } from '../../src/platform/protocol';
+import { panelPortName } from '../../src/platform/protocol';
 import { registerChromeAccess } from '../../src/platform/chrome-access';
 import { deferred, event, probe, tab } from './helpers';
 
@@ -42,7 +42,7 @@ const chrome = vi.hoisted(() => {
       onReplaced: channel<[number, number]>(),
       onActivated: channel<[]>(),
     },
-    windows: { onFocusChanged: channel<[]>() },
+    windows: { get: vi.fn(), onFocusChanged: channel<[]>(), onRemoved: channel<[number]>() },
   };
 });
 vi.mock('wxt/browser', () => ({ browser: chrome }));
@@ -62,9 +62,9 @@ const context = {
   incognito: false,
   tabId: -1,
   frameId: 0,
-  windowId: 3,
+  windowId: -1,
 };
-function connection(patch = {}, name: string = accessPortName) {
+function connection(patch = {}, name: string = panelPortName(3)) {
   const port = {
     name,
     sender: { ...sender, ...patch },
@@ -120,6 +120,8 @@ beforeEach(() => {
   chrome.tabs.onReplaced.clear();
   chrome.tabs.onActivated.clear();
   chrome.windows.onFocusChanged.clear();
+  chrome.windows.onRemoved.clear();
+  chrome.windows.get.mockResolvedValue({ id: 3, incognito: false });
   chrome.runtime.getContexts.mockResolvedValue([context]);
   chrome.permissions.contains.mockResolvedValue(true);
   chrome.tabs.query.mockResolvedValue([tab]);
@@ -132,6 +134,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     const port = connection();
     await select(port);
     expect(chrome.tabs.query).toHaveBeenCalledWith({ active: true, windowId: 3 });
+    expect(chrome.windows.get).toHaveBeenCalledWith(3, { populate: false });
     expect(chrome.runtime.getContexts).toHaveBeenCalledWith({
       contextTypes: ['SIDE_PANEL'],
       documentIds: [sender.documentId],
@@ -169,6 +172,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     { contexts: [{ ...context, incognito: true }] },
     { contexts: [{ ...context, documentId: 'another-panel' }] },
     { contexts: [context, context] },
+    { contexts: [{ ...context, windowId: 4 }] },
   ])('refuses a disappeared/mismatched/incognito owner', async ({ contexts }) => {
     chrome.runtime.getContexts.mockResolvedValue(contexts);
     const port = connection();
@@ -207,6 +211,95 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
       port.onDisconnect.emit();
     },
   );
+  it.each([
+    { id: -1, incognito: false },
+    { id: 4, incognito: false },
+    { id: 3, incognito: true },
+    { incognito: false },
+  ])('refuses an invalid/mismatched/incognito bound window %j', async (window) => {
+    chrome.windows.get.mockResolvedValue(window);
+    const port = connection();
+    port.onMessage.emit({ operation: 'connect', provider: 'chatgpt', requestId: 'fiction-window' });
+    await vi.waitFor(() =>
+      expect(port.postMessage).toHaveBeenCalledWith({
+        kind: 'reply',
+        requestId: 'fiction-window',
+        status: 'interrupted',
+      }),
+    );
+    expect(chrome.tabs.query).not.toHaveBeenCalled();
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+    port.onDisconnect.emit();
+  });
+  it('rejects a window that disappears before the final owner recheck', async () => {
+    chrome.windows.get
+      .mockResolvedValueOnce({ id: 3, incognito: false })
+      .mockRejectedValueOnce(new Error('fiction-private-window-error'));
+    const port = connection();
+    port.onMessage.emit({ operation: 'connect', provider: 'chatgpt', requestId: 'fiction-window' });
+    await vi.waitFor(() =>
+      expect(port.postMessage).toHaveBeenCalledWith({
+        kind: 'reply',
+        requestId: 'fiction-window',
+        status: 'interrupted',
+      }),
+    );
+    port.onDisconnect.emit();
+  });
+  it('pins simultaneous panels to their own windows despite unknown runtime window IDs and focus changes', async () => {
+    chrome.windows.get.mockImplementation(async (id: number) => ({ id, incognito: false }));
+    chrome.runtime.getContexts.mockImplementation(async (filter: { documentIds: string[] }) => [
+      { ...context, documentId: filter.documentIds[0] },
+    ]);
+    chrome.tabs.query.mockImplementation(async ({ windowId }: { windowId: number }) => [
+      { ...tab, id: windowId === 3 ? 7 : 8, windowId },
+    ]);
+    const first = connection();
+    const second = connection({ documentId: 'fiction-second-panel' }, panelPortName(4));
+    for (const port of [first, second]) {
+      port.onMessage.emit({
+        operation: 'connect',
+        provider: 'chatgpt',
+        requestId: 'fiction-select',
+      });
+    }
+    await vi.waitFor(() => {
+      for (const port of [first, second]) {
+        expect(port.postMessage).toHaveBeenLastCalledWith(
+          expect.objectContaining({ status: 'selected' }),
+        );
+      }
+    });
+    expect(chrome.tabs.query.mock.calls.map(([query]) => query.windowId)).toEqual(
+      expect.arrayContaining([3, 4]),
+    );
+    chrome.windows.onFocusChanged.emit();
+    first.onMessage.emit({ operation: 'connect', provider: 'chatgpt', requestId: 'fiction-retry' });
+    await vi.waitFor(() =>
+      expect(first.postMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: 'selected' }),
+      ),
+    );
+    expect(chrome.tabs.query).toHaveBeenLastCalledWith({ active: true, windowId: 3 });
+    chrome.windows.onRemoved.emit(3);
+    expect(first.disconnect).toHaveBeenCalledOnce();
+    expect(second.disconnect).not.toHaveBeenCalled();
+    second.onDisconnect.emit();
+  });
+  it('discards a pending document probe when its owning window closes', async () => {
+    const held = deferred<unknown>();
+    chrome.scripting.executeScript.mockReturnValueOnce(held.promise);
+    const port = connection();
+    port.onMessage.emit({ operation: 'connect', provider: 'chatgpt', requestId: 'fiction-window' });
+    await vi.waitFor(() => expect(chrome.scripting.executeScript).toHaveBeenCalledOnce());
+    chrome.windows.onRemoved.emit(3);
+    expect(port.disconnect).toHaveBeenCalledOnce();
+    held.resolve([probe]);
+    await held.promise;
+    expect(port.postMessage).not.toHaveBeenCalled();
+    expect(port.onMessage.size()).toBe(0);
+    expect(port.onDisconnect.size()).toBe(0);
+  });
   it('rejects pending navigation and multiple-frame injection output', async () => {
     chrome.tabs.query.mockResolvedValue([{ ...tab, pendingUrl: 'https://chatgpt.com/' }]);
     const port = connection();

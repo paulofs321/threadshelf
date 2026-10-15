@@ -3,7 +3,8 @@ import { browser } from 'wxt/browser';
 import type { ProviderId } from '../../contracts/primitives';
 import type { SessionScope } from '../../contracts/session';
 import { AccessClient } from '../../platform/client';
-import { accessPortName } from '../../platform/protocol';
+import { panelPortName } from '../../platform/protocol';
+import { currentPanelWindow } from '../../platform/panel-window';
 import type { AccessEvent, AccessReply } from '../../platform/protocol';
 import { providerPermission } from '../../platform/policy';
 import { SetupScreen } from '../../ui/SetupScreen';
@@ -28,9 +29,13 @@ export function AccessPanel() {
     if (mounted.current) setStates((previous) => ({ ...previous, [provider]: state }));
   }
 
-  function getClient(): AccessClient {
+  async function getClient(signal: AbortSignal): Promise<AccessClient | null> {
     if (!client.current || client.current.isClosed) {
-      const connection = browser.runtime.connect({ name: accessPortName });
+      const windowId = await currentPanelWindow(signal);
+      if (windowId === null || signal.aborted) return null;
+      // Concurrent provider actions may have created the same panel's client while we awaited.
+      if (client.current && !client.current.isClosed) return client.current;
+      const connection = browser.runtime.connect({ name: panelPortName(windowId) });
       client.current = new AccessClient(connection, () => crypto.randomUUID());
       client.current.subscribe((event: AccessEvent) => {
         // Interruption is published inside the port callback; consume Chrome's error there.
@@ -82,7 +87,12 @@ export function AccessPanel() {
         }
       }
       if (controller.signal.aborted) return;
-      const access = getClient();
+      const access = await getClient(controller.signal);
+      if (controller.signal.aborted) return;
+      if (!access) {
+        update(provider, { status: 'interrupted', pending: false });
+        return;
+      }
       const reply =
         operation === 'connect'
           ? await access.connect(provider, controller.signal)

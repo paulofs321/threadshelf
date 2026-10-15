@@ -14,7 +14,7 @@ npm run build
 `npm test -- tests/contracts`, `npm test -- tests/platform`, or
 `npm test -- tests/ui tests/entrypoints`.
 
-The suite contains 527 cases across 19 files. All fixtures are handwritten fiction; tests perform no
+The suite contains 567 cases across 20 files. All fixtures are handwritten fiction; tests perform no
 live provider or account reads. Contract/platform tests run in Node. UI tests use jsdom and React
 Testing Library, with explicit cleanup and mocked Chrome APIs. The entrypoint tests check toolbar
 configuration and panel mounting without starting an actual extension.
@@ -29,7 +29,7 @@ configuration and panel mounting without starting an actual extension.
 | Optional cache contracts    | Verified/versioned keys, cross-account/workspace/generation entries, future writes, one-millisecond and maximum TTL, exclusive expiry, unverified links and malformed caller clocks                                                                                            |
 | Broker                      | Sender/frame/document/window/origin guards, replay/concurrency/ID bounds, redirects/reloads, browser exceptions, context invalidation, cancellation/timeout/revocation at each of eight asynchronous boundaries and recovery                                                   |
 | Client + broker together    | Queued message delivery between the actual classes, delayed cancellation/retry, worker/panel deadlines, suspension before delivery, obsolete scope reuse, provider changes and independent panels                                                                              |
-| Chrome composition/probe    | Exact origins and isolated document targets, ambiguous tabs/owners, incorrect port names, navigation versus benign updates, reply-send failure, late injection after revocation and closure-free serialized script behavior                                                    |
+| Chrome composition/probe    | Exact origins and isolated document targets, ambiguous tabs/owners, canonical window bindings, global panel windowId -1, independent multi-window panels, window closure, targeted revocation, late output and closure-free serialized script behavior                         |
 | Panel/view/entrypoints      | Synchronous optional permission requests, denied/thrown/rejected permission outcomes, cancel while native permission is pending, explicit failures, fresh scopes, provider isolation, worker reconnect, teardown, safe fallback status, toolbar lifecycle and missing DOM root |
 
 Coverage includes every runtime TypeScript/TSX source file under `src`, including the panel and
@@ -40,7 +40,7 @@ statements. Missing test suites and `.only` cases fail.
 
 The configured minimums are 100% lines/functions, 98% statements and 97% branches across runtime
 source, with 100% in all four metrics for contract code. This review measured 100% lines/functions,
-98.78% statements and 97.15% branches. Defensive short-circuit branches in the UI/transport are
+98.88% statements and 97.42% branches. Defensive short-circuit branches in the UI/transport are
 outside complete branch coverage. These measurements are regression guards, not evidence that a
 website authenticates the extension or that every possible failure has been reproduced.
 

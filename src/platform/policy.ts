@@ -2,6 +2,7 @@ import * as v from 'valibot';
 import { boundedText, CountSchema } from '../contracts/primitives';
 import { validate } from '../contracts/validation';
 import type { ProviderId } from '../contracts/primitives';
+import { accessPortName, panelPortName } from './protocol';
 
 // Candidate origins only; these constants do not establish provider/session support.
 export const providerOrigins: Record<ProviderId, string> = {
@@ -30,6 +31,15 @@ export function permittedUrl(provider: ProviderId, value: string): boolean {
 }
 
 const DocumentIdSchema = boundedText(128);
+export const PanelWindowSchema = v.object({ id: CountSchema, incognito: v.literal(false) });
+
+export function panelWindowId(name: string): number | null {
+  const prefix = `${accessPortName}:window:`;
+  if (name.length > 128 || !name.startsWith(prefix)) return null;
+  const windowId = Number(name.slice(prefix.length));
+  return validate(CountSchema, windowId).ok && name === panelPortName(windowId) ? windowId : null;
+}
+
 export const SelectedTabSchema = v.strictObject({
   id: CountSchema,
   windowId: CountSchema,
@@ -89,16 +99,23 @@ const PanelContextSchema = v.object({
   incognito: v.literal(false),
   tabId: v.literal(-1),
   frameId: v.picklist([-1, 0]),
-  windowId: CountSchema,
+  // Global side panels currently report -1; this metadata does not identify their window.
+  windowId: v.union([v.literal(-1), CountSchema]),
 });
 
-export function validatePanelContext(input: unknown, documentId: string, extensionId: string) {
+export function validatePanelContext(
+  input: unknown,
+  documentId: string,
+  extensionId: string,
+  windowId: number,
+): boolean {
   const result = validate(PanelContextSchema, input);
   const origin = `chrome-extension://${extensionId}`;
-  return result.ok &&
+  return (
+    result.ok &&
     result.value.documentId === documentId &&
     result.value.documentOrigin === origin &&
-    result.value.documentUrl === `${origin}/sidepanel.html`
-    ? result.value.windowId
-    : null;
+    result.value.documentUrl === `${origin}/sidepanel.html` &&
+    (result.value.windowId === -1 || result.value.windowId === windowId)
+  );
 }

@@ -3,6 +3,9 @@ import { GenerationSchema, ProviderIdSchema, RequestIdSchema } from '../contract
 import { EphemeralScopeSchema } from '../contracts/session';
 
 export const accessPortName = 'threadshelf:selected-tab:v1';
+export function panelPortName(windowId: number): string {
+  return `${accessPortName}:window:${windowId}`;
+}
 export const operationTimeoutMs = 10_000;
 export const clientTimeoutMs = 12_000;
 export const maximumRequestsPerPort = 256;

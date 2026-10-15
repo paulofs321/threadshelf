@@ -2,12 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { validate } from '../../src/contracts/validation';
 import {
   permittedUrl,
+  panelWindowId,
   providerPermission,
   validatePanelContext,
   validatePanelSender,
   validateProbe,
 } from '../../src/platform/policy';
-import { AccessMessageSchema, AccessRequestSchema } from '../../src/platform/protocol';
+import {
+  AccessMessageSchema,
+  AccessRequestSchema,
+  panelPortName,
+} from '../../src/platform/protocol';
 import { probe } from './helpers';
 
 const sender = {
@@ -25,7 +30,7 @@ const context = {
   incognito: false,
   tabId: -1,
   frameId: 0,
-  windowId: 3,
+  windowId: -1,
 };
 
 describe('selected context policy', () => {
@@ -62,7 +67,10 @@ describe('selected context policy', () => {
 
   it('requires a Chrome-supplied active extension document and a live panel context', () => {
     expect(validatePanelSender(sender, sender.id)).toBe(sender.documentId);
-    expect(validatePanelContext(context, sender.documentId, sender.id)).toBe(3);
+    expect(validatePanelContext(context, sender.documentId, sender.id, 3)).toBe(true);
+    expect(validatePanelContext({ ...context, windowId: 3 }, sender.documentId, sender.id, 3)).toBe(
+      true,
+    );
   });
   it.each([
     { id: 'another-extension' },
@@ -85,9 +93,33 @@ describe('selected context policy', () => {
     { incognito: true },
     { tabId: 7 },
     { frameId: 1 },
-    { windowId: -1 },
+    { windowId: -2 },
+    { windowId: 4 },
+    { windowId: undefined },
   ])('rejects stale/wrong/incognito panel contexts %j', (patch) => {
-    expect(validatePanelContext({ ...context, ...patch }, sender.documentId, sender.id)).toBeNull();
+    expect(validatePanelContext({ ...context, ...patch }, sender.documentId, sender.id, 3)).toBe(
+      false,
+    );
+  });
+  it('accepts only canonical nonnegative browser-window IDs in panel port names', () => {
+    expect(panelWindowId(panelPortName(3))).toBe(3);
+    expect(panelWindowId(panelPortName(0))).toBe(0);
+    for (const suffix of [
+      '',
+      '-1',
+      '-2',
+      '03',
+      '3.0',
+      '3.5',
+      '3e0',
+      'NaN',
+      'Infinity',
+      '9007199254740992',
+    ]) {
+      expect(panelWindowId(`threadshelf:selected-tab:v1:window:${suffix}`)).toBeNull();
+    }
+    expect(panelWindowId('threadshelf:selected-tab:v1')).toBeNull();
+    expect(panelWindowId('x'.repeat(129))).toBeNull();
   });
   it.each([
     { ...probe, frameId: 1 },

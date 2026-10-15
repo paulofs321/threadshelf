@@ -49,8 +49,11 @@ disabled; broad browsing, cookie, debugger and storage permissions are absent.
 The only allowed messages are `connect`, `inspect-context`, `disconnect` and `cancel`, with bounded
 IDs/providers/scopes. Caller-supplied URLs, tab IDs, headers, bodies or executable code cannot
 reach the script API. The receiving worker validates Chrome's sender metadata and independently
-finds the live regular-profile side panel. It uses that panel's window to select an active completed
-provider tab; caller assertions cannot select a different window or frame.
+finds the live regular-profile side panel. Panel code calls `windows.getCurrent` in its own document
+and includes the resulting window ID in the port name. The worker pins that binding, verifies the
+window still exists outside incognito, and queries only its active completed provider tab. Global
+panel runtime contexts report `windowId: -1`; they verify panel identity rather than select a window.
+Provider operation messages cannot override the bound window or frame.
 
 The fixed script runs in `ISOLATED`, initially in frame 0. It returns only origin/top-level status.
 Chrome's injection metadata supplies the document ID; confirmation and later inspection target
