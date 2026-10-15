@@ -56,6 +56,7 @@ describe('observed Google Search AI Mode wire forms', () => {
   it('recognizes the observed empty envelope without treating malformed emptiness as success', () => {
     expect(parse([]).candidates).toEqual([]);
     expect(parse([[]]).candidates).toEqual([]);
+
     for (const value of [null, {}, [null], [1], [[], 'extra']])
       expect(() => parse(value)).toThrow();
   });

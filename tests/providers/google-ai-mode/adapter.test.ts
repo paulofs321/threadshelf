@@ -86,10 +86,12 @@ describe('Google Search AI Mode verification gate', () => {
       );
       expect(fetchSpy).not.toHaveBeenCalled();
       expect(timerSpy).not.toHaveBeenCalled();
+
       for (const log of logSpies) expect(log).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
       timerSpy.mockRestore();
+
       for (const log of logSpies) log.mockRestore();
     }
   });
@@ -208,7 +210,9 @@ describe('Google Search AI Mode selected scope isolation', () => {
 describe('Google Search AI Mode cancellation and correlation', () => {
   it.each([false, true])('honors cancellation even with invalidated=%s', async (invalidate) => {
     const provider = new GoogleAiModeProvider(selectedGoogleAiModeScope());
+
     if (invalidate) provider.invalidate();
+
     const controller = new AbortController();
     controller.abort(new Error('Fictional secret abort reason'));
     const request = googleAiModeRequest();

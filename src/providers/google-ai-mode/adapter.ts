@@ -48,12 +48,14 @@ export class GoogleAiModeProvider implements ProviderPort {
   async inspectSession(context: OperationContext): Promise<SessionOutcome> {
     if (this.readPort && !this.invalidated && !context.signal.aborted) {
       const result = await this.read({ kind: 'inspect' }, context);
+
       if (
         result.status === 'success' &&
         result.response === undefined &&
         result.rendered === undefined
       )
         return { status: 'ready', scope: { ...this.selectedScope } };
+
       if (
         result.status === 'login-expired' ||
         result.status === 'permission-needed' ||
@@ -92,16 +94,21 @@ export class GoogleAiModeProvider implements ProviderPort {
       : this.invalidated || !sameScope(request.scope, this.selectedScope)
         ? 'scope-changed'
         : 'unavailable';
+
     if (status !== 'unavailable' || !this.readPort) return this.failure(request, status);
+
     this.candidates.clear();
     this.candidateRequestKey = undefined;
     const result = await this.read(
       kind === 'search' ? { kind, query: request.query.text } : { kind },
       context,
     );
+
     if (result.status !== 'success') return this.failure(request, result.status);
+
     if (!result.response || result.rendered !== undefined)
       return this.failure(request, 'schema-changed');
+
     const failure = googleHttpFailure(result.response, this.options.now?.() ?? Date.now());
 
     if (failure) {
@@ -126,8 +133,10 @@ export class GoogleAiModeProvider implements ProviderPort {
         { requestId: request.requestId, scope: request.scope, status: 'success', ...parsed },
       );
       this.candidates.clear();
+
       for (const candidate of parsed.candidates)
         this.candidates.set(candidate.conversationId, requireValid(CandidateSchema, candidate));
+
       this.candidateRequestKey = JSON.stringify([request.requestId, request.query]);
 
       return outcome;
@@ -142,10 +151,14 @@ export class GoogleAiModeProvider implements ProviderPort {
     context: OperationContext,
   ): Promise<ProviderOutcome> {
     const request = requireValid(GoogleAiModeRequestSchema, input);
+
     if (context.signal.aborted) return this.failure(request, 'cancelled');
+
     if (this.invalidated || !sameScope(request.scope, this.selectedScope))
       return this.failure(request, 'scope-changed');
+
     const candidate = this.candidates.get(conversationId);
+
     if (
       !candidate ||
       !this.identity ||
@@ -153,14 +166,19 @@ export class GoogleAiModeProvider implements ProviderPort {
       this.candidateRequestKey !== JSON.stringify([request.requestId, request.query])
     )
       return this.failure(request, 'unavailable');
+
     const result = await this.read({ kind: 'messages', conversationId }, context, candidate);
+
     if (result.status !== 'success') return this.failure(request, result.status);
+
     if (!result.rendered || result.response !== undefined)
       return this.failure(request, 'schema-changed');
+
     const enriched = requireValid(CandidateSchema, candidate);
 
     for (const [index, text] of result.rendered.entries()) {
       if (enriched.evidence.length >= limits.evidencePerCandidate) break;
+
       enriched.evidence.push(
         requireValid(EvidenceSchema, { id: `rendered-${index}`, text, source: 'rendered-message' }),
       );
@@ -203,6 +221,7 @@ export class GoogleAiModeProvider implements ProviderPort {
   ): Promise<v.InferOutput<typeof GoogleReadResultSchema>> {
     // A replacement operation retires older work even when its port ignores AbortSignal.
     for (const pending of this.pending) pending.abort();
+
     const controller = new AbortController();
     this.pending.add(controller);
     let timeout = false;
@@ -231,11 +250,17 @@ export class GoogleAiModeProvider implements ProviderPort {
             })
           : this.readPort?.read(operation, this.identity, { signal: controller.signal });
       const raw = await Promise.race([pending, cancelled]);
+
       if (context.signal.aborted) return { status: 'cancelled' };
+
       if (this.invalidated) return { status: 'scope-changed' };
+
       if (controller.signal.aborted) return { status: timeout ? 'timeout' : 'scope-changed' };
+
       const result = validate(GoogleReadResultSchema, raw);
+
       if (!result.ok) return { status: 'schema-changed' };
+
       if (
         result.value.status === 'scope-changed' ||
         result.value.status === 'login-expired' ||
@@ -284,6 +309,7 @@ export class GoogleAiModeProvider implements ProviderPort {
     this.identity = undefined;
     this.candidates.clear();
     this.candidateRequestKey = undefined;
+
     for (const controller of this.pending) controller.abort();
   }
 }

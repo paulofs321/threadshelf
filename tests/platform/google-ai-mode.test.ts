@@ -87,11 +87,14 @@ const events = [
 
 async function script(options: ScriptOptions): Promise<unknown[]> {
   const documentId = options.target.tabId === 7 ? 'fiction-source' : 'fiction-evidence';
+
   if (options.func === abortGoogleDocumentRead) return [];
+
   if (options.func === inspectSelectedDocument)
     return [
       { frameId: 0, documentId, result: { origin: 'https://www.google.com', topLevel: true } },
     ];
+
   const operation = options.args[0].operation;
 
   return [
@@ -141,6 +144,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const e of events) expect(e.size()).toBe(0);
+
   vi.useRealTimers();
 });
 const read = () => port.read({ kind: 'search', query: 'authentication' }, identity, context());
@@ -436,14 +440,22 @@ describe('Chrome Google selected-document transport', () => {
           expect.objectContaining({ func: readGoogleDocument }),
         ),
       );
+
       if (event === 'update') chrome.tabs.onUpdated.emit(7, { status: 'loading' });
+
       if (event === 'remove') chrome.tabs.onRemoved.emit(7, {});
+
       if (event === 'replace') chrome.tabs.onReplaced.emit(9, 7);
+
       if (event === 'activate') chrome.tabs.onActivated.emit({});
+
       if (event === 'focus') chrome.windows.onFocusChanged.emit(3);
+
       if (event === 'permission')
         chrome.permissions.onRemoved.emit({ origins: ['https://www.google.com/*'] });
+
       if (event === 'cancel') controller.abort();
+
       data.resolve([{ frameId: 0, documentId: 'fiction-source', result: success }]);
       expect(await pending).toEqual({
         status:

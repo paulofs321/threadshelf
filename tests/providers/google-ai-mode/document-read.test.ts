@@ -40,6 +40,7 @@ beforeEach(() => {
 afterEach(() => {
   for (const controller of registry.__threadshelfGoogleReadControllers?.values() ?? [])
     controller.abort();
+
   delete registry.__threadshelfGoogleReadControllers;
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -61,10 +62,12 @@ describe('self-contained Google document reads', () => {
       const urls = fetchMock.mock.calls.map(([url]) => new URL(String(url)));
       expect(urls[0]?.href).toBe('https://www.google.com/search?udm=50');
       expect(urls.at(-1)?.href).toBe('https://www.google.com/search?udm=50');
+
       if (kind !== 'inspect')
         expect(JSON.parse(urls[1]?.searchParams.get('reqpld') ?? '')).toEqual(
           kind === 'search' ? ['authentication', 30, null, 2, null, 0] : [null, null, 0],
         );
+
       for (const [, init] of fetchMock.mock.calls)
         expect(init).toMatchObject({
           method: 'GET',
@@ -73,6 +76,7 @@ describe('self-contained Google document reads', () => {
           redirect: 'manual',
           cache: 'no-store',
         });
+
       expect(registry.__threadshelfGoogleReadControllers).toBeUndefined();
     },
   );
@@ -92,6 +96,7 @@ describe('self-contained Google document reads', () => {
     expect(await readGoogleDocument(input())).toEqual({ status: 'unavailable' });
     vi.unstubAllGlobals();
     vi.stubGlobal('location', new URL('https://www.google.com/search?udm=50'));
+
     for (const value of [
       { ...input(), partition: '' },
       { ...input(), operationId: '' },
@@ -203,8 +208,10 @@ describe('self-contained Google document reads', () => {
           ),
       );
       const pending = readGoogleDocument(input());
+
       if (action === 'timeout') await vi.advanceTimersByTimeAsync(8000);
       else abortGoogleDocumentRead('fictional-operation');
+
       expect(await pending).toEqual({ status: action === 'timeout' ? 'timeout' : 'cancelled' });
       expect(registry.__threadshelfGoogleReadControllers).toBeUndefined();
       expect(vi.getTimerCount()).toBe(0);

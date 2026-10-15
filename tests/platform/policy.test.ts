@@ -42,6 +42,7 @@ describe('optional Chrome sender metadata', () => {
         sender.id,
       ),
     ).toMatchObject({ id: sender.id });
+
     for (const patch of [
       { id: 'other' },
       { origin: 'https://evil.invalid' },

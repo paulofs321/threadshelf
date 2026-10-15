@@ -74,13 +74,18 @@ function originalLink(row: unknown[], id: string): string {
 
   for (const pair of pairs) {
     const [key, value] = tuple(pair, 2, 2);
+
     if (typeof key !== 'string' || !linkKeys.some((allowed) => allowed === key)) invalid();
+
     if (url.searchParams.has(key)) invalid();
+
     url.searchParams.set(key, text(value, 1024));
   }
 
   const identifiers = tuple(row[0], 2, 2);
+
   if (identifiers[0] !== url.searchParams.get('mstk')) invalid();
+
   // The normalized conversation ID is runtime-validated with the resulting candidate below.
   if (!verifyGoogleOriginalLink(url, requireValid(ConversationIdSchema, id))) invalid();
 
@@ -102,6 +107,7 @@ export function parseGoogleRecords(
   freshId: () => string,
 ): { candidates: Candidate[]; coverage: Coverage } {
   if (body.length > googleResponseLimit || !body.startsWith(")]}'")) invalid();
+
   let root: unknown;
 
   try {
@@ -135,6 +141,7 @@ export function parseGoogleRecords(
     const url = originalLink(row, id);
     const title = row[1] == null ? undefined : text(row[1], 8192);
     let candidate = candidates.get(id);
+
     if (candidate && (candidate.originalUrl !== url || titles.get(id) !== title)) invalid();
 
     if (!candidate) {
@@ -151,6 +158,7 @@ export function parseGoogleRecords(
         ...(title !== undefined && title.length <= limits.title ? { title } : {}),
         evidence: [],
       });
+
       if (
         candidate.title !== undefined &&
         evidenceLength + candidate.title.length <= limits.totalEvidence
@@ -160,6 +168,7 @@ export function parseGoogleRecords(
         );
         evidenceLength += candidate.title.length;
       } else limited('missing-evidence');
+
       candidates.set(id, candidate);
       titles.set(id, title);
     }
@@ -226,6 +235,7 @@ export function googleHttpFailure(
   }
 
   if (response.status !== 200) return { status: 'unavailable' };
+
   if (!/^application\/json(?:\s*;|$)/i.test(response.contentType ?? ''))
     return { status: 'schema-changed' };
 

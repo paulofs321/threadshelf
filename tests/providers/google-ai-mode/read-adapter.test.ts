@@ -44,8 +44,10 @@ describe('Google native read adapter', () => {
     const second = await new GoogleAiModeProvider(request.scope, port).search(request, context());
     expect(first.status).toBe('success');
     expect(second.status).toBe('success');
+
     if (first.status !== 'success' || second.status !== 'success')
       throw new Error('Expected synthetic success');
+
     expect(first.candidates[0]?.id).toMatch(/^[a-f0-9-]{36}$/);
     expect(first.candidates[0]?.id).not.toBe(second.candidates[0]?.id);
   });
@@ -53,7 +55,9 @@ describe('Google native read adapter', () => {
     const { port, request, provider } = fixture();
     const result = await provider.search(request, context());
     expect(result.status).toBe('success');
+
     if (result.status !== 'success') throw new Error('Expected synthetic success');
+
     expect(result.candidates[0]?.evidence[1]?.source).toBe('native-snippet');
     expect(port.read).toHaveBeenCalledWith(
       { kind: 'search', query: request.query.text },
@@ -168,7 +172,9 @@ describe('Google native read adapter', () => {
     const { provider, port, request } = fixture(inspected);
     const ready = await provider.inspectSession(context());
     expect(ready).toEqual({ status: 'ready', scope: request.scope });
+
     if (ready.status !== 'ready') throw new Error('Expected synthetic ready');
+
     ready.scope.generation++;
     expect(await provider.inspectSession(context())).toEqual({
       status: 'ready',
@@ -204,11 +210,16 @@ describe('Google native read adapter', () => {
       );
       const controller = new AbortController();
       const pending = provider.search(request, { signal: controller.signal });
+
       if (action === 'cancel') controller.abort();
+
       if (action === 'invalidate') provider.invalidate();
+
       if (action === 'timeout') await vi.advanceTimersByTimeAsync(10_000);
+
       if (action === 'replacement')
         expect((await provider.search(request, context())).status).toBe('success');
+
       const result = await pending;
       expect(result.status).toBe(
         action === 'cancel' ? 'cancelled' : action === 'timeout' ? 'timeout' : 'scope-changed',
@@ -228,8 +239,11 @@ describe('Google native read adapter', () => {
       const controller = new AbortController();
       port.read.mockImplementationOnce(() => {
         if (action === 'cancel') controller.abort();
+
         if (action === 'invalidate') provider.invalidate();
+
         if (action === 'timeout') vi.advanceTimersByTime(10_000);
+
         throw new Error('Fictional private synchronous port failure');
       });
       expect((await provider.search(request, { signal: controller.signal })).status).toBe(
@@ -242,13 +256,19 @@ describe('Google native read adapter', () => {
   it('enriches only a candidate retrieved for this exact request and snapshots its metadata', async () => {
     const { provider, request, port } = fixture();
     const retrieved = await provider.search(request, context());
+
     if (retrieved.status !== 'success') throw new Error('Expected synthetic success');
+
     const candidate = retrieved.candidates[0];
+
     if (!candidate) throw new Error('Missing synthetic candidate');
+
     candidate.originalUrl = 'https://evil.invalid';
     const result = await provider.messages(request, candidate.conversationId, context());
     expect(result.status).toBe('success');
+
     if (result.status !== 'success') throw new Error('Expected synthetic success');
+
     expect(result.candidates[0]?.originalUrl).not.toBe('https://evil.invalid');
     expect(result.candidates[0]?.evidence.at(-1)).toEqual({
       id: 'rendered-0',
@@ -336,7 +356,9 @@ describe('Google native read adapter', () => {
       'fictional-thread-1',
       context(),
     );
+
     if (result.status !== 'success') throw new Error('Expected synthetic success');
+
     expect(result.candidates[0]?.evidence).toHaveLength(8);
   });
 });

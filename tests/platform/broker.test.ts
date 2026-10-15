@@ -290,7 +290,9 @@ describe('trusted selected-document binding', () => {
     const scope = await selected(h);
     expect(h.broker.bindSelectedDocument({ ...scope, generation: 999 })).toBeNull();
     const binding = h.broker.bindSelectedDocument(scope);
+
     if (!binding) throw new Error('Expected selected binding');
+
     expect(binding.tab.id).toBe(tab.id);
     expect(binding.documentId).toBe(probe.documentId);
     expect(binding.isCurrent()).toBe(true);
@@ -302,7 +304,9 @@ describe('trusted selected-document binding', () => {
     expect(replacement.status).toBe('selected');
     expect(binding.isCurrent()).toBe(false);
     expect(h.broker.bindSelectedDocument(scope)).toBeNull();
+
     if (replacement.status !== 'selected') throw new Error('Expected replacement');
+
     const next = h.broker.bindSelectedDocument(replacement.scope);
     h.broker.close();
     expect(next?.isCurrent()).toBe(false);

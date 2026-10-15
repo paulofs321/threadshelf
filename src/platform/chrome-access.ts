@@ -43,14 +43,17 @@ export function registerChromeAccess(): void {
               }
             : { contextTypes: ['SIDE_PANEL'], documentIds: [documentId as string] },
         );
+
         if (contexts.length !== 1) return null;
 
         const candidateId = documentId ?? contexts[0]?.documentId;
+
         if (
           !candidateId ||
           !validatePanelContext(contexts[0], candidateId, browser.runtime.id, windowId)
         )
           return null;
+
         documentId = candidateId;
 
         return windowId;

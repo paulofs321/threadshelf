@@ -11,6 +11,7 @@ export interface GoogleDocumentRead {
 // It executes only in the extension's isolated world; no page-global bridge is exposed.
 export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unknown> {
   const origin = 'https://www.google.com';
+
   if (
     window !== window.top ||
     location.origin !== origin ||
@@ -19,7 +20,9 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
     new URLSearchParams(location.search).has('authuser')
   )
     return { status: 'unavailable' };
+
   const kinds = ['inspect', 'list', 'search', 'messages'];
+
   if (
     !kinds.includes(input.operation.kind) ||
     !input.partition ||
@@ -28,16 +31,20 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
       (!input.operation.query.trim() || input.operation.query.length > 1024))
   )
     return { status: 'unavailable' };
+
   if (
     input.operation.kind === 'messages' &&
     new URLSearchParams(location.search).get('mtid') !== input.operation.conversationId
   )
     return { status: 'scope-changed' };
+
   const owned = globalThis as typeof globalThis & {
     __threadshelfGoogleReadControllers?: Map<string, AbortController>;
   };
   const controllers = (owned.__threadshelfGoogleReadControllers ??= new Map());
+
   if (controllers.size >= 4 || controllers.has(input.operationId)) return { status: 'unavailable' };
+
   const controller = new AbortController();
   controllers.set(input.operationId, controller);
   let timedOut = false;
@@ -60,8 +67,11 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
 
   async function body(response: Response): Promise<string> {
     if (Number(response.headers.get('content-length')) > 3_000_000) fail('schema-changed');
+
     const reader = response.body?.getReader();
+
     if (!reader) return '';
+
     const decoder = new TextDecoder('utf-8', { fatal: true });
     let result = '',
       size = 0;
@@ -69,9 +79,13 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
     try {
       for (;;) {
         const next = await reader.read();
+
         if (next.done) break;
+
         size += next.value.byteLength;
+
         if (size > 3_000_000) fail('schema-changed');
+
         result += decoder.decode(next.value, { stream: true });
       }
 
@@ -98,17 +112,27 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
 
   async function inspect(): Promise<string> {
     const renderedAccount = account(document);
+
     if (!renderedAccount) fail('unavailable');
+
     const response = await get(origin + '/search?udm=50');
+
     if (response.status === 401) fail('login-expired');
+
     if (response.status === 429) fail('rate-limited');
+
     if (response.status !== 200) fail('unavailable');
+
     if (!/^text\/html(?:\s*;|$)/i.test(response.headers.get('content-type') ?? ''))
       fail('schema-changed');
+
     const freshDocument = new DOMParser().parseFromString(await body(response), 'text/html');
     const freshAccount = account(freshDocument);
+
     if (!freshAccount) fail('unavailable');
+
     if (freshAccount !== renderedAccount) fail('scope-changed');
+
     const hash = await crypto.subtle.digest(
       'SHA-256',
       new TextEncoder().encode(JSON.stringify([input.partition, freshAccount])),
@@ -121,8 +145,10 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
 
   try {
     const before = await inspect();
+
     if (input.expectedIdentity !== undefined && before !== input.expectedIdentity)
       fail('scope-changed');
+
     let response;
     let rendered;
 
@@ -161,16 +187,19 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
           return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
         })
         .filter((value) => value.trim().length > 0);
+
       if (!rendered.length) fail('unavailable');
     }
 
     const after = await inspect();
+
     if (
       before !== after ||
       (input.operation.kind === 'messages' &&
         new URLSearchParams(location.search).get('mtid') !== input.operation.conversationId)
     )
       fail('scope-changed');
+
     if (controller.signal.aborted) fail(timedOut ? 'timeout' : 'cancelled');
 
     return {
@@ -201,6 +230,7 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
   } finally {
     clearTimeout(timer);
     controllers.delete(input.operationId);
+
     if (!controllers.size) delete owned.__threadshelfGoogleReadControllers;
   }
 }
