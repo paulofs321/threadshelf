@@ -35,6 +35,7 @@ describe('model limits and contextual grounding', () => {
       (_, i) => `${i}${'x'.repeat(limits.term - 1)}`,
     );
     expect(validate(ModelPlanSchema, { ...plan, topics: terms, keywords: terms }).ok).toBe(true);
+
     for (const patch of [
       { topics: [...terms, 'overflow'] },
       { topics: ['x'.repeat(limits.term + 1)] },
@@ -44,6 +45,7 @@ describe('model limits and contextual grounding', () => {
       { proposedDateRange: undefined },
     ])
       expect(validate(ModelPlanSchema, { ...plan, ...patch }).ok).toBe(false);
+
     expect(
       validate(modelPlanSchemaFor(descriptionRequest), {
         ...plan,
@@ -101,12 +103,14 @@ describe('model limits and contextual grounding', () => {
       { ...chatScope, workspacePartition: null },
       ephemeralScope,
     ];
+
     for (const scope of variants)
       expect(() =>
         modelRankingSchemaFor(descriptionRequest, [
           { ...chatCandidate, scope: requireValid(SessionScopeSchema, scope) },
         ]),
       ).toThrow(/^Invalid contract context\.$/);
+
     expect(() =>
       modelRankingSchemaFor(descriptionRequest, [
         chatCandidate,
@@ -169,6 +173,7 @@ describe('verified cache isolation and clock boundaries', () => {
       { cachedAt: undefined },
     ])
       expect(validate(CacheEntrySchema, { ...entry, ...patch }).ok).toBe(false);
+
     const { originalUrl: _url, ...candidate } = chatCandidate;
     expect(
       validate(cacheEntrySchemaFor(chatScope, entry.cachedAt, {}), { ...entry, candidate }).ok,
@@ -203,6 +208,7 @@ describe('context builder validation and unsafe retrieved links', () => {
         ),
       () => cacheEntrySchemaFor(chatScope, 'not-a-clock', {}),
     ];
+
     for (const build of builders) expect(build).toThrow(/^Invalid contract context\.$/);
   });
   it('checks unsafe links in every retrieved candidate, including omitted display results', () => {

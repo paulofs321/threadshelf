@@ -60,6 +60,7 @@ export const TimestampSchema = v.pipe(
   v.string(),
   v.check((value) => {
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value)) return false;
+
     const milliseconds = Date.parse(value);
 
     return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value;

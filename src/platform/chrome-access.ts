@@ -30,11 +30,14 @@ export function registerChromeAccess(): void {
           PanelWindowSchema,
           await browser.windows.get(windowId, { populate: false }).catch(() => null),
         );
+
         if (!window.ok || window.value.id !== windowId) return null;
+
         const contexts = await browser.runtime.getContexts({
           contextTypes: ['SIDE_PANEL'],
           documentIds: [documentId],
         });
+
         if (contexts.length !== 1) return null;
 
         return validatePanelContext(contexts[0], documentId, browser.runtime.id, windowId)
@@ -45,6 +48,7 @@ export function registerChromeAccess(): void {
       async selectedTab(windowId) {
         const tabs = await browser.tabs.query({ active: true, windowId });
         const tab = tabs.length === 1 ? tabs[0] : undefined;
+
         if (!tab || tab.pendingUrl !== undefined) return null;
 
         // Exclude titles, favicons and unrelated browser properties at the boundary.
@@ -59,6 +63,7 @@ export function registerChromeAccess(): void {
       },
       async inspectDocument(provider, target, signal) {
         if (signal.aborted) return null;
+
         const results = await browser.scripting.executeScript({
           target:
             target.documentId === undefined

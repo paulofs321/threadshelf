@@ -85,6 +85,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const resource of resources.splice(0)) resource.close();
+
   vi.useRealTimers();
 });
 
@@ -95,12 +96,16 @@ describe('real client + real broker with queued synthetic Chrome transport', () 
     const connect = h.client.connect('chatgpt', signal);
     await h.exchange();
     const first = await connect;
+
     if (first.status !== 'selected') throw new Error('Expected synthetic selection.');
+
     expect(first.session).toBe('unverified');
     const inspect = h.client.inspect('chatgpt', first.scope, signal);
     await h.exchange();
     const second = await inspect;
+
     if (second.status !== 'selected') throw new Error('Expected new synthetic selection.');
+
     expect(second.scope.partition).not.toBe(first.scope.partition);
     expect(second.scope.generation).toBeGreaterThan(first.scope.generation);
     const disconnect = h.client.disconnectSelection('chatgpt', second.scope, signal);
@@ -171,10 +176,13 @@ describe('real client + real broker with queued synthetic Chrome transport', () 
       const pending = h.client.connect('chatgpt', signal);
       await h.exchange();
       const reply = await pending;
+
       if (reply.status !== 'selected') throw new Error('Expected synthetic selection.');
+
       if (change === 'permission') h.broker.invalidateAll('permission-needed');
       else if (change === 'navigation') h.broker.tabChanged(7);
       else h.broker.invalidate('chatgpt', 'scope-changed');
+
       h.deliverReplies();
       expect(h.events).toHaveBeenCalledWith(
         expect.objectContaining({ provider: 'chatgpt', kind: 'invalidated' }),
@@ -217,8 +225,10 @@ describe('real client + real broker with queued synthetic Chrome transport', () 
     const retry = a.client.connect('chatgpt', signal);
     await a.exchange();
     const aSelection = await retry;
+
     if (aSelection.status !== 'selected' || bSelection.status !== 'selected')
       throw new Error('Expected synthetic selections.');
+
     expect(aSelection.scope.partition).not.toBe(bSelection.scope.partition);
     const crossPanel = b.client.inspect('chatgpt', aSelection.scope, signal);
     await b.exchange();

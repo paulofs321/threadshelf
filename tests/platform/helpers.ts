@@ -50,6 +50,7 @@ export function brokerHarness(panel = 'one') {
     port,
     (message) => {
       messages.push(message);
+
       if (message.kind === 'reply') replies.get(message.requestId)?.(message);
     },
     close,
@@ -94,6 +95,7 @@ export function event<Args extends unknown[]>() {
 
 export async function selected(harness: ReturnType<typeof brokerHarness>) {
   const reply = await harness.connect();
+
   if (reply.status !== 'selected') throw new Error('Expected synthetic selection.');
 
   return reply.scope;

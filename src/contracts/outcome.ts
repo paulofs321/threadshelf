@@ -127,8 +127,11 @@ export const SearchOutcomeSchema = v.pipe(
   v.check((aggregate) => {
     const successes = aggregate.outcomes.filter((outcome) => outcome.status === 'success').length;
     const allCancelled = aggregate.outcomes.every((outcome) => outcome.status === 'cancelled');
+
     if (aggregate.state === 'cancelled') return allCancelled && aggregate.results.length === 0;
+
     if (aggregate.state === 'failure') return successes === 0 && !allCancelled;
+
     if (aggregate.state === 'partial')
       return successes > 0 && successes < aggregate.outcomes.length;
 

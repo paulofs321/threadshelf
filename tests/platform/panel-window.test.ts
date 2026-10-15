@@ -33,11 +33,13 @@ describe('panel-owned browser window lookup (mocked Chrome)', () => {
   });
   it.each(['reject', 'throw'] as const)('contains a browser API %s', async (failure) => {
     const error = new Error('fiction-private-window-error');
+
     if (failure === 'reject') chrome.windows.getCurrent.mockRejectedValue(error);
     else
       chrome.windows.getCurrent.mockImplementation(() => {
         throw error;
       });
+
     expect(await currentPanelWindow(new AbortController().signal)).toBeNull();
   });
   it('does not access Chrome after cancellation', async () => {
@@ -53,8 +55,10 @@ describe('panel-owned browser window lookup (mocked Chrome)', () => {
       chrome.windows.getCurrent.mockReturnValue(held.promise);
       const controller = new AbortController();
       const result = currentPanelWindow(controller.signal);
+
       if (stop === 'cancel') controller.abort();
       else await vi.advanceTimersByTimeAsync(clientTimeoutMs);
+
       expect(await result).toBeNull();
       held.resolve({ id: 4, incognito: false });
       await held.promise;

@@ -131,8 +131,10 @@ describe('coverage and retry-hint integrity', () => {
     const schema = providerOutcomeSchemaFor(chatRequest, linkVerifiers);
     const input = outcome('rate-limited', chatScope);
     expect(requireValid(schema, input)).not.toHaveProperty('retryAfterMs');
+
     for (const retryAfterMs of [0, limits.retryAfterMs])
       expect(validate(schema, { ...input, retryAfterMs }).ok).toBe(true);
+
     for (const retryAfterMs of [undefined, null, NaN, '100', limits.retryAfterMs + 1])
       expect(validate(schema, { ...input, retryAfterMs }).ok).toBe(false);
   });

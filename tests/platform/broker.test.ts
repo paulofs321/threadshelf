@@ -33,8 +33,10 @@ describe('selected-tab broker', () => {
     });
     const reply = await next;
     expect(reply.status).toBe('selected');
+
     if (reply.status !== 'selected' || first.kind !== 'ephemeral')
       throw new Error('Expected ephemeral scope.');
+
     expect(reply.scope.partition).not.toBe(first.partition);
     expect(reply.scope.generation).toBeGreaterThan(first.generation);
     const stale = h.replyFor('fiction-stale');
@@ -67,8 +69,10 @@ describe('selected-tab broker', () => {
     a.broker.receive({ operation: 'connect', requestId: 'fiction-reconnect', provider: 'chatgpt' });
     const result = await reconnect;
     expect(result.status).toBe('selected');
+
     if (result.status !== 'selected' || first.kind !== 'ephemeral')
       throw new Error('Expected selection.');
+
     expect(result.scope.partition).not.toBe(first.partition);
     expect(second.kind).toBe('ephemeral');
     a.broker.close();
@@ -145,10 +149,12 @@ describe('selected-tab broker', () => {
       h.port.inspectDocument.mockReturnValueOnce(held.promise);
       const reply = h.connect();
       await vi.waitFor(() => expect(h.port.inspectDocument).toHaveBeenCalledOnce());
+
       if (change === 'navigation') h.broker.tabChanged(7);
       else if (change === 'permission') h.broker.invalidateAll('permission-needed');
       else if (change === 'session') h.broker.invalidate('chatgpt', 'scope-changed');
       else h.broker.receive({ operation: 'cancel', requestId: 'fiction-request-one' });
+
       expect((await reply).status).toBe(
         change === 'permission'
           ? 'permission-needed'

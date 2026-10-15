@@ -87,6 +87,7 @@ export class AccessClient {
 
   close(): void {
     if (this.closed) return;
+
     this.closed = true;
     this.connection.onMessage.removeListener(this.receive);
     this.connection.onDisconnect.removeListener(this.onDisconnect);
@@ -119,7 +120,9 @@ export class AccessClient {
       requestId: request.requestId,
       status,
     });
+
     if (this.closed) return Promise.resolve(failure('interrupted'));
+
     if (signal.aborted) return Promise.resolve(failure('cancelled'));
 
     if (++this.count > maximumRequestsPerPort || this.pending.has(request.requestId)) {
@@ -135,6 +138,7 @@ export class AccessClient {
     return new Promise((resolve) => {
       const finish = (reply: AccessReply) => {
         if (!this.pending.delete(request.requestId)) return;
+
         clearTimeout(timer);
         signal.removeEventListener('abort', cancel);
         resolve(reply);
@@ -182,12 +186,16 @@ export class AccessClient {
 
   private readonly receive = (input: unknown): void => {
     if (this.closed) return;
+
     const result = validate(AccessMessageSchema, input);
+
     if (!result.ok) return this.close();
+
     const message = result.value;
 
     if (message.kind === 'invalidated') {
       if (message.generation <= (this.generations.get(message.provider) ?? 0)) return;
+
       this.generations.set(message.provider, message.generation);
       this.publish(message);
 
@@ -195,6 +203,7 @@ export class AccessClient {
     }
 
     const item = this.pending.get(message.requestId);
+
     if (!item) return; // Obsolete/duplicate replies cannot restore a scope or UI result.
 
     if (message.status === 'selected') {

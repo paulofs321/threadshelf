@@ -32,15 +32,19 @@ export function AccessPanel() {
   async function getClient(signal: AbortSignal): Promise<AccessClient | null> {
     if (!client.current || client.current.isClosed) {
       const windowId = await currentPanelWindow(signal);
+
       if (windowId === null || signal.aborted) return null;
+
       // Concurrent provider actions may have created the same panel's client while we awaited.
       if (client.current && !client.current.isClosed) return client.current;
+
       const connection = browser.runtime.connect({ name: panelPortName(windowId) });
       client.current = new AccessClient(connection, () => crypto.randomUUID());
       client.current.subscribe((event: AccessEvent) => {
         // Interruption is published inside the port callback; consume Chrome's error there.
         // Keeping this on the client's subscription lets close remove every port listener.
         if (event.status === 'interrupted') void browser.runtime.lastError;
+
         if (mounted.current)
           setStates((previous) => ({
             ...previous,
@@ -64,7 +68,9 @@ export function AccessPanel() {
 
     return () => {
       mounted.current = false;
+
       for (const controller of operations.values()) controller.abort();
+
       operations.clear();
       client.current?.close();
       client.current = null;
@@ -73,8 +79,11 @@ export function AccessPanel() {
 
   async function perform(provider: ProviderId, operation: 'connect' | 'inspect' | 'disconnect') {
     if (active.current.has(provider)) return;
+
     const scope = states[provider].scope;
+
     if (operation !== 'connect' && !scope) return;
+
     const controller = new AbortController();
     active.current.set(provider, controller);
     update(provider, { status: 'connecting', pending: true });
@@ -83,6 +92,7 @@ export function AccessPanel() {
       // This call happens synchronously in the click handler, before any await loses the gesture.
       if (operation === 'connect') {
         const granted = await browser.permissions.request(providerPermission(provider));
+
         if (controller.signal.aborted) return;
 
         if (!granted) {
@@ -93,7 +103,9 @@ export function AccessPanel() {
       }
 
       if (controller.signal.aborted) return;
+
       const access = await getClient(controller.signal);
+
       if (controller.signal.aborted) return;
 
       if (!access) {
@@ -110,7 +122,9 @@ export function AccessPanel() {
             : scope
               ? await access.disconnectSelection(provider, scope, controller.signal)
               : null;
+
       if (!reply || controller.signal.aborted) return;
+
       update(
         provider,
         reply.status === 'selected'
@@ -122,6 +136,7 @@ export function AccessPanel() {
     } finally {
       if (active.current.get(provider) === controller) {
         active.current.delete(provider);
+
         if (mounted.current)
           setStates((previous) => ({
             ...previous,

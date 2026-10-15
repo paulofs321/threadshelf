@@ -12,6 +12,7 @@ export function currentPanelWindow(signal: AbortSignal): Promise<number | null> 
 
     const finish = (windowId: number | null) => {
       if (finished) return;
+
       finished = true;
       clearTimeout(timer);
       signal.removeEventListener('abort', cancel);

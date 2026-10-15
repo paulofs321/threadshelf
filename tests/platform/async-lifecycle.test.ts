@@ -128,10 +128,12 @@ describe('discard at every asynchronous broker boundary', () => {
       const reply = h.connect();
       await vi.advanceTimersByTimeAsync(0);
       pending.assertReached();
+
       if (cause === 'cancel')
         h.broker.receive({ operation: 'cancel', requestId: 'fiction-request-one' });
       else if (cause === 'timeout') await vi.advanceTimersByTimeAsync(operationTimeoutMs);
       else h.broker.invalidateAll('permission-needed');
+
       expect((await reply).status).toBe(
         cause === 'cancel' ? 'cancelled' : cause === 'timeout' ? 'timeout' : 'permission-needed',
       );
@@ -243,6 +245,7 @@ describe('broker isolation, recovery and invalidation order', () => {
       h.port,
       (message) => {
         messages.push(message);
+
         if (message.kind === 'reply') next.resolve(message);
       },
       () => {},

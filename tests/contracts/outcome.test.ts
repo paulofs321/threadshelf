@@ -38,6 +38,7 @@ describe('provider outcomes', () => {
   it('keeps successful empty results separate from failure', () => {
     const empty = requireValid(schema, { ...chatSuccess, candidates: [] });
     expect(empty.status).toBe('success');
+
     if (empty.status === 'success') expect(empty.candidates).toEqual([]);
   });
 

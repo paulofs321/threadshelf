@@ -87,7 +87,9 @@ export type LinkVerifiers = Readonly<Partial<Record<ProviderId, OriginalLinkVeri
 
 export function acceptsOriginalLink(candidate: Candidate, verifiers: LinkVerifiers): boolean {
   if (candidate.originalUrl === undefined) return true;
+
   const verify = verifiers[candidate.scope.provider];
+
   if (!verify) return false;
 
   try {

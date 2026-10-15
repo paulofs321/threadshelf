@@ -93,6 +93,7 @@ describe('primitive exact boundaries and hostile inputs', () => {
   it('validates supported timezone identifiers without guessing or trimming', () => {
     expect(validate(TimeZoneSchema, 'UTC').ok).toBe(true);
     expect(validate(TimeZoneSchema, 'Europe/Zurich').ok).toBe(true);
+
     for (const zone of ['', ' Europe/Zurich ', 'fiction/zone', null])
       expect(validate(TimeZoneSchema, zone).ok).toBe(false);
   });

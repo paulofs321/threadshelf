@@ -54,6 +54,8 @@ export default defineConfig([
         { blankLine: 'never', prev: 'import', next: 'import' },
         { blankLine: 'always', prev: '*', next: 'block-like' },
         { blankLine: 'always', prev: 'block-like', next: '*' },
+        { blankLine: 'always', prev: '*', next: ['if', 'switch', 'for', 'while', 'do', 'try'] },
+        { blankLine: 'always', prev: ['if', 'switch', 'for', 'while', 'do', 'try'], next: '*' },
         { blankLine: 'always', prev: '*', next: 'return' },
       ],
     },

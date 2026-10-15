@@ -205,12 +205,14 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     async (change) => {
       const port = connection();
       await select(port);
+
       if (change === 'navigation') chrome.tabs.onUpdated.emit(7, { status: 'loading' });
       else if (change === 'removed') chrome.tabs.onRemoved.emit(7);
       else if (change === 'replaced') chrome.tabs.onReplaced.emit(8, 7);
       else if (change === 'activated') chrome.tabs.onActivated.emit();
       else if (change === 'focus') chrome.windows.onFocusChanged.emit();
       else chrome.permissions.onRemoved.emit({ permissions: ['scripting'] });
+
       expect(port.postMessage).toHaveBeenLastCalledWith({
         kind: 'invalidated',
         provider: 'chatgpt',
@@ -342,7 +344,9 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
   it('bounds open broker connections and releases their listeners', () => {
     const ports = Array.from({ length: 5 }, () => connection());
     expect(ports[4]?.disconnect).toHaveBeenCalledOnce();
+
     for (const port of ports.slice(0, 4)) port.onDisconnect.emit();
+
     const next = connection();
     expect(next.disconnect).not.toHaveBeenCalled();
     next.onDisconnect.emit();

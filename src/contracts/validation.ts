@@ -24,6 +24,7 @@ export function requireValid<T extends v.GenericSchema>(
   input: unknown,
 ): v.InferOutput<T> {
   const result = validate(schema, input);
+
   if (!result.ok) throw new Error('Invalid contract context.');
 
   return result.value;
