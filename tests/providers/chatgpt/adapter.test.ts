@@ -84,10 +84,12 @@ describe('ChatGPT verification gate', () => {
       );
       expect(fetchSpy).not.toHaveBeenCalled();
       expect(timerSpy).not.toHaveBeenCalled();
+
       for (const log of logSpies) expect(log).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
       timerSpy.mockRestore();
+
       for (const log of logSpies) log.mockRestore();
     }
   });
@@ -200,7 +202,9 @@ describe('ChatGPT selected scope isolation', () => {
 describe('ChatGPT cancellation and correlation', () => {
   it.each([false, true])('honors cancellation even with invalidated=%s', async (invalidate) => {
     const provider = new ChatGptProvider(selectedChatGptScope());
+
     if (invalidate) provider.invalidate();
+
     const controller = new AbortController();
     controller.abort(new Error('Fictional secret abort reason'));
     const request = chatGptRequest();

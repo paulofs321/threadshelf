@@ -85,10 +85,12 @@ beforeEach(() => {
           ? []
           : [{ frameId: 0, documentId: probe.documentId, result: readResult(searchBody()) }],
     );
+
   for (const e of events) e.clear();
 });
 afterEach(() => {
   for (const e of events) expect(e.size()).toBe(0);
+
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -98,9 +100,13 @@ describe('trusted broker document capabilities', () => {
     const h = brokerHarness();
     expect(h.broker.bindSelectedDocument(selectedChatGptScope())).toBeNull();
     const reply = await h.connect();
+
     if (reply.status !== 'selected') throw Error('Expected selection');
+
     const b = h.broker.bindSelectedDocument(reply.scope);
+
     if (!b) throw Error('Expected binding');
+
     expect(b.isCurrent()).toBe(true);
     expect(await b.ownerWindow()).toBe(3);
     expect(b.documentId).toBe(probe.documentId);
@@ -118,7 +124,9 @@ describe('trusted broker document capabilities', () => {
   it('retires capabilities on reconnect and close', async () => {
     const h = brokerHarness();
     const reply = await h.connect();
+
     if (reply.status !== 'selected') throw Error('Expected selection');
+
     const b = h.broker.bindSelectedDocument(reply.scope);
     await h.connect('second-selection');
     expect(b?.isCurrent()).toBe(false);
@@ -176,8 +184,11 @@ describe('concrete Chrome ChatGPT transport', () => {
     'fails closed for %s',
     async (kind) => {
       const { port, binding } = setup();
+
       if (kind === 'retired') vi.mocked(binding.isCurrent).mockReturnValue(false);
+
       if (kind === 'wrong-provider') binding.scope.provider = 'google-ai-mode';
+
       if (kind === 'verified-scope')
         Object.assign(binding, {
           scope: {
@@ -188,9 +199,13 @@ describe('concrete Chrome ChatGPT transport', () => {
             workspacePartition: null,
           },
         });
+
       if (kind === 'window') vi.mocked(binding.ownerWindow).mockResolvedValue(null);
+
       if (kind === 'permission') chrome.permissions.contains.mockResolvedValue(false);
+
       if (kind === 'query-error') chrome.tabs.query.mockRejectedValue(Error('PRIVATE ERROR'));
+
       expect(await port.read(operation, undefined, context())).toEqual({
         status:
           kind === 'window'
@@ -292,15 +307,24 @@ describe('concrete Chrome ChatGPT transport', () => {
     const c = new AbortController();
     const pending = port.read(operation, undefined, { signal: c.signal });
     await flush();
+
     if (kind === 'cancel') c.abort();
+
     if (kind === 'timeout') await vi.advanceTimersByTimeAsync(9500);
+
     if (kind === 'updated') chrome.tabs.onUpdated.emit(7, { status: 'loading' });
+
     if (kind === 'removed') chrome.tabs.onRemoved.emit(7);
+
     if (kind === 'replaced') chrome.tabs.onReplaced.emit(99, 7);
+
     if (kind === 'activated') chrome.tabs.onActivated.emit();
+
     if (kind === 'focus') chrome.windows.onFocusChanged.emit();
+
     if (kind === 'permission')
       chrome.permissions.onRemoved.emit({ origins: ['https://chatgpt.com/*'] });
+
     expect(await pending).toEqual({
       status:
         kind === 'cancel'
@@ -355,6 +379,7 @@ describe('concrete Chrome ChatGPT transport', () => {
     const held = deferred<unknown>();
     chrome.scripting.executeScript.mockImplementation(async (i) => {
       if (i.func === inspectSelectedDocument) return [probe];
+
       if (i.func === abortChatGptDocumentRead) throw Error('PRIVATE');
 
       return held.promise;

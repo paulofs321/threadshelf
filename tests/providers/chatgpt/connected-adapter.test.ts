@@ -47,8 +47,10 @@ describe('connected ChatGPT provider', () => {
     });
     const result = await provider.search(request, context());
     expect(result.status).toBe('success');
+
     if (result.status === 'success')
       expect(result.candidates[0]?.conversationId).toBe(conversationId);
+
     expect(port.read.mock.calls[1]?.[0]).toEqual({ kind: 'search', query: request.query.text });
     expect(port.read.mock.calls[1]?.[1]).toBe(identity);
   });
@@ -68,7 +70,9 @@ describe('connected ChatGPT provider', () => {
       readResult(searchBody([{ ...searchItem(), update_time: null }])),
     );
     const result = await provider.search(request, context());
+
     if (result.status !== 'success') throw Error('Expected success');
+
     expect(result.coverage.reasons).toContain('unknown-dates');
     expect(result.candidates[0]).not.toHaveProperty('date');
   });
@@ -95,6 +99,7 @@ describe('connected ChatGPT provider', () => {
       status,
       ...(status === 'rate-limited' ? { retryAfterMs: 5000 } : {}),
     });
+
     if (status === 'login-expired' || status === 'scope-changed')
       expect((await provider.search(request, context())).status).toBe('scope-changed');
   });
@@ -140,7 +145,9 @@ describe('connected ChatGPT provider', () => {
     'permanently retires changed identity: %s',
     async (kind) => {
       const { provider, port, request } = harness();
+
       if (kind === 'next-operation') await provider.search(request, context());
+
       port.read.mockResolvedValueOnce({
         ...readResult(searchBody()),
         identityBefore: kind === 'before-after' ? identity : 'b'.repeat(64),
@@ -183,6 +190,7 @@ describe('connected ChatGPT provider', () => {
       scope: request.scope,
       status: 'unavailable',
     });
+
     for (const log of logs) expect(log).not.toHaveBeenCalled();
   });
   it.each(['timeout', 'cancel', 'invalidate', 'replace'])(
@@ -194,8 +202,11 @@ describe('connected ChatGPT provider', () => {
       port.read.mockReturnValueOnce(held.promise);
       const c = new AbortController();
       const first = provider.search(request, { signal: c.signal });
+
       if (kind === 'timeout') await vi.advanceTimersByTimeAsync(10_000);
+
       if (kind === 'cancel') c.abort(Error('Private reason'));
+
       if (kind === 'invalidate') provider.invalidate();
 
       if (kind === 'replace') {
@@ -222,7 +233,9 @@ describe('connected ChatGPT provider', () => {
     await provider.search(request, context());
     port.read.mockResolvedValueOnce(readResult(messagesBody()));
     const result = await provider.enrich(request, context());
+
     if (result.status !== 'success') throw Error('Expected success');
+
     expect(result.candidates[0]?.evidence.map((e) => e.source)).toEqual([
       'native-snippet',
       'provider-message',
@@ -279,7 +292,9 @@ describe('connected ChatGPT provider', () => {
       readResult(op.kind === 'messages' ? messagesBody(op.conversationId) : null),
     );
     const result = await provider.enrich(request, context());
+
     if (result.status !== 'success') throw Error('Expected success');
+
     expect(port.read).toHaveBeenCalledTimes(4);
     expect(result.coverage.reasons).toContain('query-budget');
     expect(result.candidates[3]?.evidence).toHaveLength(1);
@@ -301,7 +316,9 @@ it('honors the per-candidate evidence cap while retaining distinct exact API tex
   await provider.search(request, context());
   port.read.mockResolvedValueOnce(readResult(messagesBody()));
   const result = await provider.enrich(request, context());
+
   if (result.status !== 'success') throw Error('Expected success');
+
   expect(result.candidates[0]?.evidence).toHaveLength(8);
   expect(result.candidates[0]?.evidence.at(-1)?.text).toBe('Synthetic question?');
 });
@@ -313,6 +330,8 @@ it('deduplicates an API excerpt already present as exact native evidence', async
   await provider.search(request, context());
   port.read.mockResolvedValueOnce(readResult(messagesBody()));
   const result = await provider.enrich(request, context());
+
   if (result.status !== 'success') throw Error('Expected success');
+
   expect(result.candidates[0]?.evidence).toHaveLength(2);
 });

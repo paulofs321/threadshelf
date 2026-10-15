@@ -76,9 +76,13 @@ function fromIso(value: string | null): Candidate['date'] {
     !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$/u.test(value)
   )
     return;
+
   const milliseconds = Date.parse(value);
+
   if (!Number.isFinite(milliseconds)) return;
+
   const at = new Date(milliseconds).toISOString();
+
   if (at.slice(0, 19) !== value.slice(0, 19)) return;
 
   return { at, meaning: 'conversation-updated', source: 'provider-metadata' };
@@ -99,8 +103,10 @@ export function parseChatGptCandidates(
 
   if (kind === 'search') {
     const body = requireValid(SearchSchema, input);
+
     if (!body.source_statuses.some((s) => s.source_type === 'conversation' && s.status === 'ok'))
       throw new Error('Invalid provider response.');
+
     if (
       body.partial_results ||
       body.cursor !== null ||
@@ -108,6 +114,7 @@ export function parseChatGptCandidates(
       body.items.length === 30
     )
       reasons.push('result-limit');
+
     for (const row of body.items)
       rows.push({
         id: row.payload.conversation_id,
@@ -117,13 +124,16 @@ export function parseChatGptCandidates(
       });
   } else {
     const body = requireValid(ListSchema, input);
+
     if (body.offset !== 0 || body.items.length > body.limit || body.total < body.items.length)
       throw new Error('Invalid provider response.');
+
     if (body.total > body.items.length || body.items.length === body.limit)
       reasons.push('result-limit');
 
     for (const row of body.items) {
       if (row.workspace_id !== null) throw new Error('Invalid provider response.');
+
       if (!row.is_temporary_chat)
         rows.push({ id: row.id, title: row.title, date: fromIso(row.update_time) });
     }
@@ -211,15 +221,19 @@ const MessageSchema = v.object({
 
 export function parseChatGptMessages(input: unknown, conversationId: string): string[] {
   const body = requireValid(MessagesSchema, input);
+
   if (body.conversation_id !== conversationId || body.is_temporary_chat)
     throw new Error('Invalid provider response.');
+
   const seen = new Set<string>();
   const branch: unknown[] = [];
   let id: string | null = body.current_node;
 
   while (id !== null) {
     const node: v.InferOutput<typeof NodeSchema> | undefined = body.mapping[id];
+
     if (seen.has(id) || !node || node.id !== id) throw new Error('Invalid provider response.');
+
     seen.add(id);
     branch.push(node.message);
     id = node.parent;
@@ -229,7 +243,9 @@ export function parseChatGptMessages(input: unknown, conversationId: string): st
 
   for (const raw of branch.reverse()) {
     if (raw === null) continue;
+
     const message = requireValid(MessageSchema, raw);
+
     if (
       !['user', 'assistant'].includes(message.author.role) ||
       message.metadata.is_visually_hidden_from_conversation ||
@@ -237,11 +253,13 @@ export function parseChatGptMessages(input: unknown, conversationId: string): st
       message.content.content_type !== 'text'
     )
       continue;
+
     if (!message.content.parts || message.content.parts.some((part) => typeof part !== 'string'))
       throw new Error('Invalid provider response.');
 
     for (const part of message.content.parts) {
       const value = part as string;
+
       if (value.trim() && excerpts.length < 4) excerpts.push(value.slice(0, limits.excerpt));
     }
   }

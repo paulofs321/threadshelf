@@ -57,6 +57,7 @@ export class AccessBroker {
 
   bindSelectedDocument(scope: SessionScope): SelectedDocumentBinding | null {
     const selection = this.selected.get(scope.provider);
+
     if (this.closed || !selection || !sameScope(selection.scope, scope)) return null;
 
     return {

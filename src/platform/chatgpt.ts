@@ -32,8 +32,11 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
     context: OperationContext,
   ): Promise<ChatGptReadResult> {
     const parsed = validate(ChatGptOperationSchema, operation);
+
     if (!parsed.ok) return failure('unavailable');
+
     if (context.signal.aborted) return failure('cancelled');
+
     const controller = new AbortController();
     let status: 'cancelled' | 'scope-changed' | 'permission-needed' | 'timeout' | undefined;
     let stopped: (value: ChatGptReadResult) => void;
@@ -81,7 +84,9 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
     try {
       const action = async (): Promise<ChatGptReadResult> => {
         const before = await this.source(controller.signal);
+
         if (before) return before;
+
         const result = await this.execute(parsed.value, expectedIdentity, controller.signal);
 
         return (await this.source(controller.signal)) ?? result;
@@ -107,6 +112,7 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
 
   private async source(signal: AbortSignal): Promise<ChatGptReadResult | undefined> {
     const b = this.binding;
+
     if (
       signal.aborted ||
       !b.isCurrent() ||
@@ -114,11 +120,15 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
       b.scope.kind !== 'ephemeral'
     )
       return failure('scope-changed');
+
     if ((await b.ownerWindow()) !== b.tab.windowId) return failure('interrupted');
+
     if (!(await browser.permissions.contains(providerPermission('chatgpt'))))
       return failure('permission-needed');
+
     const tabs = await browser.tabs.query({ active: true, windowId: b.tab.windowId });
     const tab = tabs[0];
+
     if (
       tabs.length !== 1 ||
       !tab ||
@@ -131,13 +141,16 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
       tab.url !== b.tab.url
     )
       return failure('scope-changed');
+
     if (signal.aborted) return failure('cancelled');
+
     const result = await browser.scripting.executeScript({
       target: { tabId: b.tab.id, documentIds: [b.documentId] },
       world: 'ISOLATED',
       func: inspectSelectedDocument,
       args: ['https://chatgpt.com'],
     });
+
     if (
       result.length !== 1 ||
       !validateProbe('chatgpt', result[0], b.documentId) ||
@@ -153,6 +166,7 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
     signal: AbortSignal,
   ): Promise<ChatGptReadResult> {
     if (signal.aborted) return failure('cancelled');
+
     const operationId = crypto.randomUUID();
     const target = { tabId: this.binding.tab.id, documentIds: [this.binding.documentId] };
 
@@ -179,12 +193,14 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
             ? [operation, operationId, this.salt]
             : [operation, operationId, this.salt, expectedIdentity],
       });
+
       if (
         results.length !== 1 ||
         results[0]?.frameId !== 0 ||
         results[0]?.documentId !== this.binding.documentId
       )
         return failure('scope-changed');
+
       const parsed = validate(ChatGptReadResultSchema, results[0].result);
 
       return parsed.ok ? parsed.value : failure('schema-changed');

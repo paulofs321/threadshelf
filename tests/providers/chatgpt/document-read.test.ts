@@ -36,6 +36,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const c of registry.__threadshelfChatGptReads?.values() ?? []) c.abort();
+
   delete registry.__threadshelfChatGptReads;
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -70,6 +71,7 @@ describe('isolated ChatGPT session/read boundary', () => {
           cache: 'no-store',
           redirect: 'manual',
         });
+
         if (new URL(String(url)).pathname === '/') expect(init?.headers).toBeUndefined();
         else
           expect(init?.headers).toEqual({
@@ -90,16 +92,20 @@ describe('isolated ChatGPT session/read boundary', () => {
         expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
           'https://chatgpt.com/backend-api/conversations',
         );
+
       if (op.kind === 'messages')
         expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
           `https://chatgpt.com/backend-api/conversation/${conversationId}`,
         );
+
       expect(registry.__threadshelfChatGptReads).toBeUndefined();
     },
   );
   it('reuses a matching identity only within the same selection salt', async () => {
     const a = await read({ kind: 'inspect' });
+
     if (a.status !== 'success') throw Error('Expected inspect success');
+
     expect(await read(operation, a.identityBefore)).toMatchObject({ status: 'success' });
     expect(
       await readChatGptDocument(
@@ -235,31 +241,39 @@ describe('isolated ChatGPT session/read boundary', () => {
     'stream-oversize',
   ])('rejects %s', async (kind) => {
     if (kind === 'missing-mime') fetchMock.mockResolvedValueOnce(new Response(new Uint8Array()));
+
     if (kind === 'wrong-html-mime') fetchMock.mockResolvedValueOnce(json());
+
     if (kind === 'wrong-json-mime')
       fetchMock.mockResolvedValueOnce(html()).mockResolvedValueOnce(html());
+
     if (kind === 'invalid-json')
       fetchMock
         .mockResolvedValueOnce(html())
         .mockResolvedValueOnce(
           new Response('PRIVATE INVALID JSON', { headers: { 'content-type': 'application/json' } }),
         );
+
     if (kind === 'invalid-utf8')
       fetchMock.mockResolvedValueOnce(
         new Response(new Uint8Array([255]), { headers: { 'content-type': 'text/html' } }),
       );
+
     if (kind === 'no-body')
       fetchMock.mockResolvedValueOnce(
         new Response(null, { headers: { 'content-type': 'text/html' } }),
       );
+
     if (kind === 'declared-oversize')
       fetchMock.mockResolvedValueOnce(
         new Response('', { headers: { 'content-type': 'text/html', 'content-length': '2097153' } }),
       );
+
     if (kind === 'stream-oversize')
       fetchMock.mockResolvedValueOnce(
         new Response('x'.repeat(2097153), { headers: { 'content-type': 'text/html' } }),
       );
+
     expect(await read()).toEqual({ status: 'schema-changed' });
     expect(registry.__threadshelfChatGptReads).toBeUndefined();
   });
@@ -274,19 +288,29 @@ describe('isolated ChatGPT session/read boundary', () => {
     'bad-server-session',
   ])('fails closed for %s', async (kind) => {
     const b = bootstrap();
+
     if (kind === 'no-session') document.body.innerHTML = '';
+
     if (kind === 'duplicate-session') document.body.innerHTML = bootstrapHtml() + bootstrapHtml();
+
     if (kind === 'invalid-script')
       document.body.innerHTML = '<script type="application/json">invalid</script>';
+
     if (kind === 'oversized-script')
       document.body.innerHTML =
         '<script type="application/json">' + 'x'.repeat(2097153) + '</script>';
+
     if (kind === 'workspace') b.session.account.structure = 'workspace';
+
     if (kind === 'missing-token') b.session.accessToken = '';
+
     if (kind === 'bad-id') b.session.user.id = 'x'.repeat(257);
+
     if (['workspace', 'missing-token', 'bad-id'].includes(kind))
       document.body.innerHTML = bootstrapHtml(b);
+
     if (kind === 'bad-server-session') fetchMock.mockResolvedValueOnce(html({ session: {} }));
+
     expect(await read()).toEqual({
       status:
         kind === 'workspace' || kind === 'bad-server-session' ? 'unavailable' : 'schema-changed',
@@ -296,8 +320,10 @@ describe('isolated ChatGPT session/read boundary', () => {
     'rejects identity/context changes: %s',
     async (kind) => {
       if (kind === 'user') fetchMock.mockResolvedValueOnce(html(bootstrap('different-user')));
+
       if (kind === 'account')
         fetchMock.mockResolvedValueOnce(html(bootstrap('synthetic-user', 'different-account')));
+
       if (kind === 'after-read')
         fetchMock.mockImplementation(async (raw) => {
           if (new URL(String(raw)).pathname !== '/') {
@@ -308,12 +334,14 @@ describe('isolated ChatGPT session/read boundary', () => {
 
           return html();
         });
+
       if (kind === 'navigation')
         fetchMock.mockImplementationOnce(async () => {
           vi.stubGlobal('location', new URL('https://chatgpt.com/other'));
 
           return html();
         });
+
       expect(await read(operation, kind === 'expected' ? 'b'.repeat(64) : undefined)).toEqual({
         status: 'scope-changed',
       });
@@ -338,8 +366,10 @@ describe('isolated ChatGPT session/read boundary', () => {
     );
     const pending = read();
     await tick();
+
     if (kind === 'timeout') await vi.advanceTimersByTimeAsync(8_000);
     else abortChatGptDocumentRead('synthetic-operation');
+
     expect(await pending).toEqual({ status: kind === 'timeout' ? 'timeout' : 'cancelled' });
     expect(cancelled).toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
@@ -357,6 +387,7 @@ it('rejects an atomic identity switch even when both individual DOM/server check
   const changed = bootstrap('different-user');
   fetchMock.mockImplementation(async (raw) => {
     if (new URL(String(raw)).pathname === '/') return html(switched ? changed : bootstrap());
+
     switched = true;
     document.body.innerHTML = bootstrapHtml(changed);
 
@@ -384,12 +415,14 @@ it.each(['stream', 'http'])(
       headers: { 'content-type': kind === 'stream' ? 'text/html' : 'text/plain' },
     });
     fetchMock.mockResolvedValueOnce(response);
+
     if (kind === 'stream') {
       const pending = read();
       await tick();
       abortChatGptDocumentRead('synthetic-operation');
       expect(await pending).toEqual({ status: 'cancelled' });
     } else expect(await read()).toEqual({ status: 'schema-changed' });
+
     await tick();
   },
 );

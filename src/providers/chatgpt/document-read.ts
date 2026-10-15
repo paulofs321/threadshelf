@@ -11,12 +11,16 @@ export async function readChatGptDocument(
   const failed = (
     status: Exclude<ChatGptReadResult['status'], 'success' | 'rate-limited'>,
   ): ChatGptReadResult => ({ status });
+
   if (window !== window.top || location.origin !== 'https://chatgpt.com')
     return failed('scope-changed');
+
   if (!/^[a-zA-Z0-9-]{1,128}$/.test(requestId) || !/^[a-zA-Z0-9-]{16,128}$/.test(salt))
     return failed('unavailable');
+
   if (!operation || !['inspect', 'search', 'list', 'messages'].includes(operation.kind))
     return failed('unavailable');
+
   if (
     operation.kind === 'search' &&
     (typeof operation.query !== 'string' ||
@@ -24,18 +28,23 @@ export async function readChatGptDocument(
       operation.query.length > 1_024)
   )
     return failed('unavailable');
+
   if (
     operation.kind === 'messages' &&
     !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(operation.conversationId)
   )
     return failed('unavailable');
+
   if (expectedIdentity !== undefined && !/^[a-f0-9]{64}$/.test(expectedIdentity))
     return failed('unavailable');
+
   const root = globalThis as typeof globalThis & {
     __threadshelfChatGptReads?: Map<string, AbortController>;
   };
   const registry = (root.__threadshelfChatGptReads ??= new Map());
+
   if (registry.size >= 2 || registry.has(requestId)) return failed('unavailable');
+
   const controller = new AbortController();
   registry.set(requestId, controller);
   const href = location.href;
@@ -53,6 +62,7 @@ export async function readChatGptDocument(
 
   const check = () => {
     if (controller.signal.aborted) stop(failed(timedOut ? 'timeout' : 'cancelled'));
+
     if (location.href !== href) stop(failed('scope-changed'));
   };
 
@@ -60,10 +70,14 @@ export async function readChatGptDocument(
 
   async function bytes(response: Response): Promise<string> {
     const declared = response.headers.get('content-length');
+
     if (declared !== null && /^\d+$/.test(declared) && Number(declared) > maximum)
       stop(failed('schema-changed'));
+
     const stream = response.body;
+
     if (!stream) return stop(failed('schema-changed'));
+
     const reader = stream.getReader();
     const chunks: Uint8Array[] = [];
     let size = 0;
@@ -79,9 +93,13 @@ export async function readChatGptDocument(
         check();
         const part = await reader.read();
         check();
+
         if (part.done) break;
+
         size += part.value.byteLength;
+
         if (size > maximum) stop(failed('schema-changed'));
+
         chunks.push(part.value);
       }
 
@@ -127,6 +145,7 @@ export async function readChatGptDocument(
 
     if (response.type === 'opaqueredirect' || response.redirected)
       return reject(failed('unavailable'));
+
     if (response.status === 401) return reject(failed('login-expired'));
 
     if (response.status === 429) {
@@ -143,6 +162,7 @@ export async function readChatGptDocument(
         )
       ) {
         const date = Date.parse(raw);
+
         if (Number.isFinite(date)) retryAfterMs = Math.min(300_000, Math.max(0, date - Date.now()));
       }
 
@@ -153,7 +173,9 @@ export async function readChatGptDocument(
     }
 
     if (response.status !== 200) return reject(failed('unavailable'));
+
     const type = response.headers.get('content-type') ?? '';
+
     if (!(mime === 'json' ? /^application\/json(?:\s*;|$)/i : /^text\/html(?:\s*;|$)/i).test(type))
       return reject(failed('schema-changed'));
 
@@ -165,6 +187,7 @@ export async function readChatGptDocument(
 
     for (const script of doc.querySelectorAll('script[type="application/json"]')) {
       if ((script.textContent?.length ?? 0) > maximum) stop(failed('schema-changed'));
+
       let data;
 
       try {
@@ -174,8 +197,11 @@ export async function readChatGptDocument(
       }
 
       const session = data?.session;
+
       if (!session) continue;
+
       if (session.account?.structure !== 'personal') stop(failed('unavailable'));
+
       if (
         typeof session.user?.id !== 'string' ||
         !session.user.id ||
@@ -188,6 +214,7 @@ export async function readChatGptDocument(
         session.accessToken.length > 32_768
       )
         stop(failed('schema-changed'));
+
       sessions.push({
         userId: session.user.id,
         accountId: session.account.id,
@@ -205,8 +232,10 @@ export async function readChatGptDocument(
     const html = await get('https://chatgpt.com/', 'html');
     check();
     const server = bootstrap(new DOMParser().parseFromString(html, 'text/html'));
+
     if (current.userId !== server.userId || current.accountId !== server.accountId)
       stop(failed('scope-changed'));
+
     const hash = await crypto.subtle.digest(
       'SHA-256',
       new TextEncoder().encode(JSON.stringify([salt, server.userId, server.accountId])),
@@ -214,6 +243,7 @@ export async function readChatGptDocument(
     const identity = Array.from(new Uint8Array(hash), (value) =>
       value.toString(16).padStart(2, '0'),
     ).join('');
+
     if (expectedIdentity !== undefined && expectedIdentity !== identity)
       stop(failed('scope-changed'));
 
@@ -226,6 +256,7 @@ export async function readChatGptDocument(
 
     if (operation.kind !== 'inspect') {
       let url: URL;
+
       if (operation.kind === 'search') {
         url = new URL('https://chatgpt.com/backend-api/global/search');
         url.searchParams.set('query', operation.query);
@@ -236,6 +267,7 @@ export async function readChatGptDocument(
         url = new URL('https://chatgpt.com/backend-api/conversations');
       else
         url = new URL(`https://chatgpt.com/backend-api/conversation/${operation.conversationId}`);
+
       const json = await get(url.href, 'json', before.token);
       before = { identity: before.identity, token: '' };
 
@@ -248,6 +280,7 @@ export async function readChatGptDocument(
 
     const after = await fresh();
     check();
+
     if (before.identity !== after.identity) return failed('scope-changed');
 
     return {
@@ -264,6 +297,7 @@ export async function readChatGptDocument(
     clearTimeout(timer);
     controller.abort();
     registry.delete(requestId);
+
     if (registry.size === 0) delete root.__threadshelfChatGptReads;
   }
 }

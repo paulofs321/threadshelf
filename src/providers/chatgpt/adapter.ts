@@ -56,13 +56,16 @@ export class ChatGptProvider implements ProviderPort {
         provider: this.provider,
         generation: this.selectedScope.generation,
       };
+
     if (!this.port || context.signal.aborted)
       return {
         status: 'unavailable',
         provider: this.provider,
         generation: this.selectedScope.generation,
       };
+
     const result = await this.run(context, (signal) => this.read({ kind: 'inspect' }, signal));
+
     if (result.status === 'success') return { status: 'ready', scope: { ...this.selectedScope } };
 
     return {
@@ -89,19 +92,24 @@ export class ChatGptProvider implements ProviderPort {
   ): Promise<ProviderOutcome> {
     const request = requireValid(ChatGptRequestSchema, input);
     const early = this.unusable(request, context);
+
     if (early) return this.outcome(request, early);
+
     this.retrieved = undefined;
     const result = await this.run(context, async (signal) => {
       const read = await this.read(
         kind === 'search' ? { kind, query: request.query.text } : { kind },
         signal,
       );
+
       if (read.status !== 'success') return read;
 
       try {
         const parsed = parseChatGptCandidates(read.body, request.scope, kind);
+
         if (request.query.dateRange && parsed.candidates.some((c) => !c.date))
           parsed.coverage.reasons.push('unknown-dates');
+
         this.retrieved = {
           requestId: request.requestId,
           candidates: requireValid(CandidateListSchema, parsed.candidates),
@@ -113,7 +121,9 @@ export class ChatGptProvider implements ProviderPort {
         return { status: 'schema-changed' as const };
       }
     });
+
     if (result.status !== 'success') return this.outcome(request, result);
+
     const parsed = result.body as { candidates: Candidate[]; coverage: Coverage };
 
     return requireValid(ProviderOutcomeSchema, {
@@ -129,10 +139,14 @@ export class ChatGptProvider implements ProviderPort {
   async enrich(input: ProviderRequest, context: OperationContext): Promise<ProviderOutcome> {
     const request = requireValid(ChatGptRequestSchema, input);
     const early = this.unusable(request, context);
+
     if (early) return this.outcome(request, early);
+
     const previous = this.retrieved;
+
     if (!previous || previous.requestId !== request.requestId)
       return this.outcome(request, { status: 'scope-changed' });
+
     const candidates = requireValid(CandidateListSchema, previous.candidates);
     const coverage = structuredClone(previous.coverage);
     const result = await this.run(context, async (signal) => {
@@ -146,7 +160,9 @@ export class ChatGptProvider implements ProviderPort {
           { kind: 'messages', conversationId: candidate.conversationId },
           signal,
         );
+
         if (read.status !== 'success') return read;
+
         let excerpts: string[];
 
         try {
@@ -161,8 +177,11 @@ export class ChatGptProvider implements ProviderPort {
             total >= limits.totalEvidence
           )
             break;
+
           const text = excerpt.slice(0, limits.totalEvidence - total);
+
           if (!text.trim() || candidate.evidence.some((e) => e.text === text)) continue;
+
           candidate.evidence.push({
             id: `${candidate.id}:message:${candidate.evidence.length}` as Candidate['evidence'][number]['id'],
             text,
@@ -173,8 +192,10 @@ export class ChatGptProvider implements ProviderPort {
       }
 
       if (!coverage.reasons.includes('missing-evidence')) coverage.reasons.push('missing-evidence');
+
       if (candidates.length > 3 && !coverage.reasons.includes('query-budget'))
         coverage.reasons.push('query-budget');
+
       coverage.extent = 'partial';
 
       return {
@@ -184,6 +205,7 @@ export class ChatGptProvider implements ProviderPort {
         body: { candidates, coverage },
       };
     });
+
     if (result.status !== 'success') return this.outcome(request, result);
 
     return requireValid(ProviderOutcomeSchema, {
@@ -203,8 +225,10 @@ export class ChatGptProvider implements ProviderPort {
 
   private unusable(request: ProviderRequest, context: OperationContext): Failure | undefined {
     if (context.signal.aborted) return { status: 'cancelled' };
+
     if (this.invalidated || !sameScope(request.scope, this.selectedScope))
       return { status: 'scope-changed' };
+
     if (!this.port) return { status: 'unavailable' };
   }
   private outcome(request: ProviderRequest, failure: Failure): ProviderOutcome {
@@ -216,14 +240,20 @@ export class ChatGptProvider implements ProviderPort {
   }
   private async read(operation: ChatGptOperation, signal: AbortSignal): Promise<ChatGptReadResult> {
     if (signal.aborted) return { status: 'cancelled' };
+
     if (!this.port) return { status: 'unavailable' };
+
     const parsed = validate(
       ChatGptReadResultSchema,
       await this.port.read(operation, this.identity, { signal }),
     );
+
     if (signal.aborted) return { status: 'cancelled' };
+
     if (this.invalidated) return { status: 'scope-changed' };
+
     if (!parsed.ok) return { status: 'schema-changed' };
+
     const result = parsed.value;
 
     if (result.status === 'success') {
@@ -274,7 +304,9 @@ export class ChatGptProvider implements ProviderPort {
 
     try {
       const result = await Promise.race([action(controller.signal), interruption]);
+
       if (context.signal.aborted) return { status: 'cancelled' };
+
       if (this.invalidated && result.status !== 'login-expired') return { status: 'scope-changed' };
 
       return controller.signal.aborted ? { status: timedOut ? 'timeout' : 'cancelled' } : result;
@@ -284,6 +316,7 @@ export class ChatGptProvider implements ProviderPort {
       clearTimeout(timer);
       context.signal.removeEventListener('abort', cancel);
       controller.signal.removeEventListener('abort', cancel);
+
       if (this.active === controller) this.active = undefined;
     }
   }

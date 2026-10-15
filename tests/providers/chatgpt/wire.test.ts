@@ -61,6 +61,7 @@ describe('ChatGPT verified keyword/list normalization', () => {
     expect(
       parseChatGptCandidates({ ...searchBody(), extra: 'ignored' }, scope, 'search').candidates,
     ).toHaveLength(1);
+
     for (const bad of [
       null,
       [],
@@ -256,20 +257,30 @@ describe('ChatGPT active-branch exact message evidence', () => {
     'oversized-graph',
   ])('rejects %s', (kind) => {
     const b = messagesBody();
+
     if (kind === 'cycle') b.mapping.root.parent = 'answer';
+
     if (kind === 'dangling') b.current_node = 'absent';
+
     if (kind === 'node-id') b.mapping.answer.id = 'wrong';
+
     if (kind === 'wrong-conversation') b.conversation_id = otherConversationId;
+
     if (kind === 'temporary') b.is_temporary_chat = true;
+
     if (kind === 'bad-parts') b.mapping.answer.message.content.parts = [{}];
+
     if (kind === 'missing-parts')
       b.mapping.answer.message.content = {} as typeof b.mapping.answer.message.content;
+
     if (kind === 'bad-message') b.mapping.root.message = {};
+
     if (kind === 'oversized-graph')
       Object.assign(
         b.mapping,
         Object.fromEntries(Array.from({ length: 2_049 }, (_, n) => [`node-${n}`, {}])),
       );
+
     expect(() => parseChatGptMessages(b, conversationId)).toThrow();
   });
 });
