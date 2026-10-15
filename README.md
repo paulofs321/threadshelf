@@ -20,19 +20,28 @@ for one provider site and scripting, then checks its selected top-level document
 the sending panel, correlates requests, and clears access on navigation, revocation, cancellation,
 timeout, or worker interruption. Unknown identity receives a fresh ephemeral scope on every check.
 
-Selecting a site checks browser context only. The ChatGPT adapter now implements authenticated
-keyword/list/message reads, runtime response parsing, exact evidence/link/date normalization,
-identity checks around reads, and explicit failures. Actual unpacked-extension verification passed
-for a personal account, including five native-matching keyword results, exact API message evidence,
-a zero-result query, and a bounded 50-conversation list. See the
-[ChatGPT adapter](docs/chatgpt-adapter.md) for architecture, verification, and capability limits.
+Selecting a site checks browser context only. Both provider adapters now support authenticated
+reads through trusted selected-document bindings; the panel still provides setup controls rather
+than conversation search. Search orchestration and the full shadcn/ui search UI remain separate work.
 
-The adapter is not yet wired into the panel: search orchestration and the full shadcn/ui search UI
-remain separate work. Workspaces, pagination, and complete-history coverage are unverified. Model
-inference, persistent storage, demo, and release packaging remain unimplemented. GitHub Actions runs
-locked installation, tests, lint, type/format checks, and the Chrome build on pull requests and
-pushes to `main`.
-The provider's internal website interfaces are undocumented and may change.
+The ChatGPT adapter implements personal-account keyword/list/API-message reads, exact evidence,
+original links, UTC updated dates and identity checks around reads. Actual unpacked-extension
+verification passed with five native-matching results, API message evidence, a genuine empty search
+and a bounded 50-conversation list. Workspaces, pagination and complete-history coverage remain
+unsupported or unverified. See the [ChatGPT adapter](docs/chatgpt-adapter.md) for details.
+
+Google Search AI Mode implements default-account search/list reads, exact snippets, verified original
+links, bounded rendered-thread evidence, HTTP failures and fresh identity checks. On October 15,
+2026, native and actual unpacked-extension reads returned three snippet-only matches, a genuine
+empty search, a capped partial list and a rendered excerpt from an owned background tab that closed
+afterward. Nondefault accounts, timestamp meanings, continuation beyond 300 listed records and
+complete-message retrieval remain unresolved. Unknown dates are omitted; complete-history coverage
+is never claimed. Live checks are separate from synthetic tests.
+
+Without a selected-document binding, either adapter remains unavailable. Model inference,
+persistent storage, demo and release packaging remain unimplemented. GitHub Actions runs locked
+installation, tests, lint, type/format checks and the Chrome build on pull requests and pushes to
+`main`. Internal provider website interfaces are undocumented and may change.
 
 ## Development
 
