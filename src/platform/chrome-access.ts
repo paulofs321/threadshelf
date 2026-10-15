@@ -17,22 +17,29 @@ export function registerChromeAccess(): void {
   browser.runtime.onConnect.addListener((connection) => {
     const documentId = validatePanelSender(connection.sender, browser.runtime.id);
     const windowId = panelWindowId(connection.name);
+
     if (windowId === null || !documentId || brokers.size >= 4) {
       connection.disconnect();
+
       return;
     }
+
     const access: SelectedTabAccessPort = {
       async ownerWindow() {
         const window = validate(
           PanelWindowSchema,
           await browser.windows.get(windowId, { populate: false }).catch(() => null),
         );
+
         if (!window.ok || window.value.id !== windowId) return null;
+
         const contexts = await browser.runtime.getContexts({
           contextTypes: ['SIDE_PANEL'],
           documentIds: [documentId],
         });
+
         if (contexts.length !== 1) return null;
+
         return validatePanelContext(contexts[0], documentId, browser.runtime.id, windowId)
           ? windowId
           : null;
@@ -41,7 +48,9 @@ export function registerChromeAccess(): void {
       async selectedTab(windowId) {
         const tabs = await browser.tabs.query({ active: true, windowId });
         const tab = tabs.length === 1 ? tabs[0] : undefined;
+
         if (!tab || tab.pendingUrl !== undefined) return null;
+
         // Exclude titles, favicons and unrelated browser properties at the boundary.
         return {
           id: tab.id,
@@ -54,6 +63,7 @@ export function registerChromeAccess(): void {
       },
       async inspectDocument(provider, target, signal) {
         if (signal.aborted) return null;
+
         const results = await browser.scripting.executeScript({
           target:
             target.documentId === undefined
@@ -63,6 +73,7 @@ export function registerChromeAccess(): void {
           func: inspectSelectedDocument,
           args: [providerOrigins[provider]],
         });
+
         return signal.aborted || results.length !== 1 ? null : results[0];
       },
     };
@@ -85,14 +96,17 @@ export function registerChromeAccess(): void {
       () => crypto.randomUUID(),
     );
     const receive = (message: unknown) => broker.receive(message);
+
     const disconnect = () => {
       // Consume Chrome's error without logging any browser/provider details.
       void browser.runtime.lastError;
       broker.close();
     };
+
     const windowRemoved = (removedId: number) => {
       if (removedId === windowId) broker.close();
     };
+
     brokers.add(broker);
     connection.onMessage.addListener(receive);
     connection.onDisconnect.addListener(disconnect);

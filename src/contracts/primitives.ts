@@ -60,7 +60,9 @@ export const TimestampSchema = v.pipe(
   v.string(),
   v.check((value) => {
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value)) return false;
+
     const milliseconds = Date.parse(value);
+
     return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value;
   }, 'Expected a real canonical UTC timestamp.'),
 );
@@ -70,6 +72,7 @@ export const TimeZoneSchema = v.pipe(
   v.check((timeZone) => {
     try {
       new Intl.DateTimeFormat('en', { timeZone });
+
       return true;
     } catch {
       return false;
@@ -83,6 +86,7 @@ export const OriginalUrlSchema = v.pipe(
   v.check((value) => {
     try {
       const url = new URL(value);
+
       return (
         value === url.href &&
         url.protocol === 'https:' &&

@@ -6,6 +6,7 @@ import { clientTimeoutMs, operationTimeoutMs } from '../../src/platform/protocol
 import { brokerHarness, deferred, event, probe } from './helpers';
 
 let panelCounter = 0;
+
 function connectedPair() {
   const panel = ++panelCounter;
   const h = brokerHarness();
@@ -34,22 +35,27 @@ function connectedPair() {
   const client = new AccessClient(connection, () => `fiction-request-${++requestCounter}`);
   const events = vi.fn();
   client.subscribe(events);
+
   function deliverRequests() {
     for (const request of requests.splice(0)) broker.receive(request);
   }
+
   function deliverReplies() {
     for (const reply of replies.splice(0)) connection.onMessage.emit(reply);
   }
+
   async function exchange() {
     deliverRequests();
     await vi.advanceTimersByTimeAsync(0);
     deliverReplies();
   }
+
   function close() {
     client.close();
     broker.close();
     h.broker.close();
   }
+
   return {
     client,
     broker,
@@ -64,17 +70,22 @@ function connectedPair() {
     close,
   };
 }
+
 const resources: ReturnType<typeof connectedPair>[] = [];
+
 function pair() {
   const resource = connectedPair();
   resources.push(resource);
+
   return resource;
 }
+
 beforeEach(() => {
   vi.useFakeTimers();
 });
 afterEach(() => {
   for (const resource of resources.splice(0)) resource.close();
+
   vi.useRealTimers();
 });
 
@@ -85,12 +96,16 @@ describe('real client + real broker with queued synthetic Chrome transport', () 
     const connect = h.client.connect('chatgpt', signal);
     await h.exchange();
     const first = await connect;
+
     if (first.status !== 'selected') throw new Error('Expected synthetic selection.');
+
     expect(first.session).toBe('unverified');
     const inspect = h.client.inspect('chatgpt', first.scope, signal);
     await h.exchange();
     const second = await inspect;
+
     if (second.status !== 'selected') throw new Error('Expected new synthetic selection.');
+
     expect(second.scope.partition).not.toBe(first.scope.partition);
     expect(second.scope.generation).toBeGreaterThan(first.scope.generation);
     const disconnect = h.client.disconnectSelection('chatgpt', second.scope, signal);
@@ -161,10 +176,13 @@ describe('real client + real broker with queued synthetic Chrome transport', () 
       const pending = h.client.connect('chatgpt', signal);
       await h.exchange();
       const reply = await pending;
+
       if (reply.status !== 'selected') throw new Error('Expected synthetic selection.');
+
       if (change === 'permission') h.broker.invalidateAll('permission-needed');
       else if (change === 'navigation') h.broker.tabChanged(7);
       else h.broker.invalidate('chatgpt', 'scope-changed');
+
       h.deliverReplies();
       expect(h.events).toHaveBeenCalledWith(
         expect.objectContaining({ provider: 'chatgpt', kind: 'invalidated' }),
@@ -207,8 +225,10 @@ describe('real client + real broker with queued synthetic Chrome transport', () 
     const retry = a.client.connect('chatgpt', signal);
     await a.exchange();
     const aSelection = await retry;
+
     if (aSelection.status !== 'selected' || bSelection.status !== 'selected')
       throw new Error('Expected synthetic selections.');
+
     expect(aSelection.scope.partition).not.toBe(bSelection.scope.partition);
     const crossPanel = b.client.inspect('chatgpt', aSelection.scope, signal);
     await b.exchange();

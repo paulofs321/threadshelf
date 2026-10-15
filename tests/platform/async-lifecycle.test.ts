@@ -14,6 +14,7 @@ const stages: Stage[] = [
     hold(h) {
       const pending = deferred<number | null>();
       h.port.ownerWindow.mockReturnValueOnce(pending.promise);
+
       return {
         release: () => pending.resolve(3),
         assertReached: () => expect(h.port.ownerWindow).toHaveBeenCalledTimes(1),
@@ -25,6 +26,7 @@ const stages: Stage[] = [
     hold(h) {
       const pending = deferred<boolean>();
       h.port.hasPermission.mockReturnValueOnce(pending.promise);
+
       return {
         release: () => pending.resolve(true),
         assertReached: () => expect(h.port.hasPermission).toHaveBeenCalledTimes(1),
@@ -36,6 +38,7 @@ const stages: Stage[] = [
     hold(h) {
       const pending = deferred<unknown>();
       h.port.selectedTab.mockReturnValueOnce(pending.promise);
+
       return {
         release: () => pending.resolve(tab),
         assertReached: () => expect(h.port.selectedTab).toHaveBeenCalledTimes(1),
@@ -47,6 +50,7 @@ const stages: Stage[] = [
     hold(h) {
       const pending = deferred<unknown>();
       h.port.inspectDocument.mockReturnValueOnce(pending.promise);
+
       return {
         release: () => pending.resolve(probe),
         assertReached: () => expect(h.port.inspectDocument).toHaveBeenCalledTimes(1),
@@ -58,6 +62,7 @@ const stages: Stage[] = [
     hold(h) {
       const pending = deferred<unknown>();
       h.port.inspectDocument.mockResolvedValueOnce(probe).mockReturnValueOnce(pending.promise);
+
       return {
         release: () => pending.resolve(probe),
         assertReached: () => expect(h.port.inspectDocument).toHaveBeenCalledTimes(2),
@@ -69,6 +74,7 @@ const stages: Stage[] = [
     hold(h) {
       const pending = deferred<unknown>();
       h.port.selectedTab.mockResolvedValueOnce(tab).mockReturnValueOnce(pending.promise);
+
       return {
         release: () => pending.resolve(tab),
         assertReached: () => expect(h.port.selectedTab).toHaveBeenCalledTimes(2),
@@ -80,6 +86,7 @@ const stages: Stage[] = [
     hold(h) {
       const pending = deferred<boolean>();
       h.port.hasPermission.mockResolvedValueOnce(true).mockReturnValueOnce(pending.promise);
+
       return {
         release: () => pending.resolve(true),
         assertReached: () => expect(h.port.hasPermission).toHaveBeenCalledTimes(2),
@@ -91,6 +98,7 @@ const stages: Stage[] = [
     hold(h) {
       const pending = deferred<number | null>();
       h.port.ownerWindow.mockResolvedValueOnce(3).mockReturnValueOnce(pending.promise);
+
       return {
         release: () => pending.resolve(3),
         assertReached: () => expect(h.port.ownerWindow).toHaveBeenCalledTimes(2),
@@ -120,10 +128,12 @@ describe('discard at every asynchronous broker boundary', () => {
       const reply = h.connect();
       await vi.advanceTimersByTimeAsync(0);
       pending.assertReached();
+
       if (cause === 'cancel')
         h.broker.receive({ operation: 'cancel', requestId: 'fiction-request-one' });
       else if (cause === 'timeout') await vi.advanceTimersByTimeAsync(operationTimeoutMs);
       else h.broker.invalidateAll('permission-needed');
+
       expect((await reply).status).toBe(
         cause === 'cancel' ? 'cancelled' : cause === 'timeout' ? 'timeout' : 'permission-needed',
       );
@@ -235,6 +245,7 @@ describe('broker isolation, recovery and invalidation order', () => {
       h.port,
       (message) => {
         messages.push(message);
+
         if (message.kind === 'reply') next.resolve(message);
       },
       () => {},

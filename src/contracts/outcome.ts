@@ -81,6 +81,7 @@ export type ProviderOutcome = v.InferOutput<typeof ProviderOutcomeSchema>;
 
 export function providerOutcomeSchemaFor(requestInput: ProviderRequest, verifiers: LinkVerifiers) {
   const request = requireValid(ProviderRequestSchema, requestInput);
+
   return v.pipe(
     ProviderOutcomeSchema,
     v.check(
@@ -116,6 +117,7 @@ export const SearchOutcomeSchema = v.pipe(
     const candidates = aggregate.outcomes.flatMap((outcome) =>
       outcome.status === 'success' ? outcome.candidates : [],
     );
+
     return (
       unique(candidates.map((candidate) => candidate.id)) &&
       unique(candidates.map(conversationKey)) &&
@@ -125,10 +127,14 @@ export const SearchOutcomeSchema = v.pipe(
   v.check((aggregate) => {
     const successes = aggregate.outcomes.filter((outcome) => outcome.status === 'success').length;
     const allCancelled = aggregate.outcomes.every((outcome) => outcome.status === 'cancelled');
+
     if (aggregate.state === 'cancelled') return allCancelled && aggregate.results.length === 0;
+
     if (aggregate.state === 'failure') return successes === 0 && !allCancelled;
+
     if (aggregate.state === 'partial')
       return successes > 0 && successes < aggregate.outcomes.length;
+
     return successes === aggregate.outcomes.length;
   }, 'Terminal state must reflect actual provider success/failure.'),
   v.check((aggregate) => {
@@ -136,6 +142,7 @@ export const SearchOutcomeSchema = v.pipe(
     const reasons = aggregate.outcomes.flatMap((outcome) =>
       outcome.status === 'success' ? outcome.coverage.reasons : ['provider-failure' as const],
     );
+
     return (
       reasons.every((reason) => aggregate.coverage.reasons.includes(reason)) &&
       (!failures || aggregate.coverage.extent !== 'complete')
@@ -147,6 +154,7 @@ export type SearchOutcome = v.InferOutput<typeof SearchOutcomeSchema>;
 
 export function searchOutcomeSchemaFor(requestInput: SearchRequest, verifiers: LinkVerifiers) {
   const request = requireValid(SearchRequestSchema, requestInput);
+
   return v.pipe(
     SearchOutcomeSchema,
     v.check(
@@ -163,6 +171,7 @@ export function searchOutcomeSchemaFor(requestInput: SearchRequest, verifiers: L
       const selected = new Set(aggregate.results);
       const unknownDates =
         request.query.dateRange && candidates.some((candidate) => !candidate.date);
+
       return (
         candidates.every((candidate) => acceptsOriginalLink(candidate, verifiers)) &&
         candidates.every(

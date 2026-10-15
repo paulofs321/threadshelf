@@ -22,13 +22,16 @@ export function deferred<T>() {
   let resolve: (value: T) => void = () => {
     throw new Error('Uninitialized deferred.');
   };
+
   let reject: (reason?: unknown) => void = () => {
     throw new Error('Uninitialized deferred.');
   };
+
   const promise = new Promise<T>((done, fail) => {
     resolve = done;
     reject = fail;
   });
+
   return { promise, resolve, reject };
 }
 
@@ -47,26 +50,33 @@ export function brokerHarness(panel = 'one') {
     port,
     (message) => {
       messages.push(message);
+
       if (message.kind === 'reply') replies.get(message.requestId)?.(message);
     },
     close,
     () => `fiction-panel-${panel}-partition-${++counter}`,
   );
+
   function replyFor(requestId: string) {
     const next = deferred<AccessReply>();
     replies.set(requestId, next.resolve);
+
     return next.promise;
   }
+
   async function connect(requestId = 'fiction-request-one') {
     const reply = replyFor(requestId);
     broker.receive({ operation: 'connect', provider: 'chatgpt', requestId });
+
     return reply;
   }
+
   return { broker, port, messages, close, replyFor, connect };
 }
 
 export function event<Args extends unknown[]>() {
   const listeners = new Set<(...args: Args) => void>();
+
   return {
     addListener: vi.fn((listener: (...args: Args) => void) => {
       listeners.add(listener);
@@ -85,6 +95,8 @@ export function event<Args extends unknown[]>() {
 
 export async function selected(harness: ReturnType<typeof brokerHarness>) {
   const reply = await harness.connect();
+
   if (reply.status !== 'selected') throw new Error('Expected synthetic selection.');
+
   return reply.scope;
 }

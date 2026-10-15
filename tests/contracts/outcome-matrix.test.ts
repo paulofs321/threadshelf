@@ -23,6 +23,7 @@ const failures = [
   'interrupted',
 ] as const;
 const statuses = ['success', ...failures] as const;
+
 function outcome(status: ProviderOutcome['status'], scope: typeof chatScope) {
   return status === 'success'
     ? {
@@ -68,10 +69,12 @@ describe('aggregate completion truth table for every provider status', () => {
           : { extent: 'unknown', reasons: ['provider-failure'] },
     };
     expect(validate(schema, aggregate).ok).toBe(true);
+
     for (const alternative of ['success', 'partial', 'failure', 'cancelled']) {
       if (alternative !== state)
         expect(validate(schema, { ...aggregate, state: alternative }).ok).toBe(false);
     }
+
     if (state !== 'success')
       expect(
         validate(schema, { ...aggregate, coverage: { extent: 'complete', reasons: [] } }).ok,
@@ -128,8 +131,10 @@ describe('coverage and retry-hint integrity', () => {
     const schema = providerOutcomeSchemaFor(chatRequest, linkVerifiers);
     const input = outcome('rate-limited', chatScope);
     expect(requireValid(schema, input)).not.toHaveProperty('retryAfterMs');
+
     for (const retryAfterMs of [0, limits.retryAfterMs])
       expect(validate(schema, { ...input, retryAfterMs }).ok).toBe(true);
+
     for (const retryAfterMs of [undefined, null, NaN, '100', limits.retryAfterMs + 1])
       expect(validate(schema, { ...input, retryAfterMs }).ok).toBe(false);
   });

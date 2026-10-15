@@ -49,23 +49,35 @@ export class AccessBroker {
 
   receive(input: unknown): void {
     if (this.closed) return;
+
     const parsed = validate(AccessRequestSchema, input);
+
     if (!parsed.ok) return this.close();
+
     const request = parsed.value;
+
     if (request.operation === 'cancel') {
       const pending = this.pending.get(request.requestId);
+
       if (pending) this.invalidate(pending.request.provider, 'scope-changed', 'cancelled');
+
       return;
     }
+
     if (this.seen.has(request.requestId) || this.seen.size >= maximumRequestsPerPort) {
       return this.close();
     }
+
     this.seen.add(request.requestId);
+
     if ([...this.pending.values()].some((item) => item.request.provider === request.provider)) {
       this.send({ kind: 'reply', requestId: request.requestId, status: 'busy' });
+
       return;
     }
+
     const selection = this.selected.get(request.provider);
+
     if (
       request.operation !== 'connect' &&
       (!selection ||
@@ -73,13 +85,17 @@ export class AccessBroker {
         !sameScope(selection.scope, request.scope))
     ) {
       this.send({ kind: 'reply', requestId: request.requestId, status: 'scope-changed' });
+
       return;
     }
+
     if (request.operation === 'disconnect') {
       this.invalidate(request.provider, 'scope-changed');
       this.send({ kind: 'reply', requestId: request.requestId, status: 'disconnected' });
+
       return;
     }
+
     // Unknown identity never shares an earlier operation's partition, even in the same document.
     this.selected.delete(request.provider);
     const generation = this.nextGeneration(request.provider);
@@ -109,9 +125,11 @@ export class AccessBroker {
       (item) => item.request.provider === provider,
     );
     const generation = this.nextGeneration(provider);
+
     // Clear displayed scope before publishing any terminal reply.
     if (hadSelection || operations.length)
       this.send({ kind: 'invalidated', provider, status, generation });
+
     for (const item of operations) this.fail(item, pendingStatus);
   }
 
@@ -136,11 +154,14 @@ export class AccessBroker {
 
   close(): void {
     if (this.closed) return;
+
     this.closed = true;
+
     for (const item of this.pending.values()) {
       clearTimeout(item.timer);
       item.controller.abort();
     }
+
     this.pending.clear();
     this.selected.clear();
     this.seen.clear();
@@ -150,6 +171,7 @@ export class AccessBroker {
   private nextGeneration(provider: ProviderId): number {
     const generation = (this.generations.get(provider) ?? 0) + 1;
     this.generations.set(provider, generation);
+
     return generation;
   }
 
@@ -164,6 +186,7 @@ export class AccessBroker {
 
   private fail(item: Pending, status: FailureStatus): void {
     if (this.pending.get(item.request.requestId) !== item) return;
+
     this.pending.delete(item.request.requestId);
     clearTimeout(item.timer);
     item.controller.abort();
@@ -173,12 +196,19 @@ export class AccessBroker {
   private async run(item: Pending, previous?: Selection): Promise<void> {
     const provider = item.request.provider;
     const windowId = await this.port.ownerWindow();
+
     if (!this.current(item)) return;
+
     if (windowId === null) return this.fail(item, 'interrupted');
+
     if (!(await this.port.hasPermission(provider))) return this.fail(item, 'permission-needed');
+
     if (!this.current(item)) return;
+
     const tabResult = validate(SelectedTabSchema, await this.port.selectedTab(windowId));
+
     if (!this.current(item)) return;
+
     if (
       !tabResult.ok ||
       tabResult.value.windowId !== windowId ||
@@ -186,28 +216,40 @@ export class AccessBroker {
     ) {
       return this.fail(item, 'unavailable');
     }
+
     const tab = tabResult.value;
     item.tabId = tab.id;
+
     if (previous && (previous.tab.id !== tab.id || previous.tab.url !== tab.url)) {
       return this.fail(item, 'scope-changed');
     }
+
     const target: ProbeTarget = previous
       ? { tabId: tab.id, documentId: previous.documentId }
       : { tabId: tab.id };
     const probe = await this.port.inspectDocument(provider, target, item.controller.signal);
+
     if (!this.current(item)) return;
+
     const documentId = validateProbe(provider, probe, previous?.documentId);
+
     if (!documentId) return this.fail(item, 'scope-changed');
+
     // Pin the second check to Chrome's document ID, including same-URL reloads/redirects.
     const confirmation = await this.port.inspectDocument(
       provider,
       { tabId: tab.id, documentId },
       item.controller.signal,
     );
+
     if (!this.current(item)) return;
+
     if (!validateProbe(provider, confirmation, documentId)) return this.fail(item, 'scope-changed');
+
     const after = validate(SelectedTabSchema, await this.port.selectedTab(windowId));
+
     if (!this.current(item)) return;
+
     if (
       !after.ok ||
       after.value.id !== tab.id ||
@@ -216,10 +258,15 @@ export class AccessBroker {
     ) {
       return this.fail(item, 'scope-changed');
     }
+
     if (!(await this.port.hasPermission(provider))) return this.fail(item, 'permission-needed');
+
     if (!this.current(item)) return;
+
     if ((await this.port.ownerWindow()) !== windowId) return this.fail(item, 'interrupted');
+
     if (!this.current(item)) return;
+
     const scope = requireValid(EphemeralScopeSchema, {
       kind: 'ephemeral',
       provider,

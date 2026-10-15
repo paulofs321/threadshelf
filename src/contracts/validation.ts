@@ -9,6 +9,7 @@ export function validate<T extends v.GenericSchema>(
 ): ValidationResult<v.InferOutput<T>> {
   try {
     const result = v.safeParse(schema, input, { abortEarly: true, abortPipeEarly: true });
+
     return result.success
       ? { ok: true, value: result.output }
       : { ok: false, code: 'invalid-contract' };
@@ -23,6 +24,8 @@ export function requireValid<T extends v.GenericSchema>(
   input: unknown,
 ): v.InferOutput<T> {
   const result = validate(schema, input);
+
   if (!result.ok) throw new Error('Invalid contract context.');
+
   return result.value;
 }

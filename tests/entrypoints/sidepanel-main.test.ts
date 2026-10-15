@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 const root = vi.hoisted(() => ({ render: vi.fn() }));
 const createRoot = vi.hoisted(() => vi.fn(() => root));
 vi.mock('react-dom/client', () => ({ createRoot }));

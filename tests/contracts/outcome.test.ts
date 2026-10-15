@@ -38,6 +38,7 @@ describe('provider outcomes', () => {
   it('keeps successful empty results separate from failure', () => {
     const empty = requireValid(schema, { ...chatSuccess, candidates: [] });
     expect(empty.status).toBe('success');
+
     if (empty.status === 'success') expect(empty.candidates).toEqual([]);
   });
 
@@ -83,12 +84,14 @@ describe('provider outcomes', () => {
       { ...chatScope, workspacePartition: 'fictional-other-workspace' },
     ];
     expect(validate(schema, { ...chatSuccess, requestId: 'fictional-old-request' }).ok).toBe(false);
+
     for (const scope of scopes) {
       expect(validate(schema, { ...chatSuccess, scope, candidates: [] }).ok).toBe(false);
       expect(
         validate(schema, { ...chatSuccess, candidates: [{ ...chatCandidate, scope }] }).ok,
       ).toBe(false);
     }
+
     expect(validate(schema, { ...chatSuccess, candidates: [googleCandidate] }).ok).toBe(false);
   });
 

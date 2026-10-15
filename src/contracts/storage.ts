@@ -21,6 +21,7 @@ export const CacheEntrySchema = v.pipe(
   v.check((entry) => sameScope(entry.key.scope, entry.candidate.scope), 'Cache scope mismatch.'),
   v.check((entry) => {
     const ttl = Date.parse(entry.expiresAt) - Date.parse(entry.cachedAt);
+
     return ttl > 0 && ttl <= limits.cacheTtlMs;
   }, 'Cache lifetime must be positive and bounded.'),
 );
@@ -36,6 +37,7 @@ export function cacheEntrySchemaFor(
 ) {
   const scope = requireValid(VerifiedScopeSchema, scopeInput);
   const now = requireValid(TimestampSchema, nowInput);
+
   return v.pipe(
     CacheEntrySchema,
     v.check(

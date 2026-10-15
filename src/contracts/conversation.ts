@@ -47,6 +47,7 @@ export const CandidateSchema = v.pipe(
   ),
   v.check((candidate) => {
     const titles = candidate.evidence.filter((evidence) => evidence.source === 'title');
+
     return titles.length <= 1 && titles.every((evidence) => evidence.text === candidate.title);
   }, 'Title evidence must match the available title exactly.'),
 );
@@ -86,8 +87,11 @@ export type LinkVerifiers = Readonly<Partial<Record<ProviderId, OriginalLinkVeri
 
 export function acceptsOriginalLink(candidate: Candidate, verifiers: LinkVerifiers): boolean {
   if (candidate.originalUrl === undefined) return true;
+
   const verify = verifiers[candidate.scope.provider];
+
   if (!verify) return false;
+
   try {
     return verify(new URL(candidate.originalUrl), candidate.conversationId);
   } catch {

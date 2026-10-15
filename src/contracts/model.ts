@@ -60,12 +60,14 @@ export type ModelRanking = v.InferOutput<typeof ModelRankingSchema>;
 
 export function modelPlanSchemaFor(requestInput: SearchRequest) {
   const request = requireValid(SearchRequestSchema, requestInput);
+
   return v.pipe(
     ModelPlanSchema,
     v.check((plan) => {
       const date = request.query.dateRange;
       const proposedDate = plan.proposedDateRange;
       const providers = plan.proposedProviders;
+
       return (
         request.query.mode === 'description' &&
         plan.requestId === request.requestId &&
@@ -86,6 +88,7 @@ export function modelRankingSchemaFor(
 ) {
   const request = requireValid(SearchRequestSchema, requestInput);
   const candidates = requireValid(CandidateListSchema, candidateInput);
+
   if (
     !candidates.every(
       (candidate) =>
@@ -95,7 +98,9 @@ export function modelRankingSchemaFor(
   ) {
     throw new Error('Invalid contract context.');
   }
+
   const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+
   return v.pipe(
     ModelRankingSchema,
     v.check(
@@ -104,6 +109,7 @@ export function modelRankingSchemaFor(
         ranking.requestId === request.requestId &&
         ranking.selections.every((selection) => {
           const candidate = byId.get(selection.candidateId);
+
           return (
             candidate !== undefined &&
             selection.evidenceIds.every((id) =>

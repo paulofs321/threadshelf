@@ -16,8 +16,10 @@ function harness(freshId?: () => string) {
   const signal = new AbortController();
   const subscriber = vi.fn();
   client.subscribe(subscriber);
+
   return { client, connection, signal, subscriber };
 }
+
 function selection(
   requestId = 'fiction-request-1',
   generation = 1,
@@ -36,11 +38,14 @@ function selection(
     },
   };
 }
+
 async function connect(h: ReturnType<typeof harness>) {
   const promise = h.client.connect('chatgpt', h.signal.signal);
   h.connection.onMessage.emit(selection());
   const reply = await promise;
+
   if (reply.status !== 'selected') throw new Error('Expected synthetic selection.');
+
   return reply.scope;
 }
 
@@ -189,7 +194,9 @@ describe('panel-owned access lifecycle', () => {
     const inspect = h.client.inspect('chatgpt', scope, h.signal.signal);
     h.connection.onMessage.emit(selection('fiction-request-2', 2, 'fiction-fresh-partition'));
     const reply = await inspect;
+
     if (reply.status !== 'selected') throw new Error('Expected synthetic selection.');
+
     const disconnect = h.client.disconnectSelection('chatgpt', reply.scope, h.signal.signal);
     h.connection.onMessage.emit({
       kind: 'reply',
@@ -236,9 +243,11 @@ describe('panel-owned access lifecycle', () => {
         status: 'unavailable',
       });
     });
+
     for (let i = 2; i < maximumRequestsPerPort; i++) {
       expect((await h.client.connect('chatgpt', h.signal.signal)).status).toBe('unavailable');
     }
+
     expect((await h.client.connect('chatgpt', h.signal.signal)).status).toBe('interrupted');
     expect(h.client.isClosed).toBe(true);
   });

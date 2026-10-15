@@ -16,8 +16,10 @@ export function providerPermission(provider: ProviderId) {
 
 export function permittedUrl(provider: ProviderId, value: string): boolean {
   if (value.length > 2048) return false;
+
   try {
     const url = new URL(value);
+
     return (
       url.href === value &&
       url.origin === providerOrigins[provider] &&
@@ -35,8 +37,11 @@ export const PanelWindowSchema = v.object({ id: CountSchema, incognito: v.litera
 
 export function panelWindowId(name: string): number | null {
   const prefix = `${accessPortName}:window:`;
+
   if (name.length > 128 || !name.startsWith(prefix)) return null;
+
   const windowId = Number(name.slice(prefix.length));
+
   return validate(CountSchema, windowId).ok && name === panelPortName(windowId) ? windowId : null;
 }
 
@@ -58,6 +63,7 @@ const ProbeSchema = v.strictObject({
 
 export function validateProbe(provider: ProviderId, input: unknown, documentId?: string) {
   const result = validate(ProbeSchema, input);
+
   if (
     !result.ok ||
     result.value.result.origin !== providerOrigins[provider] ||
@@ -65,6 +71,7 @@ export function validateProbe(provider: ProviderId, input: unknown, documentId?:
   ) {
     return null;
   }
+
   return result.value.documentId;
 }
 
@@ -83,6 +90,7 @@ const PanelSenderSchema = v.object({
 export function validatePanelSender(input: unknown, extensionId: string) {
   const result = validate(PanelSenderSchema, input);
   const origin = `chrome-extension://${extensionId}`;
+
   return result.ok &&
     result.value.id === extensionId &&
     result.value.origin === origin &&
@@ -111,6 +119,7 @@ export function validatePanelContext(
 ): boolean {
   const result = validate(PanelContextSchema, input);
   const origin = `chrome-extension://${extensionId}`;
+
   return (
     result.ok &&
     result.value.documentId === documentId &&
