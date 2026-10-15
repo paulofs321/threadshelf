@@ -40,7 +40,9 @@ export class ChatGptProvider implements ProviderPort {
   private invalidated = false;
   private identity: string | undefined;
   private active: AbortController | undefined;
-  private retrieved: { requestId: string; candidates: Candidate[]; coverage: Coverage } | undefined;
+  private retrieved:
+    | { requestId: string; queryKey: string; candidates: Candidate[]; coverage: Coverage }
+    | undefined;
 
   constructor(
     scope: SessionScope,
@@ -112,6 +114,7 @@ export class ChatGptProvider implements ProviderPort {
 
         this.retrieved = {
           requestId: request.requestId,
+          queryKey: JSON.stringify(request.query),
           candidates: requireValid(CandidateListSchema, parsed.candidates),
           coverage: structuredClone(parsed.coverage),
         };
@@ -144,7 +147,11 @@ export class ChatGptProvider implements ProviderPort {
 
     const previous = this.retrieved;
 
-    if (!previous || previous.requestId !== request.requestId)
+    if (
+      !previous ||
+      previous.requestId !== request.requestId ||
+      previous.queryKey !== JSON.stringify(request.query)
+    )
       return this.outcome(request, { status: 'scope-changed' });
 
     const candidates = requireValid(CandidateListSchema, previous.candidates);
@@ -156,6 +163,10 @@ export class ChatGptProvider implements ProviderPort {
       );
 
       for (const candidate of candidates.slice(0, 3)) {
+        if (total >= limits.totalEvidence) break;
+
+        if (candidate.evidence.length >= limits.evidencePerCandidate) continue;
+
         const read = await this.read(
           { kind: 'messages', conversationId: candidate.conversationId },
           signal,
@@ -257,6 +268,8 @@ export class ChatGptProvider implements ProviderPort {
     const result = parsed.value;
 
     if (result.status === 'success') {
+      if (operation.kind === 'inspect' && result.body !== null) return { status: 'schema-changed' };
+
       if (
         result.identityBefore !== result.identityAfter ||
         (this.identity !== undefined && this.identity !== result.identityBefore)

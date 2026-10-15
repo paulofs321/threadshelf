@@ -70,7 +70,7 @@ function fromSeconds(value: number | null): Candidate['date'] {
 }
 
 function fromIso(value: string | null): Candidate['date'] {
-  // Only the observed UTC forms; no locale parsing or guessed midnight/date meaning.
+  // Only strict UTC forms; no locale parsing or guessed midnight/date meaning.
   if (
     value === null ||
     !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$/u.test(value)

@@ -35,6 +35,9 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
 
     if (!parsed.ok) return failure('unavailable');
 
+    if (expectedIdentity !== undefined && !/^[a-f0-9]{64}$/u.test(expectedIdentity))
+      return failure('unavailable');
+
     if (context.signal.aborted) return failure('cancelled');
 
     const controller = new AbortController();

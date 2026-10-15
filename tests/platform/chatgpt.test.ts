@@ -393,3 +393,9 @@ describe('concrete Chrome ChatGPT transport', () => {
     await flush();
   });
 });
+
+it('rejects malformed expected identity before allocating privileged work', async () => {
+  const { port } = setup();
+  expect(await port.read(operation, 'malformed', context())).toEqual({ status: 'unavailable' });
+  expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+});

@@ -12,10 +12,10 @@ npm run build
 
 `npm test` runs the same tests without coverage. Focused runs are available with
 `npm test -- tests/contracts`, `npm test -- tests/platform`, or
-`npm test -- tests/ui tests/entrypoints`. Run the unavailable ChatGPT boundary tests with
+`npm test -- tests/ui tests/entrypoints`. Run the ChatGPT adapter tests with
 `npm test -- tests/providers/chatgpt`.
 
-The suite contains 633 cases across 21 files, including 66 ChatGPT boundary cases. All fixtures are
+The suite contains 835 cases across 25 files, including 268 ChatGPT provider/host cases. All fixtures are
 handwritten fiction; tests perform no live provider or account reads. Contract/platform tests run in
 Node. UI tests use jsdom and React
 Testing Library, with explicit cleanup and mocked Chrome APIs. The entrypoint tests check toolbar
@@ -42,8 +42,8 @@ coverage source denominator. Type-only interfaces and re-export modules contain 
 statements. Missing test suites and `.only` cases fail.
 
 The configured minimums are 100% lines/functions, 98% statements and 97% branches across runtime
-source, with 100% in all four metrics for contract code. This review measured 100% lines/functions,
-98.90% statements and 97.48% branches. The ChatGPT boundary has 100% in all four metrics.
+source, with 100% in all four metrics for contract code. The final coverage run includes the
+connected ChatGPT adapter, isolated reader, wire parsers and Chrome host; thresholds are unchanged.
 Defensive short-circuit branches in the UI/transport are outside complete branch coverage.
 These measurements are regression guards, not evidence that a
 website authenticates the extension or that every possible failure has been reproduced.
@@ -56,8 +56,19 @@ Unexpected status keys such as `constructor`, `toString` and `__proto__` previou
 dictionary properties and produced empty text or a render error. The view now checks own dictionary
 entries and falls back to unavailable text; all three defective cases have regression coverage.
 
-Real Chrome toolbar/permission/context metadata, layout, keyboard activation, cookie/CORS behavior,
-account/workspace discovery and authenticated provider reads still require an unpacked-extension
-check. DOM/mocked tests do not establish those integrations or a full accessibility audit.
-The ChatGPT module contains no HTTP transport/parser, so its synthetic tests do not exercise real or
-simulated search response envelopes, HTTP failure mappings, provider identity or conversation evidence.
+ChatGPT live verification is separate from these synthetic tests. The actual unpacked extension
+returned five native-matching keyword results, four exact API text excerpts, a successful empty
+search, and a partial 50-row list in a personal account. An original link reopened in the same
+account, preserved the source, and its temporary tab closed. API text is not claimed to be identical
+to rendered message text; it has separate provenance.
+
+The ChatGPT suites cover malformed/missing/additive fields, invalid dates and URLs, duplicate IDs,
+active message branches, hidden/analysis/tool content, exact text and aggregate budgets; 401/403/429/
+5xx, MIME/JSON/UTF-8/redirect failures; server identity/account/workspace changes; request/query
+correlation, supersession, late replies, navigation, revocation, deadlines and cleanup. The isolated
+reader is tested after function serialization, and the concrete host checks independent Chrome
+frame/document metadata. Tests never read a real account or perform live provider requests.
+
+Actual panel sender acceptance, workspace support, tab-free behavior, pagination, full-history
+reach, and exhaustive live failure/lifecycle/accessibility behavior remain unverified. See the
+[adapter reference](chatgpt-adapter.md) for exact operation and evidence limits.

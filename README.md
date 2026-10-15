@@ -20,19 +20,19 @@ for one provider site and scripting, then checks its selected top-level document
 the sending panel, correlates requests, and clears access on navigation, revocation, cancellation,
 timeout, or worker interruption. Unknown identity receives a fresh ephemeral scope on every check.
 
-Selecting a site does not verify login or enable conversation access. Provider authentication,
-search, model inference, persistent storage, demo, and release packaging remain unimplemented.
-GitHub Actions checks locked installation, tests, lint, types, formatting, and the Chrome extension
-build on pull requests and pushes to `main`; the demo is not built by CI.
-The ChatGPT module implements an unavailable provider boundary with request validation, scope
-isolation, cancellation and invalidation; it performs no conversation reads and is not connected to
-the panel. Its availability diagnostic lists the missing live verification evidence.
-Actual unpacked-extension behavior and authenticated access are unverified; synthetic tests and
-builds establish code behavior only. shadcn/ui setup remains planned for the full search UI.
+Selecting a site checks browser context only. The ChatGPT adapter now implements authenticated
+keyword/list/message reads, runtime response parsing, exact evidence/link/date normalization,
+identity checks around reads, and explicit failures. Actual unpacked-extension verification passed
+for a personal account, including five native-matching keyword results, exact API message evidence,
+a zero-result query, and a bounded 50-conversation list. See the
+[ChatGPT adapter](docs/chatgpt-adapter.md) for architecture, verification, and capability limits.
 
-Earlier read-only website probes on October 13, 2026 observed search capability in both providers.
-Their internal interfaces are undocumented and may change. Request schemas and operation inside an
-actual extension still need verification; complete-history coverage is not established.
+The adapter is not yet wired into the panel: search orchestration and the full shadcn/ui search UI
+remain separate work. Workspaces, pagination, and complete-history coverage are unverified. Model
+inference, persistent storage, demo, and release packaging remain unimplemented. GitHub Actions runs
+locked installation, tests, lint, type/format checks, and the Chrome build on pull requests and
+pushes to `main`.
+The provider's internal website interfaces are undocumented and may change.
 
 ## Development
 
@@ -70,7 +70,7 @@ panel menu. Open the provider in the selected tab of that window, then click **C
 Chrome requests optional `scripting` and either `https://chatgpt.com/*` or `https://www.google.com/*`.
 Only `sidePanel` is required at installation. Google locale hosts and the Gemini app are unsupported.
 **Clear selection** releases the in-memory context; revoke granted site access in Chrome's extension
-settings. Incognito is disabled. No live browser smoke test is claimed. See
+settings. Incognito is disabled. Adapter transport verification is separate from panel UI acceptance. See
 [developer notes](docs/development.md) for permissions, protocol, and remaining verification.
 See the [technical foundation](docs/foundation.md) for the implemented architecture and
 [regression test matrix](docs/testing.md) for comprehensive failure coverage and its limits.

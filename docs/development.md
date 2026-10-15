@@ -2,23 +2,23 @@
 
 ## Current layout
 
-| Path                            | Role                                                              |
-| ------------------------------- | ----------------------------------------------------------------- |
-| `src/entrypoints/`              | WXT background and side panel entrypoints                         |
-| `src/ui/`                       | Injected React setup/status and connection controls               |
-| `src/contracts/`                | Normalized runtime schemas, validation helpers and ports          |
-| `src/platform/`                 | Selected-tab broker, context validation and access lifecycle      |
-| `src/providers/chatgpt/`        | Unavailable ChatGPT provider boundary and verification diagnostic |
-| `src/providers/google-ai-mode/` | Reserved for Google Search AI Mode transport and parsing          |
-| `src/search/`                   | Reserved for provider-independent search orchestration            |
-| `src/description/`              | Reserved for interpretation, ranking, and evidence validation     |
-| `src/storage/`                  | Reserved for isolated optional local storage                      |
-| `tests/contracts/`              | Synthetic contract and boundary regression tests                  |
-| `tests/platform/`               | Synthetic broker, panel client and Chrome API wiring tests        |
-| `tests/providers/chatgpt/`      | Synthetic unavailable-provider, validation and scope tests        |
-| `tests/fixtures/`               | Handwritten fictional normalized data and link policies           |
-| `demo/`                         | Reserved for the future synthetic static demo                     |
-| `public/`                       | Only deliberately public extension assets                         |
+| Path                            | Role                                                                       |
+| ------------------------------- | -------------------------------------------------------------------------- |
+| `src/entrypoints/`              | WXT background and side panel entrypoints                                  |
+| `src/ui/`                       | Injected React setup/status and connection controls                        |
+| `src/contracts/`                | Normalized runtime schemas, validation helpers and ports                   |
+| `src/platform/`                 | Selected-tab broker, context validation and access lifecycle               |
+| `src/providers/chatgpt/`        | Verified personal-account ChatGPT reads, normalization and identity checks |
+| `src/providers/google-ai-mode/` | Reserved for Google Search AI Mode transport and parsing                   |
+| `src/search/`                   | Reserved for provider-independent search orchestration                     |
+| `src/description/`              | Reserved for interpretation, ranking, and evidence validation              |
+| `src/storage/`                  | Reserved for isolated optional local storage                               |
+| `tests/contracts/`              | Synthetic contract and boundary regression tests                           |
+| `tests/platform/`               | Synthetic broker, panel client and Chrome API wiring tests                 |
+| `tests/providers/chatgpt/`      | Synthetic ChatGPT parser, transport, identity and scope tests              |
+| `tests/fixtures/`               | Handwritten fictional normalized data and link policies                    |
+| `demo/`                         | Reserved for the future synthetic static demo                              |
+| `public/`                       | Only deliberately public extension assets                                  |
 
 Empty directories contain `.gitkeep` files. They do not implement the reserved capability. Keep
 shared contracts, orchestration, and presentation independent of authenticated adapters so a future
@@ -183,8 +183,8 @@ messages cannot supply a window, tab, URL, header, body, or executable argument.
 | `disconnect`      | Request ID/provider/current scope; clears the in-memory selection                              |
 | `cancel`          | Existing request ID; aborts/discards pending work in that port                                 |
 
-Search/list/evidence operations are absent until their owning adapters establish actual transport
-and identity evidence. A `selected` reply always carries `session: 'unverified'`; it is neither a
+Search/list/evidence operations are absent from this setup-only runtime protocol. The ChatGPT
+adapter instead uses the trusted in-process document binding described below. A `selected` reply always carries `session: 'unverified'`; it is neither a
 `SessionOutcome` with authenticated readiness nor a successful provider search. Failures report
 permission-needed, unavailable, scope-changed, timeout, cancelled, interrupted, or busy, without
 private exception text or fabricated results. Panel reply validation checks provider/request IDs
@@ -211,68 +211,40 @@ Invalidation events carry generations; delayed cancellation/navigation events ca
 selection or cause its fresh reply to be discarded.
 
 Every document check creates a new opaque ephemeral partition/generation, including checks in the
-same document. There is no private-data cache or persistence. Same-document account/workspace
-switches and logout are not yet observed or verified; no account data is read and no verified scope
-is produced. Future adapters must establish identity around real reads and invalidate through the
-broker before any result is displayed or cached. Unknown identity cannot reuse an earlier check's
-data. A Chrome permission prompt itself cannot be cancelled by this code; cancelling prevents the
+same document. There is no private-data cache or persistence. These setup checks read no account
+data and do not verify same-document account/workspace switches or logout. The ChatGPT reader
+adds fresh identity checks around its own reads and rejects changed sessions. Its ephemeral scope
+does not enable reuse or persistence. A Chrome permission prompt itself cannot be cancelled by this code; cancelling prevents the
 subsequent broker operation and retry waits until that prompt settles.
 
-## ChatGPT provider boundary (partial implementation)
+## ChatGPT adapter
 
-`src/providers/chatgpt/adapter.ts` implements `ProviderPort` as `ChatGptProvider`, bound to a snapshot
-of one normalized ChatGPT scope. It is deliberately unavailable: current search/list/message wire
-schemas, account/workspace identity, original links, timestamps and actual extension authentication
-have not been established. There are no endpoint constants, inferred request fields, transport
-parsers, browser reads, enrichment or pagination in this module. It is not composed into the panel,
-and the platform operation allowlist has not been extended.
+`ChatGptProvider` implements keyword search, one bounded list response, and optional message
+enrichment through a trusted `ChatGptReadPort`. The no-port constructor stays unavailable.
+`createChatGptProvider(binding)` supplies the concrete Chrome host for a live
+`AccessBroker.bindSelectedDocument(scope)` capability. This is an in-process factory, not a new
+runtime URL/header/code operation, and it is not yet composed into the side panel.
 
-`availability.ts` exports a frozen diagnostic with `status: 'unavailable'`,
-`reason: 'verification-required'` and a frozen list of missing observations. It has no enable flag.
-A `selected` browser reply or a structurally valid `kind: 'verified'` input cannot unlock reads.
+The host pins the selected regular tab and Chrome document ID, checks permission/owning context
+before and after work, and invalidates interrupted reads. The isolated reader compares fresh server
+user/account identity around fixed same-origin requests. Authentication stays transient inside that
+reader; no token or raw identity leaves it. Personal accounts only, ephemeral scope, no persistence,
+no retries, no inferred pagination or complete-history claim.
 
-The adapter's implemented behavior is:
-
-| Call or condition                                              | Result                                                                                  |
-| -------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Construct with a valid ChatGPT scope                           | Snapshot the full scope; retain no query or conversation data                           |
-| Construct with malformed scope or another provider             | Throw the generic `Invalid contract context.` error                                     |
-| `inspectSession(context)`                                      | `unavailable` with the bound provider/generation; never `ready`                         |
-| `search(request, context)` with malformed or non-ChatGPT input | Reject with the same generic validation error                                           |
-| Valid search with an already aborted signal                    | `cancelled`                                                                             |
-| Valid search with a different scope, or after `invalidate()`   | `scope-changed`                                                                         |
-| Valid search matching the active bound scope                   | `unavailable`                                                                           |
-| `invalidate()`                                                 | Permanently retire that instance; subsequent session inspection reports `scope-changed` |
-
-Scope equality covers kind, provider, generation and either the ephemeral partition or both verified
-account/workspace partitions. Input validation precedes cancellation; for valid input cancellation
-takes precedence over scope failure. A cancelled session inspection remains unavailable because the
-shared session contract has no cancelled variant. Calls perform no asynchronous work internally,
-allocate no timers/listeners and initiate no network requests.
-
-Search failures carry only the caller's validated request ID, a fresh scope snapshot and the failure
-status. They contain no candidates, coverage, query text or raw exception details. Even a valid
-description request or maximum-length keyword stays unavailable. The adapter leaves explicit
-provider/date filters untouched. An aggregate containing only this unavailable outcome must be a
-failure with `provider-failure` coverage, rather than a successful empty result.
-
-The owner of a future composed adapter must call `invalidate()` when the selected context changes,
-discard its instance and obtain a fresh scope. This method does not observe Chrome events or detect
-same-document account changes itself. Consumers must still apply `providerOutcomeSchemaFor` against
-their current request/scope to reject obsolete replies. No active asynchronous provider read or
-verified identity lifecycle is implemented here.
-
-Tests under `tests/providers/chatgpt/` exercise the actual class through normalized handwritten
-inputs in `tests/fixtures/chatgpt/`. Those inputs are not ChatGPT transport fixtures. HTTP envelopes,
-redirects, 401/403/429/5xx mappings, native snippets, exact conversation evidence, link/date mappings,
-identity checks around reads and comparison with a native UI query remain unimplemented/unverified.
-The unavailable boundary makes no claim about full-history reach, archives or temporary chats.
+Wire schemas, original URL/date mapping, source provenance, evidence budgets, HTTP outcomes,
+cancellation and coverage rules are documented in the [ChatGPT adapter reference](chatgpt-adapter.md).
+Synthetic fixtures are handwritten. Actual extension proof is recorded separately from tests:
+ready session, five native-matching keyword results, four exact API excerpts, a successful empty
+query, and a partial 50-row list. Original-link reopen and same-account/source-preservation checks
+passed. Rendered message equivalence and live forced logout/workspace/error scenarios were not
+established. Search orchestration and panel UI remain separate tasks.
 
 ## Pending live Chrome acceptance
 
-No unpacked-extension probe was performed for this foundation. The available environment has no
-connected browser automation surface or isolated extension test browser. Installed API declarations,
-synthetic mocks, and generated-manifest inspection are separate evidence from a real Chrome run.
+The original access foundation was tested synthetically. The later ChatGPT adapter verification
+used a temporary trusted extension diagnostic with real Chrome APIs; it did not verify the actual
+side-panel sender handshake. Installed API declarations, mocks, and build checks remain separate
+evidence from browser acceptance. The existing panel still shows setup status.
 
 For a bounded manual check, load the production build, open the toolbar panel, connect one selected
 provider tab, and confirm the exact-site permission prompt and explicit unverified status. Check

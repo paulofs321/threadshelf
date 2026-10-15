@@ -5,7 +5,8 @@ Account/workspace partitions, conversation IDs, excerpts and timestamps are inve
 The `.invalid` URLs are reserved synthetic
 links, and their link policies simulate adapter validation without making network requests.
 
-These fixtures exercise normalized shared contracts. They contain no provider wire responses and
-prove no browser authentication, real provider endpoint behavior, model inference or storage support.
-`chatgpt/requests.ts` contains normalized scope/query inputs for the unavailable provider boundary;
-it deliberately defines no hypothetical ChatGPT response envelope or endpoint schema.
+Fixtures exercise normalized shared contracts and adapter-owned response structures. They prove no
+browser authentication, live endpoint availability, model inference, or persistence support.
+`chatgpt/requests.ts` defines fictional normalized scope/query inputs; `chatgpt/wire.ts` defines
+handwritten search/list/message/bootstrap shapes established by separate read-only verification.
+The deliberately fake credential is a test canary, never a live token or copied response.

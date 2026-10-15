@@ -335,3 +335,60 @@ it('deduplicates an API excerpt already present as exact native evidence', async
 
   expect(result.candidates[0]?.evidence).toHaveLength(2);
 });
+
+it('rejects enrichment when the query changes under a reused request ID', async () => {
+  const { provider, port, request } = harness();
+  await provider.search(request, context());
+  const changed = { ...request, query: { ...request.query, text: 'A different fictional query' } };
+  expect((await provider.enrich(changed, context())).status).toBe('scope-changed');
+  expect(port.read).toHaveBeenCalledTimes(1);
+});
+it('does not treat a malformed inspection body as a ready session', async () => {
+  const { provider, port } = harness();
+  port.read.mockResolvedValueOnce(readResult({ unexpected: true }));
+  expect((await provider.inspectSession(context())).status).toBe('unavailable');
+});
+it('stops new message reads when the total evidence budget is exhausted', async () => {
+  const { provider, port, request } = harness();
+  const rows = Array.from({ length: 30 }, (_, n) => ({
+    ...searchItem(`${n.toString(16).padStart(8, '0')}-1111-1111-1111-111111111111`),
+    snippet: 'x'.repeat(2_000),
+  }));
+  port.read.mockResolvedValueOnce(readResult(searchBody(rows)));
+  await provider.search(request, context());
+  port.read.mockImplementation(async (op) => {
+    const body = messagesBody(op.kind === 'messages' ? op.conversationId : conversationId);
+    body.mapping.answer.message.content.parts = Array.from({ length: 4 }, (_, n) =>
+      `${n}`.repeat(2_000),
+    );
+
+    return readResult(body);
+  });
+  const result = await provider.enrich(request, context());
+
+  if (result.status !== 'success') throw Error('Expected success');
+
+  expect(
+    result.candidates.reduce(
+      (sum, c) => sum + c.evidence.reduce((n, e) => n + e.text.length, 0),
+      0,
+    ),
+  ).toBe(64_000);
+  expect(port.read).toHaveBeenCalledTimes(2);
+});
+it('skips candidates that already contain the maximum evidence count', async () => {
+  const { provider, port, request } = harness();
+  port.read.mockResolvedValueOnce(
+    readResult(
+      searchBody(
+        Array.from({ length: 8 }, (_, n) => ({
+          ...searchItem(),
+          snippet: `Existing snippet ${n}`,
+        })),
+      ),
+    ),
+  );
+  await provider.search(request, context());
+  expect((await provider.enrich(request, context())).status).toBe('success');
+  expect(port.read).toHaveBeenCalledTimes(1);
+});

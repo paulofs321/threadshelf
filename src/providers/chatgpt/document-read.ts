@@ -183,7 +183,7 @@ export async function readChatGptDocument(
   }
 
   function bootstrap(doc: Document) {
-    const sessions: { userId: string; accountId: string; token: string }[] = [];
+    const sessions: { userId: string; accountId: string; token: string; structure: string }[] = [];
 
     for (const script of doc.querySelectorAll('script[type="application/json"]')) {
       if ((script.textContent?.length ?? 0) > maximum) stop(failed('schema-changed'));
@@ -200,9 +200,8 @@ export async function readChatGptDocument(
 
       if (!session) continue;
 
-      if (session.account?.structure !== 'personal') stop(failed('unavailable'));
-
       if (
+        typeof session.account?.structure !== 'string' ||
         typeof session.user?.id !== 'string' ||
         !session.user.id ||
         session.user.id.length > 256 ||
@@ -219,22 +218,44 @@ export async function readChatGptDocument(
         userId: session.user.id,
         accountId: session.account.id,
         token: session.accessToken,
+        structure: session.account.structure,
       });
     }
 
     if (sessions.length !== 1) return stop(failed('schema-changed'));
 
-    return sessions[0] as { userId: string; accountId: string; token: string };
+    return sessions[0] as { userId: string; accountId: string; token: string; structure: string };
   }
+
+  let observedIdentity: string | undefined;
 
   async function fresh() {
     const current = bootstrap(document);
+
+    if (current.structure !== 'personal')
+      stop(
+        failed(
+          expectedIdentity !== undefined || observedIdentity !== undefined
+            ? 'scope-changed'
+            : 'unavailable',
+        ),
+      );
+
     const html = await get('https://chatgpt.com/', 'html');
     check();
     const server = bootstrap(new DOMParser().parseFromString(html, 'text/html'));
 
     if (current.userId !== server.userId || current.accountId !== server.accountId)
       stop(failed('scope-changed'));
+
+    if (server.structure !== 'personal')
+      stop(
+        failed(
+          expectedIdentity !== undefined || observedIdentity !== undefined
+            ? 'scope-changed'
+            : 'unavailable',
+        ),
+      );
 
     const hash = await crypto.subtle.digest(
       'SHA-256',
@@ -246,6 +267,8 @@ export async function readChatGptDocument(
 
     if (expectedIdentity !== undefined && expectedIdentity !== identity)
       stop(failed('scope-changed'));
+
+    observedIdentity ??= identity;
 
     return { identity, token: server.token };
   }

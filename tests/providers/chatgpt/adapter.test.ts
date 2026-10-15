@@ -23,14 +23,8 @@ describe('ChatGPT verification gate', () => {
   it('publishes concrete missing observations without an enable switch', () => {
     expect(chatGptAvailability).toEqual({
       status: 'unavailable',
-      reason: 'verification-required',
-      missingEvidence: [
-        'selected-extension-context',
-        'account-workspace-identity',
-        'search-list-evidence-contracts',
-        'original-links-and-timestamps',
-        'failure-and-coverage-semantics',
-      ],
+      reason: 'connection-required',
+      missingEvidence: ['selected-extension-context', 'account-workspace-identity'],
     });
     expect(Object.isFrozen(chatGptAvailability)).toBe(true);
     expect(Object.isFrozen(chatGptAvailability.missingEvidence)).toBe(true);

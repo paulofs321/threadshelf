@@ -312,8 +312,7 @@ describe('isolated ChatGPT session/read boundary', () => {
     if (kind === 'bad-server-session') fetchMock.mockResolvedValueOnce(html({ session: {} }));
 
     expect(await read()).toEqual({
-      status:
-        kind === 'workspace' || kind === 'bad-server-session' ? 'unavailable' : 'schema-changed',
+      status: kind === 'workspace' ? 'unavailable' : 'schema-changed',
     });
   });
   it.each(['user', 'account', 'after-read', 'navigation', 'expected'])(
@@ -437,3 +436,36 @@ it('maps a network stream failure to unavailable, preserving no error text', asy
   );
   expect(await read()).toEqual({ status: 'unavailable' });
 });
+
+it.each(['during-read', 'known-selection'])(
+  'invalidates a switch to an unsupported workspace: %s',
+  async (kind) => {
+    const changed = bootstrap();
+    changed.session.account.structure = 'workspace';
+
+    if (kind === 'known-selection') {
+      document.body.innerHTML = bootstrapHtml(changed);
+      expect(await read(operation, 'a'.repeat(64))).toEqual({ status: 'scope-changed' });
+    } else {
+      fetchMock.mockImplementation(async (raw) => {
+        if (new URL(String(raw)).pathname === '/') return html();
+
+        document.body.innerHTML = bootstrapHtml(changed);
+
+        return json();
+      });
+      expect(await read()).toEqual({ status: 'scope-changed' });
+    }
+  },
+);
+it.each([false, true])(
+  'fails closed for a server workspace outside the supported scope (known=%s)',
+  async (known) => {
+    const changed = bootstrap();
+    changed.session.account.structure = 'workspace';
+    fetchMock.mockResolvedValueOnce(html(changed));
+    expect(await read(operation, known ? 'a'.repeat(64) : undefined)).toEqual({
+      status: known ? 'scope-changed' : 'unavailable',
+    });
+  },
+);
