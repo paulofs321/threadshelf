@@ -1,9 +1,10 @@
 # Technical foundation
 
 ThreadShelf currently has a validated data model and a bounded Chrome document-access layer.
-Conversation retrieval, provider identity discovery, search orchestration, model inference and
-persistent storage remain unavailable. Selecting a provider site checks browser context only and
-always reports an unverified session.
+The [ChatGPT adapter](chatgpt-adapter.md) adds verified personal-account reads and transient identity
+checks. Search orchestration, model inference and persistent storage remain unavailable. The
+current panel still checks browser context only and reports an unverified selection; it does not
+yet invoke the adapter.
 
 ## Shared contracts
 
@@ -62,8 +63,8 @@ credentials, session identity or provider endpoint is read by this function.
 
 Each successful check replaces the previous unknown scope with a fresh ephemeral partition and
 generation. There is no cache or persistence. Account/workspace switches and logout within the
-same document are not yet observed; future adapters must establish identity around actual reads
-before results can be displayed or stored.
+same document are not observed by these setup-only checks. The ChatGPT adapter separately
+verifies fresh identity around actual reads; unknown durable identity still prohibits persistence.
 
 The worker permits one pending operation per provider, four panel brokers and 256 unique IDs per
 port. It sets a 10-second deadline. The panel client independently sets a 12-second deadline so a
@@ -86,7 +87,8 @@ the separate disconnect-error listener retained during unmount and inherited sta
 errors in the shared view. See [test coverage](testing.md) for
 commands, the test matrix and measured coverage.
 
-All automated Chrome interactions use synthetic metadata or mocks. Real unpacked-extension
-authentication/context behavior remains unverified. Provider transports, original conversation
-URL/date mapping, reliable account/workspace identity and history coverage require separate live
-evidence before conversation search can be implemented.
+Automated tests use synthetic metadata and mocked Chrome APIs. Separate read-only verification
+established personal-account ChatGPT transport, identity checks, original links, dates and exact
+API evidence in an actual unpacked extension. The [adapter reference](chatgpt-adapter.md) records
+that proof and its limits. Side-panel sender acceptance, workspaces, pagination and full-history
+coverage remain separate from the verified adapter behavior.

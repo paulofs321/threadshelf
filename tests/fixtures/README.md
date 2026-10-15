@@ -1,8 +1,12 @@
 # Synthetic fixtures
 
-All fixtures are handwritten fiction about a floating library. Account/workspace partitions,
-conversation IDs, excerpts and timestamps are invented. The `.invalid` URLs are reserved synthetic
+All fixtures are handwritten fiction about a floating library or an imaginary clockwork orchard.
+Account/workspace partitions, conversation IDs, excerpts and timestamps are invented.
+The `.invalid` URLs are reserved synthetic
 links, and their link policies simulate adapter validation without making network requests.
 
-These fixtures exercise normalized shared contracts. They contain no provider wire responses and
-prove no browser authentication, real provider endpoint behavior, model inference or storage support.
+Fixtures exercise normalized shared contracts and adapter-owned response structures. They prove no
+browser authentication, live endpoint availability, model inference, or persistence support.
+`chatgpt/requests.ts` defines fictional normalized scope/query inputs; `chatgpt/wire.ts` defines
+handwritten search/list/message/bootstrap shapes established by separate read-only verification.
+The deliberately fake credential is a test canary, never a live token or copied response.
