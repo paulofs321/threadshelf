@@ -21,7 +21,9 @@ the sending panel, correlates requests, and clears access on navigation, revocat
 timeout, or worker interruption. Unknown identity receives a fresh ephemeral scope on every check.
 
 Selecting a site does not verify login or enable conversation access. Provider authentication,
-search, model inference, persistent storage, CI, demo, and release packaging remain unimplemented.
+search, model inference, persistent storage, demo, and release packaging remain unimplemented.
+GitHub Actions checks locked installation, tests, lint, types, formatting, and the Chrome extension
+build on pull requests and pushes to `main`; the demo is not built by CI.
 Actual unpacked-extension behavior and authenticated access are unverified; synthetic tests and
 builds establish code behavior only. shadcn/ui setup remains planned for the full search UI.
 
@@ -82,5 +84,5 @@ download are required. Keyword/topic fallback will be explicit. Hosted processin
 opt-in explanation of which excerpts leave the browser and separate infrastructure; it is not enabled.
 
 The future static demo will use fictional conversations and share suitable UI/search code without
-provider access or private storage. Extension ZIP packaging, GitHub Pages readiness, and CI are
+provider access or private storage. Extension ZIP packaging and GitHub Pages readiness remain
 planned. Public demo deployment and store submission remain future actions.

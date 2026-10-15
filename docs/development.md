@@ -49,8 +49,10 @@ uses `tests/**/*.test.{ts,tsx}` with explicit imports. Contract/platform suites 
 suites opt into jsdom with React Testing Library and explicit teardown. No provider/network access is
 needed. Missing suites and focused `.only` tests fail. These checks prove contracts and access
 boundary behavior using handwritten fictional metadata and injected/mocked Chrome APIs. They do
-not establish actual installed-extension behavior or authenticated provider access. Demo, CI and
-ZIP commands remain planned.
+not establish actual installed-extension behavior or authenticated provider access. GitHub Actions
+runs the locked install, tests, lint, type/format checks, and Chrome extension build on pull requests
+and pushes to `main`. It does not upload artifacts or build the planned demo. ZIP commands remain
+planned.
 See [testing](testing.md) for the complete defective-scenario matrix, coverage thresholds and ignored
 reports, and [technical foundation](foundation.md) for the implemented data and request flow.
 
