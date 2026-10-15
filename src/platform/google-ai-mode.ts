@@ -21,7 +21,7 @@ import type {
 import { verifyGoogleOriginalLink } from '../providers/google-ai-mode/wire';
 import type { SelectedDocumentBinding } from './broker';
 import { inspectSelectedDocument } from './document-probe';
-import { providerPermission, validateProbe } from './policy';
+import { providerOrigins, providerPermission, validateProbe } from './policy';
 
 type ReadResult = v.InferOutput<typeof GoogleReadResultSchema>;
 const failure = (status: Exclude<ReadResult['status'], 'success'>): ReadResult => ({ status });
@@ -326,7 +326,15 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
     const replaced = (_added: number, removed: number) => changed(removed);
     const removed = (id: number) => changed(id);
     const activated = () => stop('scope-changed');
-    const permission = () => stop('permission-needed');
+
+    const permission = (removed: { permissions?: string[]; origins?: string[] }) => {
+      if (
+        removed.permissions?.includes('scripting') ||
+        removed.origins?.includes(`${providerOrigins['google-ai-mode']}/*`)
+      )
+        stop('permission-needed');
+    };
+
     const timer = setTimeout(() => stop('timeout'), 9500);
     context.signal.addEventListener('abort', cancel, { once: true });
     browser.tabs.onUpdated.addListener(changed);
