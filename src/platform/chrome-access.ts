@@ -20,7 +20,6 @@ export function registerChromeAccess(): void {
     const needsLookup = documentId === undefined;
     const windowId = panelWindowId(connection.name);
 
-
     if (windowId === null || !sender || brokers.size >= 4) {
       connection.disconnect();
 
@@ -53,6 +52,7 @@ export function registerChromeAccess(): void {
         )
           return null;
         documentId = candidateId;
+
         return windowId;
       },
       hasPermission: (provider) => browser.permissions.contains(providerPermission(provider)),

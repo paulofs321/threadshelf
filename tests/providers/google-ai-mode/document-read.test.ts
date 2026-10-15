@@ -244,6 +244,7 @@ describe('self-contained Google document reads', () => {
     });
     fetchMock.mockImplementationOnce(async () => {
       vi.stubGlobal('location', new URL('https://www.google.com/search?udm=50&mtid=changed'));
+
       return identity();
     });
     expect(await readGoogleDocument({ ...input(), operation })).toEqual({

@@ -65,6 +65,7 @@ export class GoogleAiModeProvider implements ProviderPort {
           generation: this.selectedScope.generation,
         };
     }
+
     return {
       status: this.invalidated ? 'scope-changed' : 'unavailable',
       provider: this.provider,
@@ -102,14 +103,17 @@ export class GoogleAiModeProvider implements ProviderPort {
     if (!result.response || result.rendered !== undefined)
       return this.failure(request, 'schema-changed');
     const failure = googleHttpFailure(result.response, this.options.now?.() ?? Date.now());
+
     if (failure) {
       if (failure.status === 'login-expired') this.invalidate();
+
       return requireValid(ProviderOutcomeSchema, {
         requestId: request.requestId,
         scope: request.scope,
         ...failure,
       });
     }
+
     try {
       const parsed = parseGoogleRecords(
         result.response.body,
@@ -125,6 +129,7 @@ export class GoogleAiModeProvider implements ProviderPort {
       for (const candidate of parsed.candidates)
         this.candidates.set(candidate.conversationId, requireValid(CandidateSchema, candidate));
       this.candidateRequestKey = JSON.stringify([request.requestId, request.query]);
+
       return outcome;
     } catch {
       return this.failure(request, 'schema-changed');
@@ -153,12 +158,14 @@ export class GoogleAiModeProvider implements ProviderPort {
     if (!result.rendered || result.response !== undefined)
       return this.failure(request, 'schema-changed');
     const enriched = requireValid(CandidateSchema, candidate);
+
     for (const [index, text] of result.rendered.entries()) {
       if (enriched.evidence.length >= limits.evidencePerCandidate) break;
       enriched.evidence.push(
         requireValid(EvidenceSchema, { id: `rendered-${index}`, text, source: 'rendered-message' }),
       );
     }
+
     return requireValid(
       providerOutcomeSchemaFor(request, { 'google-ai-mode': verifyGoogleOriginalLink }),
       {
@@ -215,6 +222,7 @@ export class GoogleAiModeProvider implements ProviderPort {
       timeout = true;
       controller.abort();
     }, 10_000);
+
     try {
       const pending =
         candidate && this.readPort?.openEvidence && this.identity
@@ -234,17 +242,22 @@ export class GoogleAiModeProvider implements ProviderPort {
         result.value.status === 'permission-needed'
       )
         this.invalidate();
+
       if (result.value.status === 'success') {
         const value = result.value;
+
         if (
           value.identityBefore !== value.identityAfter ||
           (this.identity !== undefined && this.identity !== value.identityBefore)
         ) {
           this.invalidate();
+
           return { status: 'scope-changed' };
         }
+
         this.identity = value.identityBefore;
       }
+
       return result.value;
     } catch {
       return {

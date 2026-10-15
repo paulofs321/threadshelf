@@ -13,6 +13,7 @@ const success = (body = googleJson([[googleMatch()]])) => ({
   identityAfter: identity,
   response: { status: 200, contentType: 'application/json', retryAfter: null, body },
 });
+
 function fixture(value: unknown = success()) {
   const port = {
     read: vi.fn<GoogleAiModeReadPort['read']>().mockResolvedValue(value),
@@ -29,8 +30,10 @@ function fixture(value: unknown = success()) {
     freshId: () => `fictional-${next++}`,
     now: () => 0,
   });
+
   return { port, request, provider };
 }
+
 afterEach(() => vi.useRealTimers());
 
 describe('Google native read adapter', () => {
@@ -171,6 +174,7 @@ describe('Google native read adapter', () => {
       status: 'ready',
       scope: request.scope,
     });
+
     for (const status of ['login-expired', 'permission-needed', 'scope-changed'] as const) {
       const f = fixture({ status });
       expect(await f.provider.inspectSession(context())).toEqual({
@@ -179,6 +183,7 @@ describe('Google native read adapter', () => {
         generation: f.request.scope.generation,
       });
     }
+
     port.read.mockResolvedValue({ status: 'timeout' });
     expect(await provider.inspectSession(context())).toMatchObject({ status: 'unavailable' });
     port.read.mockResolvedValue(success());
@@ -294,6 +299,7 @@ describe('Google native read adapter', () => {
       end: '2026-11-01T00:00:00.000Z',
     };
     await provider.search(request, context());
+
     for (const value of [
       { status: 'timeout' },
       { status: 'success', identityBefore: identity, identityAfter: identity },
@@ -305,6 +311,7 @@ describe('Google native read adapter', () => {
         value.status === 'timeout' ? 'timeout' : 'schema-changed',
       );
     }
+
     port.openEvidence.mockResolvedValue({
       status: 'success',
       identityBefore: identity,

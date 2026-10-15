@@ -42,6 +42,7 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
     const parsed = validate(GoogleReadOperationSchema, operation);
     if (!parsed.ok || parsed.value.kind === 'messages')
       return Promise.resolve(failure('unavailable'));
+
     return this.run(context, async (signal) => {
       const before = await this.source(signal);
       if (before) return before;
@@ -52,6 +53,7 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
         expectedIdentity,
         signal,
       );
+
       return (await this.source(signal)) ?? result;
     });
   }
@@ -66,8 +68,10 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
     )
       return Promise.resolve(failure('unavailable'));
     candidate = parsed.value;
+
     return this.run(context, async (signal) => {
       let tabId: number | undefined;
+
       try {
         const before = await this.source(signal);
         if (before) return before;
@@ -92,22 +96,26 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
         });
         tabId = tab.id;
         if (tabId === undefined) return failure('unavailable');
+
         // A background tab preserves the selected source document. Only this owned tab is closed.
         for (;;) {
           if (signal.aborted) return failure('cancelled');
           const current = await browser.tabs.get(tabId);
           if (current.incognito || current.windowId !== this.binding.tab.windowId)
             return failure('scope-changed');
+
           if (current.status === 'complete') {
             if (current.url !== candidate.originalUrl || current.pendingUrl !== undefined)
               return failure('scope-changed');
             break;
           }
+
           await new Promise<void>((resolve) => {
             const stop = () => {
               clearTimeout(timer);
               resolve();
             };
+
             const timer = setTimeout(() => {
               signal.removeEventListener('abort', stop);
               resolve();
@@ -115,6 +123,7 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
             signal.addEventListener('abort', stop, { once: true });
           });
         }
+
         const documentId = await this.probe(tabId);
         if (!documentId || signal.aborted) return failure('scope-changed');
         const result = await this.execute(
@@ -146,6 +155,7 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
           confirmation.identityAfter !== expectedIdentity
         )
           return failure('scope-changed');
+
         return result;
       } finally {
         if (tabId !== undefined) await browser.tabs.remove(tabId).catch(() => {});
@@ -191,6 +201,7 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
       func: inspectSelectedDocument,
       args: ['https://www.google.com'],
     });
+
     return results.length === 1 ? validateProbe('google-ai-mode', results[0], documentId) : null;
   }
 
@@ -204,6 +215,7 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
     if (signal.aborted) return failure('cancelled');
     const operationId = crypto.randomUUID();
     const target = { tabId, documentIds: [documentId] };
+
     const abort = () => {
       void browser.scripting
         .executeScript({
@@ -214,7 +226,9 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
         })
         .catch(() => {});
     };
+
     signal.addEventListener('abort', abort, { once: true });
+
     try {
       const scope = this.binding.scope;
       if (scope.kind !== 'ephemeral') return failure('scope-changed');
@@ -238,6 +252,7 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
       )
         return failure('scope-changed');
       const result = validate(GoogleReadResultSchema, results[0].result);
+
       return result.ok ? result.value : failure('schema-changed');
     } finally {
       signal.removeEventListener('abort', abort);
@@ -255,12 +270,15 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
     const interruption = new Promise<ReadResult>((resolve) => {
       stopped = resolve;
     });
+
     const stop = (reason: 'cancelled' | 'scope-changed' | 'permission-needed' | 'timeout') => {
       status ??= reason;
       controller.abort();
       stopped(failure(status));
     };
+
     const cancel = () => stop('cancelled');
+
     const changed = (id: number, change?: { status?: string; url?: string }) => {
       if (
         id === this.binding.tab.id &&
@@ -268,6 +286,7 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
       )
         stop('scope-changed');
     };
+
     const replaced = (_added: number, removed: number) => changed(removed);
     const removed = (id: number) => changed(id);
     const activated = () => stop('scope-changed');
@@ -280,8 +299,10 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
     browser.tabs.onActivated.addListener(activated);
     browser.windows.onFocusChanged.addListener(activated);
     browser.permissions.onRemoved.addListener(permission);
+
     try {
       const result = await Promise.race([action(controller.signal), interruption]);
+
       return status ? failure(status) : result;
     } catch {
       return failure(status ?? 'unavailable');

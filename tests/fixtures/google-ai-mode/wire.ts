@@ -12,6 +12,7 @@ export function googleThread(id = 'fictional-thread-1'): unknown[] {
     ['mstk', state],
     ['udm', '50'],
   ];
+
   return row;
 }
 
@@ -23,6 +24,7 @@ export function googleMatch(
   match[13] = [row[1], 0];
   match[14] = snippet === null ? null : [snippet, 1, 21, 14];
   match[15] = row;
+
   return match;
 }
 

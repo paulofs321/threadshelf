@@ -16,6 +16,7 @@ import {
 } from '../fixtures/google-ai-mode/requests';
 import { googleJson, googleMatch } from '../fixtures/google-ai-mode/wire';
 import { deferred } from './helpers';
+
 interface ScriptOptions {
   target: { tabId: number };
   func: unknown;
@@ -24,6 +25,7 @@ interface ScriptOptions {
 const chrome = vi.hoisted(() => {
   function event() {
     const callbacks = new Set<(...args: unknown[]) => void>();
+
     return {
       addListener: vi.fn((f: (...args: unknown[]) => void) => callbacks.add(f)),
       removeListener: vi.fn((f: (...args: unknown[]) => void) => callbacks.delete(f)),
@@ -33,6 +35,7 @@ const chrome = vi.hoisted(() => {
       size: () => callbacks.size,
     };
   }
+
   return {
     permissions: { contains: vi.fn(), onRemoved: event() },
     scripting: { executeScript: vi.fn<(options: ScriptOptions) => Promise<unknown[]>>() },
@@ -81,6 +84,7 @@ const events = [
   chrome.windows.onFocusChanged,
   chrome.permissions.onRemoved,
 ];
+
 async function script(options: ScriptOptions): Promise<unknown[]> {
   const documentId = options.target.tabId === 7 ? 'fiction-source' : 'fiction-evidence';
   if (options.func === abortGoogleDocumentRead) return [];
@@ -89,6 +93,7 @@ async function script(options: ScriptOptions): Promise<unknown[]> {
       { frameId: 0, documentId, result: { origin: 'https://www.google.com', topLevel: true } },
     ];
   const operation = options.args[0].operation;
+
   return [
     {
       frameId: 0,
@@ -110,6 +115,7 @@ async function script(options: ScriptOptions): Promise<unknown[]> {
     },
   ];
 }
+
 beforeEach(() => {
   vi.resetAllMocks();
   binding = {
@@ -205,6 +211,7 @@ describe('Chrome Google selected-document transport', () => {
       Object.assign(binding, { scope });
       expect(await read()).toEqual({ status: 'scope-changed' });
     }
+
     Object.assign(binding, { scope: request.scope });
     vi.mocked(binding.isCurrent).mockReturnValue(false);
     expect(await read()).toEqual({ status: 'scope-changed' });
@@ -248,6 +255,7 @@ describe('Chrome Google selected-document transport', () => {
   it('discards a binding invalidated during the source probe', async () => {
     chrome.scripting.executeScript.mockImplementation(async () => {
       vi.mocked(binding.isCurrent).mockReturnValue(false);
+
       return [
         {
           frameId: 0,
@@ -458,6 +466,7 @@ describe('Chrome Google selected-document transport', () => {
     chrome.tabs.query.mockImplementation(async () => {
       chrome.tabs.onUpdated.emit(8, { url: 'https://www.google.com/' });
       chrome.tabs.onUpdated.emit(7, { status: 'complete' });
+
       return [tab];
     });
     expect((await read()).status).toBe('success');
@@ -467,6 +476,7 @@ describe('Chrome Google selected-document transport', () => {
     const data = deferred<unknown[]>();
     chrome.scripting.executeScript.mockImplementation(async (o) => {
       if (o.func === abortGoogleDocumentRead) throw new Error('document gone');
+
       return o.func === readGoogleDocument ? data.promise : script(o);
     });
     const pending = read();

@@ -11,6 +11,7 @@ import { googleJson, googleMatch, googleThread } from '../../fixtures/google-ai-
 
 function parse(value: unknown, kind: 'search' | 'list' = 'search') {
   let next = 0;
+
   return parseGoogleRecords(
     googleJson(value),
     kind,
@@ -124,6 +125,7 @@ describe('observed Google Search AI Mode wire forms', () => {
     const matches = Array.from({ length: 30 }, (_, i) => {
       const row = googleThread(`fictional-budget-${i}`);
       row[1] = 't'.repeat(300);
+
       return googleMatch(row, 's'.repeat(2000));
     });
     const result = parse([matches]);

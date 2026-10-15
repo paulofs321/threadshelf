@@ -75,6 +75,7 @@ describe('Google Search AI Mode verification gate', () => {
     const timerSpy = vi.spyOn(globalThis, 'setTimeout');
     const request = googleAiModeRequest();
     request.query.text = 'Fictional private excerpt; never log or echo this';
+
     try {
       const provider = new GoogleAiModeProvider(request.scope);
       const session = await provider.inspectSession(context());
@@ -187,6 +188,7 @@ describe('Google Search AI Mode selected scope isolation', () => {
       provider: 'google-ai-mode',
       generation: 3,
     });
+
     for (let index = 0; index < 2; index++) {
       const request = googleAiModeRequest();
       request.requestId = requireValid(SearchRequestSchema, {

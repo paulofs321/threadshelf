@@ -45,9 +45,11 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
     timedOut = true;
     controller.abort();
   }, 8000);
+
   function fail(status: string): never {
     throw new Error(status);
   }
+
   function account(document: Document): string | undefined {
     return document
       .querySelector('a[href^="https://accounts.google.com/SignOutOptions"]')
@@ -55,6 +57,7 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
       ?.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]
       .toLowerCase();
   }
+
   async function body(response: Response): Promise<string> {
     if (Number(response.headers.get('content-length')) > 3_000_000) fail('schema-changed');
     const reader = response.body?.getReader();
@@ -62,6 +65,7 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
     const decoder = new TextDecoder('utf-8', { fatal: true });
     let result = '',
       size = 0;
+
     try {
       for (;;) {
         const next = await reader.read();
@@ -70,14 +74,18 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
         if (size > 3_000_000) fail('schema-changed');
         result += decoder.decode(next.value, { stream: true });
       }
+
       result += decoder.decode();
+
       return result;
     } finally {
       await reader.cancel().catch(() => {});
     }
   }
+
   async function get(url: string): Promise<Response> {
     if (controller.signal.aborted) fail(timedOut ? 'timeout' : 'cancelled');
+
     return fetch(url, {
       method: 'GET',
       credentials: 'same-origin',
@@ -87,6 +95,7 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
       signal: controller.signal,
     });
   }
+
   async function inspect(): Promise<string> {
     const renderedAccount = account(document);
     if (!renderedAccount) fail('unavailable');
@@ -104,16 +113,19 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
       'SHA-256',
       new TextEncoder().encode(JSON.stringify([input.partition, freshAccount])),
     );
+
     return Array.from(new Uint8Array(hash), (value) => value.toString(16).padStart(2, '0')).join(
       '',
     );
   }
+
   try {
     const before = await inspect();
     if (input.expectedIdentity !== undefined && before !== input.expectedIdentity)
       fail('scope-changed');
     let response;
     let rendered;
+
     if (input.operation.kind === 'search' || input.operation.kind === 'list') {
       const kind = input.operation.kind;
       const url = new URL(
@@ -145,11 +157,13 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
           const value = e.innerText;
           const end = Math.min(value.length, 2000);
           const last = value.charCodeAt(end - 1);
+
           return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
         })
         .filter((value) => value.trim().length > 0);
       if (!rendered.length) fail('unavailable');
     }
+
     const after = await inspect();
     if (
       before !== after ||
@@ -158,6 +172,7 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
     )
       fail('scope-changed');
     if (controller.signal.aborted) fail(timedOut ? 'timeout' : 'cancelled');
+
     return {
       status: 'success',
       identityBefore: before,
@@ -173,6 +188,7 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
       'rate-limited',
       'scope-changed',
     ];
+
     return {
       status: controller.signal.aborted
         ? timedOut

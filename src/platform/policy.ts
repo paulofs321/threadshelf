@@ -97,6 +97,7 @@ const PanelSourceSchema = v.object({
 export function validatePanelSource(input: unknown, extensionId: string) {
   const result = validate(PanelSourceSchema, input);
   const origin = `chrome-extension://${extensionId}`;
+
   return result.ok &&
     result.value.id === extensionId &&
     result.value.origin === origin &&
