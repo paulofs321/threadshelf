@@ -22,6 +22,9 @@ timeout, or worker interruption. Unknown identity receives a fresh ephemeral sco
 
 Selecting a site does not verify login or enable conversation access. Provider authentication,
 search, model inference, persistent storage, CI, demo, and release packaging remain unimplemented.
+The ChatGPT module implements an unavailable provider boundary with request validation, scope
+isolation, cancellation and invalidation; it performs no conversation reads and is not connected to
+the panel. Its availability diagnostic lists the missing live verification evidence.
 Actual unpacked-extension behavior and authenticated access are unverified; synthetic tests and
 builds establish code behavior only. shadcn/ui setup remains planned for the full search UI.
 
