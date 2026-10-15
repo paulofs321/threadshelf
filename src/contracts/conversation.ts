@@ -16,7 +16,7 @@ import { SessionScopeSchema, scopeKey } from './session';
 export const EvidenceSchema = v.strictObject({
   id: EvidenceIdSchema,
   text: boundedText(limits.excerpt),
-  source: v.picklist(['title', 'native-snippet', 'rendered-message']),
+  source: v.picklist(['title', 'native-snippet', 'rendered-message', 'provider-message']),
 });
 
 export const ConversationDateSchema = v.pipe(

@@ -25,6 +25,14 @@ interface Selection {
   documentId: string;
   scope: SessionScope;
 }
+// Trusted in-process capability. It is never serialized into a runtime message.
+export interface SelectedDocumentBinding {
+  readonly scope: SessionScope;
+  readonly tab: SelectedTab;
+  readonly documentId: string;
+  isCurrent(): boolean;
+  ownerWindow(): Promise<number | null>;
+}
 interface Pending {
   request: AccessOperation;
   controller: AbortController;
@@ -46,6 +54,18 @@ export class AccessBroker {
     private readonly closeTransport: () => void,
     private readonly freshId: () => string,
   ) {}
+
+  bindSelectedDocument(scope: SessionScope): SelectedDocumentBinding | null {
+    const selection = this.selected.get(scope.provider);
+    if (this.closed || !selection || !sameScope(selection.scope, scope)) return null;
+    return {
+      scope: { ...selection.scope },
+      tab: { ...selection.tab },
+      documentId: selection.documentId,
+      isCurrent: () => !this.closed && this.selected.get(scope.provider) === selection,
+      ownerWindow: () => this.port.ownerWindow(),
+    };
+  }
 
   receive(input: unknown): void {
     if (this.closed) return;
