@@ -24,6 +24,9 @@ Selecting a site does not verify login or enable conversation access. Provider a
 search, model inference, persistent storage, demo, and release packaging remain unimplemented.
 GitHub Actions checks locked installation, tests, lint, types, formatting, and the Chrome extension
 build on pull requests and pushes to `main`; the demo is not built by CI.
+The ChatGPT module implements an unavailable provider boundary with request validation, scope
+isolation, cancellation and invalidation; it performs no conversation reads and is not connected to
+the panel. Its availability diagnostic lists the missing live verification evidence.
 Actual unpacked-extension behavior and authenticated access are unverified; synthetic tests and
 builds establish code behavior only. shadcn/ui setup remains planned for the full search UI.
 
