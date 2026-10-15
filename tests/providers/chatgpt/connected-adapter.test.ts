@@ -13,14 +13,18 @@ import {
   readResult,
 } from '../../fixtures/chatgpt/wire';
 import { deferred } from '../../platform/helpers';
+
 const context = () => ({ signal: new AbortController().signal });
+
 function harness() {
   const port = {
     read: vi.fn<ChatGptReadPort['read']>().mockResolvedValue(readResult(searchBody())),
   };
   const provider = new ChatGptProvider(selectedChatGptScope(), port);
+
   return { port, provider, request: chatGptRequest() };
 }
+
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -193,6 +197,7 @@ describe('connected ChatGPT provider', () => {
       if (kind === 'timeout') await vi.advanceTimersByTimeAsync(10_000);
       if (kind === 'cancel') c.abort(Error('Private reason'));
       if (kind === 'invalidate') provider.invalidate();
+
       if (kind === 'replace') {
         expect(
           (
@@ -203,6 +208,7 @@ describe('connected ChatGPT provider', () => {
           ).status,
         ).toBe('success');
       }
+
       expect((await first).status).toBe(
         kind === 'timeout' ? 'timeout' : kind === 'invalidate' ? 'scope-changed' : 'cancelled',
       );

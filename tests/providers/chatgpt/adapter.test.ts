@@ -73,6 +73,7 @@ describe('ChatGPT verification gate', () => {
     const timerSpy = vi.spyOn(globalThis, 'setTimeout');
     const request = chatGptRequest();
     request.query.text = 'Fictional private excerpt; never log or echo this';
+
     try {
       const provider = new ChatGptProvider(request.scope);
       const session = await provider.inspectSession(context());
@@ -179,6 +180,7 @@ describe('ChatGPT selected scope isolation', () => {
       provider: 'chatgpt',
       generation: 3,
     });
+
     for (let index = 0; index < 2; index++) {
       const request = chatGptRequest();
       request.requestId = requireValid(SearchRequestSchema, {

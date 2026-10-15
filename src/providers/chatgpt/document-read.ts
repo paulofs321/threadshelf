@@ -45,15 +45,19 @@ export async function readChatGptDocument(
     controller.abort();
   }, 8_000);
   let failure: ChatGptReadResult = failed('unavailable');
+
   const stop = (result: ChatGptReadResult): never => {
     failure = result;
     throw new Error('Provider read stopped.');
   };
+
   const check = () => {
     if (controller.signal.aborted) stop(failed(timedOut ? 'timeout' : 'cancelled'));
     if (location.href !== href) stop(failed('scope-changed'));
   };
+
   const maximum = 2_097_152;
+
   async function bytes(response: Response): Promise<string> {
     const declared = response.headers.get('content-length');
     if (declared !== null && /^\d+$/.test(declared) && Number(declared) > maximum)
@@ -63,10 +67,13 @@ export async function readChatGptDocument(
     const reader = stream.getReader();
     const chunks: Uint8Array[] = [];
     let size = 0;
+
     const cancel = () => {
       void reader.cancel().catch(() => {});
     };
+
     controller.signal.addEventListener('abort', cancel, { once: true });
+
     try {
       for (;;) {
         check();
@@ -77,12 +84,15 @@ export async function readChatGptDocument(
         if (size > maximum) stop(failed('schema-changed'));
         chunks.push(part.value);
       }
+
       const value = new Uint8Array(size);
       let offset = 0;
+
       for (const chunk of chunks) {
         value.set(chunk, offset);
         offset += chunk.byteLength;
       }
+
       try {
         return new TextDecoder('utf-8', { fatal: true }).decode(value);
       } catch {
@@ -95,6 +105,7 @@ export async function readChatGptDocument(
       chunks.length = 0;
     }
   }
+
   async function get(url: string, mime: 'json' | 'html', token?: string): Promise<string> {
     check();
     const response = await fetch(url, {
@@ -107,16 +118,21 @@ export async function readChatGptDocument(
       ...(token ? { headers: { authorization: `Bearer ${token}` } } : {}),
     });
     check();
+
     const reject = (result: ChatGptReadResult): never => {
       void response.body?.cancel().catch(() => {});
+
       return stop(result);
     };
+
     if (response.type === 'opaqueredirect' || response.redirected)
       return reject(failed('unavailable'));
     if (response.status === 401) return reject(failed('login-expired'));
+
     if (response.status === 429) {
       const raw = response.headers.get('retry-after');
       let retryAfterMs: number | undefined;
+
       if (raw !== null && /^\d{1,12}$/.test(raw))
         retryAfterMs = Math.min(300_000, Number(raw) * 1_000);
       // Accept only the standard IMF-fixdate shape, not loose locale/number parsing.
@@ -129,27 +145,34 @@ export async function readChatGptDocument(
         const date = Date.parse(raw);
         if (Number.isFinite(date)) retryAfterMs = Math.min(300_000, Math.max(0, date - Date.now()));
       }
+
       return reject({
         status: 'rate-limited',
         ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
       });
     }
+
     if (response.status !== 200) return reject(failed('unavailable'));
     const type = response.headers.get('content-type') ?? '';
     if (!(mime === 'json' ? /^application\/json(?:\s*;|$)/i : /^text\/html(?:\s*;|$)/i).test(type))
       return reject(failed('schema-changed'));
+
     return bytes(response);
   }
+
   function bootstrap(doc: Document) {
     const sessions: { userId: string; accountId: string; token: string }[] = [];
+
     for (const script of doc.querySelectorAll('script[type="application/json"]')) {
       if ((script.textContent?.length ?? 0) > maximum) stop(failed('schema-changed'));
       let data;
+
       try {
         data = JSON.parse(script.textContent ?? '');
       } catch {
         continue;
       }
+
       const session = data?.session;
       if (!session) continue;
       if (session.account?.structure !== 'personal') stop(failed('unavailable'));
@@ -171,9 +194,12 @@ export async function readChatGptDocument(
         token: session.accessToken,
       });
     }
+
     if (sessions.length !== 1) return stop(failed('schema-changed'));
+
     return sessions[0] as { userId: string; accountId: string; token: string };
   }
+
   async function fresh() {
     const current = bootstrap(document);
     const html = await get('https://chatgpt.com/', 'html');
@@ -190,11 +216,14 @@ export async function readChatGptDocument(
     ).join('');
     if (expectedIdentity !== undefined && expectedIdentity !== identity)
       stop(failed('scope-changed'));
+
     return { identity, token: server.token };
   }
+
   try {
     let before = await fresh();
     let body: unknown = null;
+
     if (operation.kind !== 'inspect') {
       let url: URL;
       if (operation.kind === 'search') {
@@ -209,15 +238,18 @@ export async function readChatGptDocument(
         url = new URL(`https://chatgpt.com/backend-api/conversation/${operation.conversationId}`);
       const json = await get(url.href, 'json', before.token);
       before = { identity: before.identity, token: '' };
+
       try {
         body = JSON.parse(json);
       } catch {
         return failed('schema-changed');
       }
     }
+
     const after = await fresh();
     check();
     if (before.identity !== after.identity) return failed('scope-changed');
+
     return {
       status: 'success',
       identityBefore: before.identity,
@@ -226,6 +258,7 @@ export async function readChatGptDocument(
     };
   } catch {
     if (controller.signal.aborted) return failed(timedOut ? 'timeout' : 'cancelled');
+
     return failure;
   } finally {
     clearTimeout(timer);

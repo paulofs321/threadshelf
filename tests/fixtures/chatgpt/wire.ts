@@ -2,6 +2,7 @@
 export const conversationId = '11111111-1111-1111-1111-111111111111';
 export const otherConversationId = '22222222-2222-2222-2222-222222222222';
 export const identity = 'a'.repeat(64);
+
 export function searchItem(id = conversationId) {
   return {
     id: 'synthetic-result',
@@ -20,6 +21,7 @@ export function searchItem(id = conversationId) {
     },
   };
 }
+
 export function searchBody(items = [searchItem()]) {
   return {
     items,
@@ -37,6 +39,7 @@ export function searchBody(items = [searchItem()]) {
     ],
   };
 }
+
 export function listItem(id = conversationId) {
   return {
     id,
@@ -48,9 +51,11 @@ export function listItem(id = conversationId) {
     workspace_id: null as string | null,
   };
 }
+
 export function listBody(items = [listItem()]) {
   return { items, total: items.length, limit: 50, offset: 0 };
 }
+
 export function message(text = '  Exact fictional message.  ', role = 'assistant') {
   return {
     id: 'synthetic-message',
@@ -60,6 +65,7 @@ export function message(text = '  Exact fictional message.  ', role = 'assistant
     channel: null as string | null,
   };
 }
+
 export function messagesBody(id = conversationId) {
   return {
     conversation_id: id,
@@ -82,9 +88,11 @@ export function messagesBody(id = conversationId) {
     },
   };
 }
+
 export function readResult(body: unknown = null) {
   return { status: 'success', identityBefore: identity, identityAfter: identity, body };
 }
+
 export function bootstrap(user = 'synthetic-user', account = 'synthetic-personal-account') {
   return {
     session: {
@@ -94,6 +102,7 @@ export function bootstrap(user = 'synthetic-user', account = 'synthetic-personal
     },
   };
 }
+
 export function bootstrapHtml(data: unknown = bootstrap()) {
   return `<html><script type="application/json">${JSON.stringify(data)}</script></html>`;
 }

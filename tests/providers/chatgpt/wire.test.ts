@@ -17,6 +17,7 @@ import {
   messagesBody,
   message,
 } from '../../fixtures/chatgpt/wire';
+
 const scope = selectedChatGptScope();
 
 describe('ChatGPT verified keyword/list normalization', () => {
@@ -216,6 +217,7 @@ describe('ChatGPT active-branch exact message evidence', () => {
       b.mapping.answer.message = { ...message(), ...patch } as typeof b.mapping.answer.message;
       expect(parseChatGptMessages(b, conversationId)).toEqual(['Synthetic question?']);
     }
+
     const b = messagesBody();
     b.mapping.answer.message = { ...message(), channel: 'final' };
     Object.assign(b.mapping, {

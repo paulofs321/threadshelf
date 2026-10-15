@@ -40,12 +40,15 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
     const interruption = new Promise<ChatGptReadResult>((resolve) => {
       stopped = resolve;
     });
+
     const stop = (reason: typeof status) => {
       status ??= reason;
       controller.abort();
       stopped(failure(status ?? 'unavailable'));
     };
+
     const cancel = () => stop('cancelled');
+
     const changed = (tabId: number, change?: { status?: string; url?: string }) => {
       if (
         tabId === this.binding.tab.id &&
@@ -53,9 +56,11 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
       )
         stop('scope-changed');
     };
+
     const removed = (tabId: number) => changed(tabId);
     const replaced = (_added: number, old: number) => changed(old);
     const activated = () => stop('scope-changed');
+
     const permission = (removed: { origins?: string[]; permissions?: string[] }) => {
       if (
         removed.permissions?.includes('scripting') ||
@@ -63,6 +68,7 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
       )
         stop('permission-needed');
     };
+
     const timer = setTimeout(() => stop('timeout'), 9_500);
     context.signal.addEventListener('abort', cancel, { once: true });
     browser.tabs.onUpdated.addListener(changed);
@@ -71,6 +77,7 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
     browser.tabs.onActivated.addListener(activated);
     browser.windows.onFocusChanged.addListener(activated);
     browser.permissions.onRemoved.addListener(permission);
+
     try {
       const action = async (): Promise<ChatGptReadResult> => {
         const before = await this.source(controller.signal);
@@ -79,6 +86,7 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
 
         return (await this.source(controller.signal)) ?? result;
       };
+
       const result = await Promise.race([action(), interruption]);
 
       return status ? failure(status) : result;
@@ -147,6 +155,7 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
     if (signal.aborted) return failure('cancelled');
     const operationId = crypto.randomUUID();
     const target = { tabId: this.binding.tab.id, documentIds: [this.binding.documentId] };
+
     const abort = () => {
       void browser.scripting
         .executeScript({
@@ -157,7 +166,9 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
         })
         .catch(() => {});
     };
+
     signal.addEventListener('abort', abort, { once: true });
+
     try {
       const results = await browser.scripting.executeScript({
         target,

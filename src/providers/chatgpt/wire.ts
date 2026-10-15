@@ -61,12 +61,14 @@ export const verifyChatGptOriginalLink: OriginalLinkVerifier = (url, id) =>
 
 function fromSeconds(value: number | null): Candidate['date'] {
   if (value === null || !Number.isFinite(value) || value < 0 || value > 253_402_300_799.999) return;
+
   return {
     at: new Date(Math.trunc(value * 1_000)).toISOString(),
     meaning: 'conversation-updated',
     source: 'provider-metadata',
   };
 }
+
 function fromIso(value: string | null): Candidate['date'] {
   // Only the observed UTC forms; no locale parsing or guessed midnight/date meaning.
   if (
@@ -78,6 +80,7 @@ function fromIso(value: string | null): Candidate['date'] {
   if (!Number.isFinite(milliseconds)) return;
   const at = new Date(milliseconds).toISOString();
   if (at.slice(0, 19) !== value.slice(0, 19)) return;
+
   return { at, meaning: 'conversation-updated', source: 'provider-metadata' };
 }
 
@@ -93,6 +96,7 @@ export function parseChatGptCandidates(
 ): ChatGptCandidates {
   const rows: { id: string; title: string; snippet?: string; date?: Candidate['date'] }[] = [];
   const reasons: Coverage['reasons'] = ['unknown-reach'];
+
   if (kind === 'search') {
     const body = requireValid(SearchSchema, input);
     if (!body.source_statuses.some((s) => s.source_type === 'conversation' && s.status === 'ok'))
@@ -117,17 +121,21 @@ export function parseChatGptCandidates(
       throw new Error('Invalid provider response.');
     if (body.total > body.items.length || body.items.length === body.limit)
       reasons.push('result-limit');
+
     for (const row of body.items) {
       if (row.workspace_id !== null) throw new Error('Invalid provider response.');
       if (!row.is_temporary_chat)
         rows.push({ id: row.id, title: row.title, date: fromIso(row.update_time) });
     }
   }
+
   const candidates: Candidate[] = [];
   const byId = new Map<string, Candidate>();
   let remaining = limits.totalEvidence;
+
   for (const row of rows) {
     let candidate = byId.get(row.id);
+
     if (!candidate) {
       candidate = {
         id: `chatgpt:${candidates.length}` as Candidate['id'],
@@ -141,8 +149,10 @@ export function parseChatGptCandidates(
       byId.set(row.id, candidate);
       candidates.push(candidate);
     }
+
     const snippet = row.snippet?.trim() ? row.snippet : candidate.title;
     const source = row.snippet?.trim() ? 'native-snippet' : 'title';
+
     if (
       snippet &&
       remaining > 0 &&
@@ -150,6 +160,7 @@ export function parseChatGptCandidates(
       !candidate.evidence.some((e) => e.text === snippet.slice(0, limits.excerpt))
     ) {
       const excerpt = snippet.slice(0, Math.min(limits.excerpt, remaining));
+
       if (excerpt.trim()) {
         candidate.evidence.push({
           id: `${candidate.id}:${candidate.evidence.length}` as Evidence['id'],
@@ -160,7 +171,9 @@ export function parseChatGptCandidates(
       }
     }
   }
+
   if (candidates.some((c) => c.evidence.length === 0)) reasons.push('missing-evidence');
+
   return {
     candidates: requireValid(CandidateListSchema, candidates),
     coverage: { extent: reasons.includes('result-limit') ? 'partial' : 'unknown', reasons },
@@ -203,6 +216,7 @@ export function parseChatGptMessages(input: unknown, conversationId: string): st
   const seen = new Set<string>();
   const branch: unknown[] = [];
   let id: string | null = body.current_node;
+
   while (id !== null) {
     const node: v.InferOutput<typeof NodeSchema> | undefined = body.mapping[id];
     if (seen.has(id) || !node || node.id !== id) throw new Error('Invalid provider response.');
@@ -210,7 +224,9 @@ export function parseChatGptMessages(input: unknown, conversationId: string): st
     branch.push(node.message);
     id = node.parent;
   }
+
   const excerpts: string[] = [];
+
   for (const raw of branch.reverse()) {
     if (raw === null) continue;
     const message = requireValid(MessageSchema, raw);
@@ -223,10 +239,12 @@ export function parseChatGptMessages(input: unknown, conversationId: string): st
       continue;
     if (!message.content.parts || message.content.parts.some((part) => typeof part !== 'string'))
       throw new Error('Invalid provider response.');
+
     for (const part of message.content.parts) {
       const value = part as string;
       if (value.trim() && excerpts.length < 4) excerpts.push(value.slice(0, limits.excerpt));
     }
   }
+
   return excerpts;
 }

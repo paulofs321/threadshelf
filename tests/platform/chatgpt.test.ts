@@ -11,9 +11,11 @@ import { requireValid } from '../../src/contracts/validation';
 import { selectedChatGptScope } from '../fixtures/chatgpt/requests';
 import { identity, readResult, searchBody } from '../fixtures/chatgpt/wire';
 import { brokerHarness, deferred, probe, tab } from './helpers';
+
 const chrome = vi.hoisted(() => {
   function event() {
     const listeners = new Set<(...args: unknown[]) => void>();
+
     return {
       addListener: (f: (...args: unknown[]) => void) => {
         listeners.add(f);
@@ -28,6 +30,7 @@ const chrome = vi.hoisted(() => {
       clear: () => listeners.clear(),
     };
   }
+
   return {
     permissions: { contains: vi.fn(), onRemoved: event() },
     scripting: { executeScript: vi.fn() },
@@ -52,9 +55,11 @@ const events = [
 ];
 const context = () => ({ signal: new AbortController().signal });
 const operation = { kind: 'search' as const, query: 'prototype' };
+
 const flush = async () => {
   for (let n = 0; n < 30; n++) await Promise.resolve();
 };
+
 function setup() {
   const binding: SelectedDocumentBinding = {
     scope: selectedChatGptScope(),
@@ -64,8 +69,10 @@ function setup() {
     ownerWindow: vi.fn(async () => 3),
   };
   const port = new ChromeChatGptReadPort(binding);
+
   return { binding, port };
 }
+
 beforeEach(() => {
   chrome.permissions.contains.mockReset().mockResolvedValue(true);
   chrome.tabs.query.mockReset().mockResolvedValue([tab]);
@@ -127,10 +134,12 @@ describe('concrete Chrome ChatGPT transport', () => {
     expect(await port.read(operation, undefined, context())).toEqual(readResult(searchBody()));
     const injections = chrome.scripting.executeScript.mock.calls.map(([v]) => v);
     expect(injections).toHaveLength(3);
+
     for (const x of injections) {
       expect(x.target).toEqual({ tabId: 7, documentIds: [probe.documentId] });
       expect(x.world).toBe('ISOLATED');
     }
+
     const read = injections[1];
     expect(read.func).toBe(readChatGptDocument);
     expect(read.args).toHaveLength(3);
@@ -217,6 +226,7 @@ describe('concrete Chrome ChatGPT transport', () => {
       const { port, binding } = setup();
       chrome.scripting.executeScript.mockImplementation(async () => {
         if (kind === 'retired-after-probe') vi.mocked(binding.isCurrent).mockReturnValue(false);
+
         return kind === 'empty'
           ? []
           : [
@@ -346,6 +356,7 @@ describe('concrete Chrome ChatGPT transport', () => {
     chrome.scripting.executeScript.mockImplementation(async (i) => {
       if (i.func === inspectSelectedDocument) return [probe];
       if (i.func === abortChatGptDocumentRead) throw Error('PRIVATE');
+
       return held.promise;
     });
     const c = new AbortController();

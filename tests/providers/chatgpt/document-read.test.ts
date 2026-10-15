@@ -8,6 +8,7 @@ import {
 } from '../../../src/providers/chatgpt/document-read';
 import type { ChatGptOperation } from '../../../src/providers/chatgpt/transport';
 import { bootstrap, bootstrapHtml, conversationId, searchBody } from '../../fixtures/chatgpt/wire';
+
 const fetchMock = vi.fn<typeof fetch>();
 const registry = globalThis as typeof globalThis & {
   __threadshelfChatGptReads?: Map<string, AbortController>;
@@ -19,9 +20,11 @@ const read = (op: ChatGptOperation = operation, expected?: string) =>
 const html = (value: unknown = bootstrap()) =>
   new Response(bootstrapHtml(value), { headers: { 'content-type': 'text/html; charset=UTF-8' } });
 const json = (value: unknown = searchBody()) => Response.json(value);
+
 const tick = async () => {
   for (let n = 0; n < 12; n++) await Promise.resolve();
 };
+
 beforeEach(() => {
   vi.stubGlobal('location', new URL(`https://chatgpt.com/c/${conversationId}`));
   vi.stubGlobal('crypto', webcrypto);
@@ -57,6 +60,7 @@ describe('isolated ChatGPT session/read boundary', () => {
       expect(JSON.stringify(result)).not.toContain('SYNTHETIC-CREDENTIAL');
       expect(JSON.stringify(result)).not.toContain('synthetic-user');
       expect(fetchMock).toHaveBeenCalledTimes(op.kind === 'inspect' ? 2 : 3);
+
       for (const [url, init] of fetchMock.mock.calls) {
         expect(new URL(String(url)).origin).toBe('https://chatgpt.com');
         expect(init).toMatchObject({
@@ -72,6 +76,7 @@ describe('isolated ChatGPT session/read boundary', () => {
             authorization: 'Bearer SYNTHETIC-CREDENTIAL-DO-NOT-RETURN',
           });
       }
+
       if (op.kind === 'search') {
         const url = new URL(String(fetchMock.mock.calls[1]?.[0]));
         expect(url.pathname).toBe('/backend-api/global/search');
@@ -80,6 +85,7 @@ describe('isolated ChatGPT session/read boundary', () => {
         expect(url.searchParams.get('limit')).toBe('30');
         expect(url.searchParams.get('query_id')).toMatch(/^[a-f0-9-]{36}$/);
       }
+
       if (op.kind === 'list')
         expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
           'https://chatgpt.com/backend-api/conversations',
@@ -296,13 +302,16 @@ describe('isolated ChatGPT session/read boundary', () => {
         fetchMock.mockImplementation(async (raw) => {
           if (new URL(String(raw)).pathname !== '/') {
             document.body.innerHTML = bootstrapHtml(bootstrap('different-user'));
+
             return json();
           }
+
           return html();
         });
       if (kind === 'navigation')
         fetchMock.mockImplementationOnce(async () => {
           vi.stubGlobal('location', new URL('https://chatgpt.com/other'));
+
           return html();
         });
       expect(await read(operation, kind === 'expected' ? 'b'.repeat(64) : undefined)).toEqual({
@@ -350,6 +359,7 @@ it('rejects an atomic identity switch even when both individual DOM/server check
     if (new URL(String(raw)).pathname === '/') return html(switched ? changed : bootstrap());
     switched = true;
     document.body.innerHTML = bootstrapHtml(changed);
+
     return json();
   });
   expect(await read()).toEqual({ status: 'scope-changed' });

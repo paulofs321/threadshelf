@@ -97,6 +97,7 @@ export class ChatGptProvider implements ProviderPort {
         signal,
       );
       if (read.status !== 'success') return read;
+
       try {
         const parsed = parseChatGptCandidates(read.body, request.scope, kind);
         if (request.query.dateRange && parsed.candidates.some((c) => !c.date))
@@ -139,6 +140,7 @@ export class ChatGptProvider implements ProviderPort {
         (n, c) => n + c.evidence.reduce((sum, e) => sum + e.text.length, 0),
         0,
       );
+
       for (const candidate of candidates.slice(0, 3)) {
         const read = await this.read(
           { kind: 'messages', conversationId: candidate.conversationId },
@@ -146,11 +148,13 @@ export class ChatGptProvider implements ProviderPort {
         );
         if (read.status !== 'success') return read;
         let excerpts: string[];
+
         try {
           excerpts = parseChatGptMessages(read.body, candidate.conversationId);
         } catch {
           return { status: 'schema-changed' as const };
         }
+
         for (const excerpt of excerpts) {
           if (
             candidate.evidence.length >= limits.evidencePerCandidate ||
@@ -167,6 +171,7 @@ export class ChatGptProvider implements ProviderPort {
           total += text.length;
         }
       }
+
       if (!coverage.reasons.includes('missing-evidence')) coverage.reasons.push('missing-evidence');
       if (candidates.length > 3 && !coverage.reasons.includes('query-budget'))
         coverage.reasons.push('query-budget');
@@ -220,6 +225,7 @@ export class ChatGptProvider implements ProviderPort {
     if (this.invalidated) return { status: 'scope-changed' };
     if (!parsed.ok) return { status: 'schema-changed' };
     const result = parsed.value;
+
     if (result.status === 'success') {
       if (
         result.identityBefore !== result.identityAfter ||
@@ -229,6 +235,7 @@ export class ChatGptProvider implements ProviderPort {
 
         return { status: 'scope-changed' };
       }
+
       this.identity = result.identityBefore;
     } else if (result.status === 'scope-changed') this.invalidate();
     else if (result.status === 'login-expired') {
@@ -252,16 +259,19 @@ export class ChatGptProvider implements ProviderPort {
     const interruption = new Promise<ChatGptReadResult>((resolve) => {
       stopped = resolve;
     });
+
     const cancel = () => {
       controller.abort();
       stopped({ status: this.invalidated ? 'scope-changed' : timedOut ? 'timeout' : 'cancelled' });
     };
+
     controller.signal.addEventListener('abort', cancel, { once: true });
     context.signal.addEventListener('abort', cancel, { once: true });
     const timer = setTimeout(() => {
       timedOut = true;
       cancel();
     }, 10_000);
+
     try {
       const result = await Promise.race([action(controller.signal), interruption]);
       if (context.signal.aborted) return { status: 'cancelled' };
