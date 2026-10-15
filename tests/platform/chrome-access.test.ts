@@ -8,6 +8,7 @@ import { deferred, event, probe, tab } from './helpers';
 const chrome = vi.hoisted(() => {
   function channel<Args extends unknown[]>() {
     const listeners = new Set<(...args: Args) => void>();
+
     return {
       addListener(listener: (...args: Args) => void) {
         listeners.add(listener);
@@ -23,6 +24,7 @@ const chrome = vi.hoisted(() => {
       },
     };
   }
+
   return {
     runtime: {
       id: 'fiction-extension',
@@ -64,6 +66,7 @@ const context = {
   frameId: 0,
   windowId: -1,
 };
+
 function connection(patch = {}, name: string = panelPortName(3)) {
   const port = {
     name,
@@ -74,8 +77,10 @@ function connection(patch = {}, name: string = panelPortName(3)) {
     onDisconnect: event<[]>(),
   };
   chrome.runtime.onConnect.emit(port);
+
   return port;
 }
+
 const sites = {
   chatgpt: { tab, probe },
   'google-ai-mode': {
@@ -87,10 +92,12 @@ const sites = {
     },
   },
 };
+
 function useSite(provider: ProviderId) {
   chrome.tabs.query.mockResolvedValue([sites[provider].tab]);
   chrome.scripting.executeScript.mockResolvedValue([sites[provider].probe]);
 }
+
 async function select(port: ReturnType<typeof connection>, provider: ProviderId = 'chatgpt') {
   useSite(provider);
   const requestId = `fiction-select-${provider}`;
@@ -105,9 +112,11 @@ async function select(port: ReturnType<typeof connection>, provider: ProviderId 
     ),
   );
   const reply = port.postMessage.mock.lastCall?.[0];
+
   if (reply?.kind !== 'reply' || reply.status !== 'selected') {
     throw new Error('Expected synthetic selection.');
   }
+
   return reply.scope;
 }
 
@@ -256,6 +265,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     ]);
     const first = connection();
     const second = connection({ documentId: 'fiction-second-panel' }, panelPortName(4));
+
     for (const port of [first, second]) {
       port.onMessage.emit({
         operation: 'connect',
@@ -263,6 +273,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
         requestId: 'fiction-select',
       });
     }
+
     await vi.waitFor(() => {
       for (const port of [first, second]) {
         expect(port.postMessage).toHaveBeenLastCalledWith(
@@ -458,6 +469,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
         status: 'permission-needed',
       })),
     );
+
     // The original scope must still work for a provider whose permission was retained.
     for (const scope of scopes) {
       const requestId = `fiction-disconnect-${scope.provider}`;
@@ -475,6 +487,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
           : 'disconnected',
       });
     }
+
     port.onDisconnect.emit();
   });
   it.each(['chatgpt', 'google-ai-mode'] as const)(

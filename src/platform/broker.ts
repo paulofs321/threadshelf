@@ -52,20 +52,28 @@ export class AccessBroker {
     const parsed = validate(AccessRequestSchema, input);
     if (!parsed.ok) return this.close();
     const request = parsed.value;
+
     if (request.operation === 'cancel') {
       const pending = this.pending.get(request.requestId);
       if (pending) this.invalidate(pending.request.provider, 'scope-changed', 'cancelled');
+
       return;
     }
+
     if (this.seen.has(request.requestId) || this.seen.size >= maximumRequestsPerPort) {
       return this.close();
     }
+
     this.seen.add(request.requestId);
+
     if ([...this.pending.values()].some((item) => item.request.provider === request.provider)) {
       this.send({ kind: 'reply', requestId: request.requestId, status: 'busy' });
+
       return;
     }
+
     const selection = this.selected.get(request.provider);
+
     if (
       request.operation !== 'connect' &&
       (!selection ||
@@ -73,13 +81,17 @@ export class AccessBroker {
         !sameScope(selection.scope, request.scope))
     ) {
       this.send({ kind: 'reply', requestId: request.requestId, status: 'scope-changed' });
+
       return;
     }
+
     if (request.operation === 'disconnect') {
       this.invalidate(request.provider, 'scope-changed');
       this.send({ kind: 'reply', requestId: request.requestId, status: 'disconnected' });
+
       return;
     }
+
     // Unknown identity never shares an earlier operation's partition, even in the same document.
     this.selected.delete(request.provider);
     const generation = this.nextGeneration(request.provider);
@@ -137,10 +149,12 @@ export class AccessBroker {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+
     for (const item of this.pending.values()) {
       clearTimeout(item.timer);
       item.controller.abort();
     }
+
     this.pending.clear();
     this.selected.clear();
     this.seen.clear();
@@ -150,6 +164,7 @@ export class AccessBroker {
   private nextGeneration(provider: ProviderId): number {
     const generation = (this.generations.get(provider) ?? 0) + 1;
     this.generations.set(provider, generation);
+
     return generation;
   }
 
@@ -179,6 +194,7 @@ export class AccessBroker {
     if (!this.current(item)) return;
     const tabResult = validate(SelectedTabSchema, await this.port.selectedTab(windowId));
     if (!this.current(item)) return;
+
     if (
       !tabResult.ok ||
       tabResult.value.windowId !== windowId ||
@@ -186,11 +202,14 @@ export class AccessBroker {
     ) {
       return this.fail(item, 'unavailable');
     }
+
     const tab = tabResult.value;
     item.tabId = tab.id;
+
     if (previous && (previous.tab.id !== tab.id || previous.tab.url !== tab.url)) {
       return this.fail(item, 'scope-changed');
     }
+
     const target: ProbeTarget = previous
       ? { tabId: tab.id, documentId: previous.documentId }
       : { tabId: tab.id };
@@ -208,6 +227,7 @@ export class AccessBroker {
     if (!validateProbe(provider, confirmation, documentId)) return this.fail(item, 'scope-changed');
     const after = validate(SelectedTabSchema, await this.port.selectedTab(windowId));
     if (!this.current(item)) return;
+
     if (
       !after.ok ||
       after.value.id !== tab.id ||
@@ -216,6 +236,7 @@ export class AccessBroker {
     ) {
       return this.fail(item, 'scope-changed');
     }
+
     if (!(await this.port.hasPermission(provider))) return this.fail(item, 'permission-needed');
     if (!this.current(item)) return;
     if ((await this.port.ownerWindow()) !== windowId) return this.fail(item, 'interrupted');

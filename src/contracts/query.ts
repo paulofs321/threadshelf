@@ -74,6 +74,7 @@ export function isRequestedScope(request: SearchRequest, scope: SessionScope): b
 // Only known available dates can satisfy [start, end). Meaning/provenance must still be displayed.
 export function matchesDateRange(candidate: Candidate, range: DateRange | undefined): boolean {
   if (!range) return true;
+
   return (
     candidate.date !== undefined &&
     candidate.date.at >= range.start &&

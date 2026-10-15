@@ -22,28 +22,37 @@ function connection() {
     onDisconnect: event<[]>(),
   };
 }
+
 const ports: ReturnType<typeof connection>[] = [];
+
 function chat() {
   return screen.getByRole('region', { name: 'ChatGPT' });
 }
+
 function google() {
   return screen.getByRole('region', { name: 'Google Search AI Mode' });
 }
+
 function connectButton(region = chat()) {
   return within(region).getByRole('button', { name: /^Connect/ });
 }
+
 function lastRequest(port = ports[0]): AccessOperation {
   const request = port?.postMessage.mock.calls.at(-1)?.[0];
   if (!request || request.operation === 'cancel')
     throw new Error('Expected synthetic access operation.');
+
   return request;
 }
+
 async function start(region = chat()) {
   await act(async () => {
     fireEvent.click(connectButton(region));
   });
+
   return lastRequest();
 }
+
 function replySelected(port = ports[0], generation = 1, partition = 'fiction-panel-partition') {
   if (!port) throw new Error('Expected synthetic connection.');
   const request = lastRequest(port);
@@ -57,6 +66,7 @@ function replySelected(port = ports[0], generation = 1, partition = 'fiction-pan
     });
   });
 }
+
 async function select(region = chat(), generation = 1, partition = 'fiction-panel-partition') {
   await start(region);
   await act(async () => {
@@ -71,6 +81,7 @@ beforeEach(() => {
   chrome.runtime.connect.mockImplementation(() => {
     const port = connection();
     ports.push(port);
+
     return port;
   });
 });
@@ -297,10 +308,12 @@ describe('side-panel permission and operation flow with real AccessClient', () =
     await act(async () => {
       ports[0]?.onDisconnect.emit();
     });
+
     for (const region of [chat(), google()]) {
       expect(within(region).getByRole('status').textContent).toContain('interrupted');
       expect(within(region).queryByRole('button', { name: 'Check selected site' })).toBeNull();
     }
+
     expect(chrome.runtime.connect).toHaveBeenCalledOnce();
     await start();
     expect(chrome.runtime.connect).toHaveBeenCalledTimes(2);
@@ -380,11 +393,13 @@ describe('side-panel permission and operation flow with real AccessClient', () =
       await act(async () => {
         fireEvent.click(connectButton());
       });
+
       if (cause === 'timeout') {
         await act(async () => {
           await vi.advanceTimersByTimeAsync(clientTimeoutMs);
         });
       }
+
       expect(within(chat()).getByRole('status').textContent).toContain('interrupted');
       expect(chrome.runtime.connect).not.toHaveBeenCalled();
       expect(document.body.textContent).not.toContain('fiction-private-window-error');

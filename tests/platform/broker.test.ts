@@ -216,6 +216,7 @@ describe('selected-tab broker', () => {
     expect(h.close).toHaveBeenCalledOnce();
     expect(h.port.ownerWindow).not.toHaveBeenCalled();
     const bounded = brokerHarness();
+
     for (let i = 0; i <= maximumRequestsPerPort; i++) {
       bounded.broker.receive({
         operation: 'inspect-context',
@@ -229,6 +230,7 @@ describe('selected-tab broker', () => {
         },
       });
     }
+
     expect(bounded.close).toHaveBeenCalledOnce();
     expect(bounded.port.ownerWindow).not.toHaveBeenCalled();
   });

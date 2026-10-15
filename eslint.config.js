@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import stylistic from '@stylistic/eslint-plugin';
 import babelParser from '@babel/eslint-parser';
 import { defineConfig, globalIgnores } from 'eslint/config';
 
@@ -40,6 +41,20 @@ export default defineConfig([
         'error',
         { selector: 'TSAnyKeyword', message: 'Use unknown and validate boundary data.' },
         { selector: 'TSNonNullExpression', message: 'Check missing values explicitly.' },
+      ],
+    },
+  },
+  {
+    files: ['**/*.{js,mjs,cjs,jsx,ts,tsx,mts,cts}'],
+    plugins: { '@stylistic': stylistic },
+    rules: {
+      '@stylistic/padding-line-between-statements': [
+        'error',
+        { blankLine: 'always', prev: 'import', next: '*' },
+        { blankLine: 'never', prev: 'import', next: 'import' },
+        { blankLine: 'always', prev: '*', next: 'block-like' },
+        { blankLine: 'always', prev: 'block-like', next: '*' },
+        { blankLine: 'always', prev: '*', next: 'return' },
       ],
     },
   },

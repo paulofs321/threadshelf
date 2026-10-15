@@ -47,6 +47,7 @@ export class AccessClient {
 
   subscribe(callback: (event: AccessEvent) => void): () => void {
     this.subscribers.add(callback);
+
     return () => {
       this.subscribers.delete(callback);
     };
@@ -89,6 +90,7 @@ export class AccessClient {
     this.closed = true;
     this.connection.onMessage.removeListener(this.receive);
     this.connection.onDisconnect.removeListener(this.onDisconnect);
+
     for (const provider of ['chatgpt', 'google-ai-mode'] as const) {
       this.publish({
         kind: 'invalidated',
@@ -97,9 +99,11 @@ export class AccessClient {
         generation: this.nextGeneration(provider),
       });
     }
+
     for (const item of this.pending.values()) {
       item.finish({ kind: 'reply', requestId: item.request.requestId, status: 'interrupted' });
     }
+
     this.pending.clear();
     this.subscribers.clear();
     this.connection.disconnect();
@@ -117,13 +121,17 @@ export class AccessClient {
     });
     if (this.closed) return Promise.resolve(failure('interrupted'));
     if (signal.aborted) return Promise.resolve(failure('cancelled'));
+
     if (++this.count > maximumRequestsPerPort || this.pending.has(request.requestId)) {
       this.close();
+
       return Promise.resolve(failure('interrupted'));
     }
+
     if ([...this.pending.values()].some((item) => item.request.provider === request.provider)) {
       return Promise.resolve(failure('busy'));
     }
+
     return new Promise((resolve) => {
       const finish = (reply: AccessReply) => {
         if (!this.pending.delete(request.requestId)) return;
@@ -131,6 +139,7 @@ export class AccessClient {
         signal.removeEventListener('abort', cancel);
         resolve(reply);
       };
+
       const stop = (status: 'cancelled' | 'timeout') => {
         this.publish({
           kind: 'invalidated',
@@ -139,16 +148,19 @@ export class AccessClient {
           generation: this.nextGeneration(request.provider),
         });
         finish({ kind: 'reply', requestId: request.requestId, status });
+
         try {
           this.connection.postMessage({ operation: 'cancel', requestId: request.requestId });
         } catch {
           this.close();
         }
       };
+
       const cancel = () => stop('cancelled');
       const timer = setTimeout(() => stop('timeout'), clientTimeoutMs);
       this.pending.set(request.requestId, { request, finish });
       signal.addEventListener('abort', cancel, { once: true });
+
       try {
         this.connection.postMessage(request);
       } catch {
@@ -164,6 +176,7 @@ export class AccessClient {
   private nextGeneration(provider: ProviderId): number {
     const generation = (this.generations.get(provider) ?? 0) + 1;
     this.generations.set(provider, generation);
+
     return generation;
   }
 
@@ -172,20 +185,27 @@ export class AccessClient {
     const result = validate(AccessMessageSchema, input);
     if (!result.ok) return this.close();
     const message = result.value;
+
     if (message.kind === 'invalidated') {
       if (message.generation <= (this.generations.get(message.provider) ?? 0)) return;
       this.generations.set(message.provider, message.generation);
       this.publish(message);
+
       return;
     }
+
     const item = this.pending.get(message.requestId);
     if (!item) return; // Obsolete/duplicate replies cannot restore a scope or UI result.
+
     if (message.status === 'selected') {
       if (message.scope.generation <= (this.generations.get(item.request.provider) ?? 0)) {
         item.finish({ kind: 'reply', requestId: message.requestId, status: 'scope-changed' });
+
         return;
       }
+
       const previous = 'scope' in item.request ? item.request.scope : undefined;
+
       if (
         item.request.operation === 'disconnect' ||
         message.scope.provider !== item.request.provider ||
@@ -195,10 +215,12 @@ export class AccessClient {
       ) {
         return this.close();
       }
+
       this.generations.set(message.scope.provider, message.scope.generation);
     } else if (message.status === 'disconnected' && item.request.operation !== 'disconnect') {
       return this.close();
     }
+
     item.finish(message);
   };
 

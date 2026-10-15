@@ -54,12 +54,14 @@ export function AccessPanel() {
           }));
       });
     }
+
     return client.current;
   }
 
   useEffect(() => {
     mounted.current = true;
     const operations = active.current;
+
     return () => {
       mounted.current = false;
       for (const controller of operations.values()) controller.abort();
@@ -76,23 +78,30 @@ export function AccessPanel() {
     const controller = new AbortController();
     active.current.set(provider, controller);
     update(provider, { status: 'connecting', pending: true });
+
     try {
       // This call happens synchronously in the click handler, before any await loses the gesture.
       if (operation === 'connect') {
         const granted = await browser.permissions.request(providerPermission(provider));
         if (controller.signal.aborted) return;
+
         if (!granted) {
           update(provider, { status: 'permission-needed', pending: false });
+
           return;
         }
       }
+
       if (controller.signal.aborted) return;
       const access = await getClient(controller.signal);
       if (controller.signal.aborted) return;
+
       if (!access) {
         update(provider, { status: 'interrupted', pending: false });
+
         return;
       }
+
       const reply =
         operation === 'connect'
           ? await access.connect(provider, controller.signal)

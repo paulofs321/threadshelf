@@ -6,6 +6,7 @@ import { clientTimeoutMs, operationTimeoutMs } from '../../src/platform/protocol
 import { brokerHarness, deferred, event, probe } from './helpers';
 
 let panelCounter = 0;
+
 function connectedPair() {
   const panel = ++panelCounter;
   const h = brokerHarness();
@@ -34,22 +35,27 @@ function connectedPair() {
   const client = new AccessClient(connection, () => `fiction-request-${++requestCounter}`);
   const events = vi.fn();
   client.subscribe(events);
+
   function deliverRequests() {
     for (const request of requests.splice(0)) broker.receive(request);
   }
+
   function deliverReplies() {
     for (const reply of replies.splice(0)) connection.onMessage.emit(reply);
   }
+
   async function exchange() {
     deliverRequests();
     await vi.advanceTimersByTimeAsync(0);
     deliverReplies();
   }
+
   function close() {
     client.close();
     broker.close();
     h.broker.close();
   }
+
   return {
     client,
     broker,
@@ -64,12 +70,16 @@ function connectedPair() {
     close,
   };
 }
+
 const resources: ReturnType<typeof connectedPair>[] = [];
+
 function pair() {
   const resource = connectedPair();
   resources.push(resource);
+
   return resource;
 }
+
 beforeEach(() => {
   vi.useFakeTimers();
 });

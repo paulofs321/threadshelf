@@ -36,6 +36,7 @@ describe('background composition (mocked Chrome)', () => {
       new Error('fiction-private-browser-detail'),
     );
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     try {
       const definition = (await import('../../src/entrypoints/background')).default;
       expect(() => definition.main?.()).not.toThrow();

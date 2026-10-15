@@ -104,6 +104,7 @@ describe('selected context policy', () => {
   it('accepts only canonical nonnegative browser-window IDs in panel port names', () => {
     expect(panelWindowId(panelPortName(3))).toBe(3);
     expect(panelWindowId(panelPortName(0))).toBe(0);
+
     for (const suffix of [
       '',
       '-1',
@@ -118,6 +119,7 @@ describe('selected context policy', () => {
     ]) {
       expect(panelWindowId(`threadshelf:selected-tab:v1:window:${suffix}`)).toBeNull();
     }
+
     expect(panelWindowId('threadshelf:selected-tab:v1')).toBeNull();
     expect(panelWindowId('x'.repeat(129))).toBeNull();
   });

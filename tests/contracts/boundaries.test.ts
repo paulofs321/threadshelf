@@ -40,6 +40,7 @@ describe('primitive exact boundaries and hostile inputs', () => {
     ({ schema }) => {
       for (const id of ['fiction-🪁', 'a'.repeat(limits.id)])
         expect(validate(schema, id).ok).toBe(true);
+
       for (const id of [
         null,
         3,
@@ -69,10 +70,12 @@ describe('primitive exact boundaries and hostile inputs', () => {
     expect(validate(GenerationSchema, 1).ok).toBe(true);
     expect(validate(GenerationSchema, Number.MAX_SAFE_INTEGER).ok).toBe(true);
     expect(validate(CountSchema, 0).ok).toBe(true);
+
     for (const value of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, NaN, Infinity, '1', null]) {
       expect(validate(GenerationSchema, value).ok).toBe(false);
       expect(validate(CountSchema, value).ok).toBe(false);
     }
+
     expect(validate(GenerationSchema, 0).ok).toBe(false);
   });
   it.each([
@@ -95,6 +98,7 @@ describe('primitive exact boundaries and hostile inputs', () => {
   });
   it('contains schema/Proxy/getter exceptions and emits no sensitive diagnostic detail', () => {
     const logger = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     try {
       const input = new Proxy(
         {},
