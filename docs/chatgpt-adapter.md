@@ -83,6 +83,8 @@ Titles and snippets retain their exact text, including whitespace. A bounded pre
 exact excerpt; the adapter never adds ellipses, rewrites punctuation, decodes imagined highlights,
 or joins separate message parts into invented quotations. Native snippets use `native-snippet`
 provenance; a title fallback uses `title`. API text uses the separate `provider-message` provenance.
+Clipping preserves complete UTF-16 characters at title/excerpt boundaries and repeats the same check
+when an API excerpt reaches the aggregate evidence budget.
 
 Message enrichment walks parent pointers from `current_node`, rejects cycles/dangling references,
 and reads only that active branch in chronological order. It excludes system/tool messages,

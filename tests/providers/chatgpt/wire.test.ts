@@ -111,6 +111,17 @@ describe('ChatGPT verified keyword/list normalization', () => {
     expect(() => requireValid(CandidateListSchema, result.candidates)).not.toThrow();
     expect(result.coverage.reasons).toContain('result-limit');
   });
+  it('keeps clipped titles and native snippets at complete UTF-16 characters', () => {
+    const row = {
+      ...searchItem(),
+      title: 't'.repeat(299) + '🌳tail',
+      snippet: 's'.repeat(1999) + '🌳tail',
+    };
+    const result = parseChatGptCandidates(searchBody([row]), scope, 'search');
+    expect(result.candidates[0]?.title).toBe('t'.repeat(299));
+    expect(result.candidates[0]?.evidence[0]?.text).toBe('s'.repeat(1999));
+  });
+
   it('bounds duplicate enrichment, falls back to exact title, and discloses missing evidence', () => {
     const rows = Array.from({ length: 12 }, (_, n) => ({
       ...searchItem(),
@@ -245,6 +256,14 @@ describe('ChatGPT active-branch exact message evidence', () => {
     expect(result).toHaveLength(4);
     expect(result[1]).toHaveLength(2_000);
   });
+  it('clips message excerpts at complete UTF-16 characters', () => {
+    const body = messagesBody();
+    body.mapping.answer.message.content.parts = ['x'.repeat(1999) + '🌳tail'];
+    const excerpts = parseChatGptMessages(body, conversationId);
+    expect(excerpts[1]).toBe('x'.repeat(1999));
+    expect(excerpts.every((text) => text.isWellFormed())).toBe(true);
+  });
+
   it.each([
     'cycle',
     'dangling',

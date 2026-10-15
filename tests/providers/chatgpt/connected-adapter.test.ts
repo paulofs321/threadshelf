@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ProviderRequestSchema, requireValid } from '../../../src/contracts';
 import { ChatGptProvider } from '../../../src/providers/chatgpt/adapter';
 import type { ChatGptReadPort } from '../../../src/providers/chatgpt/transport';
 import { chatGptRequest, selectedChatGptScope } from '../../fixtures/chatgpt/requests';
@@ -336,10 +337,22 @@ it('deduplicates an API excerpt already present as exact native evidence', async
   expect(result.candidates[0]?.evidence).toHaveLength(2);
 });
 
-it('rejects enrichment when the query changes under a reused request ID', async () => {
+it.each([
+  { name: 'text', patch: { text: 'A different fictional query' } },
+  { name: 'mode', patch: { mode: 'description' } },
+  { name: 'providers', patch: { providers: ['chatgpt', 'google-ai-mode'] } },
+  { name: 'timezone', patch: { timeZone: 'UTC' } },
+  {
+    name: 'date range',
+    patch: { dateRange: { start: '2025-01-01T00:00:00.000Z', end: '2026-01-01T00:00:00.000Z' } },
+  },
+])('rejects enrichment when $name changes under a reused request ID', async ({ patch }) => {
   const { provider, port, request } = harness();
   await provider.search(request, context());
-  const changed = { ...request, query: { ...request.query, text: 'A different fictional query' } };
+  const changed = requireValid(ProviderRequestSchema, {
+    ...request,
+    query: { ...request.query, ...patch },
+  });
   expect((await provider.enrich(changed, context())).status).toBe('scope-changed');
   expect(port.read).toHaveBeenCalledTimes(1);
 });
@@ -391,4 +404,37 @@ it('skips candidates that already contain the maximum evidence count', async () 
   await provider.search(request, context());
   expect((await provider.enrich(request, context())).status).toBe('success');
   expect(port.read).toHaveBeenCalledTimes(1);
+});
+
+it('preserves complete UTF-16 characters when enrichment reaches the total evidence budget', async () => {
+  const { provider, port, request } = harness();
+  const rows = Array.from({ length: 30 }, (_, n) => ({
+    ...searchItem(
+      n === 0 ? conversationId : `${n.toString(16).padStart(8, '0')}-1111-1111-1111-111111111111`,
+    ),
+    snippet: 'x'.repeat(2000),
+  }));
+  port.read.mockResolvedValueOnce(readResult(searchBody(rows)));
+  await provider.search(request, context());
+  port.read.mockImplementation(async (operation) => {
+    const id = operation.kind === 'messages' ? operation.conversationId : conversationId;
+    const body = messagesBody(id);
+    body.mapping.question.message.content.parts = [];
+    body.mapping.answer.message.content.parts =
+      id === conversationId ? ['a'.repeat(1999) + '🌳tail', 'b'.repeat(2000), '🌳', 'z'] : [];
+
+    return readResult(body);
+  });
+  const result = await provider.enrich(request, context());
+
+  if (result.status !== 'success') throw new Error('Expected synthetic success');
+
+  const evidence = result.candidates.flatMap((candidate) => candidate.evidence);
+  expect(evidence.every((item) => item.text.isWellFormed())).toBe(true);
+  expect(evidence.reduce((total, item) => total + item.text.length, 0)).toBe(64000);
+  expect(
+    result.candidates[0]?.evidence
+      .filter((item) => item.source === 'provider-message')
+      .map((item) => item.text),
+  ).toEqual(['a'.repeat(1999), 'b'.repeat(2000), 'z']);
 });

@@ -13,7 +13,7 @@ import { requireValid, validate } from '../../contracts/validation';
 import { chatGptAvailability } from './availability';
 import { ChatGptReadResultSchema } from './transport';
 import type { ChatGptOperation, ChatGptReadPort, ChatGptReadResult } from './transport';
-import { parseChatGptCandidates, parseChatGptMessages } from './wire';
+import { clipChatGptText, parseChatGptCandidates, parseChatGptMessages } from './wire';
 
 const ChatGptScopeSchema = v.pipe(
   SessionScopeSchema,
@@ -189,7 +189,7 @@ export class ChatGptProvider implements ProviderPort {
           )
             break;
 
-          const text = excerpt.slice(0, limits.totalEvidence - total);
+          const text = clipChatGptText(excerpt, limits.totalEvidence - total);
 
           if (!text.trim() || candidate.evidence.some((e) => e.text === text)) continue;
 

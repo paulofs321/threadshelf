@@ -93,6 +93,13 @@ export interface ChatGptCandidates {
   coverage: Coverage;
 }
 
+export function clipChatGptText(value: string, maximum: number): string {
+  const end = Math.min(value.length, maximum);
+  const last = value.charCodeAt(end - 1);
+
+  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
+}
+
 export function parseChatGptCandidates(
   input: unknown,
   scope: SessionScope,
@@ -152,7 +159,7 @@ export function parseChatGptCandidates(
         scope,
         conversationId: row.id as Candidate['conversationId'],
         originalUrl: `https://chatgpt.com/c/${row.id}`,
-        ...(row.title.trim() ? { title: row.title.slice(0, limits.title) } : {}),
+        ...(row.title.trim() ? { title: clipChatGptText(row.title, limits.title) } : {}),
         ...(row.date ? { date: row.date } : {}),
         evidence: [],
       };
@@ -167,9 +174,9 @@ export function parseChatGptCandidates(
       snippet &&
       remaining > 0 &&
       candidate.evidence.length < limits.evidencePerCandidate &&
-      !candidate.evidence.some((e) => e.text === snippet.slice(0, limits.excerpt))
+      !candidate.evidence.some((e) => e.text === clipChatGptText(snippet, limits.excerpt))
     ) {
-      const excerpt = snippet.slice(0, Math.min(limits.excerpt, remaining));
+      const excerpt = clipChatGptText(snippet, Math.min(limits.excerpt, remaining));
 
       if (excerpt.trim()) {
         candidate.evidence.push({
@@ -260,7 +267,8 @@ export function parseChatGptMessages(input: unknown, conversationId: string): st
     for (const part of message.content.parts) {
       const value = part as string;
 
-      if (value.trim() && excerpts.length < 4) excerpts.push(value.slice(0, limits.excerpt));
+      if (value.trim() && excerpts.length < 4)
+        excerpts.push(clipChatGptText(value, limits.excerpt));
     }
   }
 
