@@ -9,8 +9,8 @@ import {
 import type { GoogleDocumentRead } from '../../../src/providers/google-ai-mode/document-read';
 import { googleJson, googleMatch } from '../../fixtures/google-ai-mode/wire';
 
-const html = (email = 'orchard@example.invalid') =>
-  `<a href="https://accounts.google.com/SignOutOptions?hl=en" aria-label="Google Account: Fiction (${email})"></a>`;
+const html = (email = 'orchard@example.invalid', displayName = 'Fiction') =>
+  `<a href="https://accounts.google.com/SignOutOptions?hl=en" aria-label="Google Account: ${displayName} (${email})"></a>`;
 const input = (kind: 'inspect' | 'list' | 'search' = 'search'): GoogleDocumentRead => ({
   operation: kind === 'search' ? { kind, query: 'authentication' } : { kind },
   partition: 'fictional-local-salt',
@@ -24,8 +24,10 @@ const json = () =>
   new Response(googleJson([[googleMatch()]]), {
     headers: { 'content-type': 'application/json; charset=UTF-8' },
   });
-const identity = () =>
-  new Response(html(), { headers: { 'content-type': 'text/html; charset=UTF-8' } });
+const identity = (email = 'orchard@example.invalid', displayName = 'Fiction') =>
+  new Response(html(email, displayName), {
+    headers: { 'content-type': 'text/html; charset=UTF-8' },
+  });
 beforeEach(() => {
   vi.stubGlobal('location', new URL('https://www.google.com/search?udm=50'));
   vi.stubGlobal('crypto', webcrypto);
@@ -144,6 +146,31 @@ describe('self-contained Google document reads', () => {
       }),
     );
     expect(await readGoogleDocument(input())).toEqual({ status: 'unavailable' });
+  });
+
+  it('binds identity to the parenthesized account address, not email-like display-name text', async () => {
+    const displayName = 'orchard@example.invalid';
+    document.body.innerHTML = html('first@example.invalid', displayName);
+    fetchMock.mockImplementation(async (raw) =>
+      new URL(String(raw)).pathname === '/search'
+        ? identity('first@example.invalid', displayName)
+        : json(),
+    );
+
+    const first = await readGoogleDocument(input('inspect'));
+
+    document.body.innerHTML = html('second@example.invalid', displayName);
+    fetchMock.mockImplementation(async (raw) =>
+      new URL(String(raw)).pathname === '/search'
+        ? identity('second@example.invalid', displayName)
+        : json(),
+    );
+
+    const second = await readGoogleDocument(input('inspect'));
+
+    expect(first).toMatchObject({ status: 'success' });
+    expect(second).toMatchObject({ status: 'success' });
+    expect(first).not.toEqual(second);
   });
 
   it('rejects a changed account before a read, after a read, or against an established partition', async () => {

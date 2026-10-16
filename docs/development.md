@@ -10,7 +10,7 @@
 | `src/platform/`                 | Selected-tab broker, context validation and access lifecycle               |
 | `src/providers/chatgpt/`        | Verified personal-account ChatGPT reads, normalization and identity checks |
 | `src/providers/google-ai-mode/` | Verified Google read adapter, wire parsing and document reader             |
-| `src/search/`                   | Reserved for provider-independent search orchestration                     |
+| `src/search/`                   | Keyword orchestration, scoped deduplication, cancellation and date filters |
 | `src/description/`              | Reserved for interpretation, ranking, and evidence validation              |
 | `src/storage/`                  | Reserved for isolated optional local storage                               |
 | `tests/contracts/`              | Synthetic contract and boundary regression tests                           |
@@ -228,6 +228,16 @@ identity cannot reuse an earlier check's data. A Chrome permission prompt itself
 by this code; cancelling prevents the
 subsequent broker operation and retry waits until that prompt settles.
 
+## Keyword search
+
+`KeywordSearch` composes normalized provider ports and link verifiers without UI or Chrome imports.
+It validates keyword requests, applies provider and available-date filters, coalesces scoped
+conversations and retains independent failures and coverage. Cancellation, query replacement,
+scope retirement, deadlines, call/result budgets and rate-limit cooldowns bound work. See the
+[engine reference](keyword-search.md) for policy defaults, timezone helpers and lifecycle ownership.
+The development panel does not yet compose this engine. Tests use fictional ports and real
+adapters with synthetic transports; live panel search acceptance remains separate.
+
 ## ChatGPT adapter
 
 `ChatGptProvider` implements keyword search, one bounded list response, and optional message
@@ -251,6 +261,9 @@ passed. Rendered message equivalence and live forced logout/workspace/error scen
 established. Search orchestration and panel UI remain separate tasks.
 
 ## Google Search AI Mode adapter
+
+See the [Google Search AI Mode adapter reference](google-ai-mode-adapter.md) for its API, trust
+boundaries, native request forms, normalization, rendered evidence, failure mapping and verified limits.
 
 `src/providers/google-ai-mode/adapter.ts` implements `GoogleAiModeProvider` with an injected
 `GoogleAiModeReadPort`. A missing port keeps the original unavailable behavior. `search(request,

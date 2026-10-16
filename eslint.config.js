@@ -82,4 +82,36 @@ export default defineConfig([
       'no-restricted-globals': ['error', 'chrome', 'browser', 'window', 'document', 'fetch'],
     },
   },
+  {
+    files: ['src/search/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                'react',
+                'react/*',
+                'react-dom',
+                'react-dom/*',
+                'wxt',
+                'wxt/*',
+                'chrome',
+                'webextension-polyfill',
+                '@wxt-dev/*',
+                '**/platform/**',
+                '**/providers/**',
+                '**/entrypoints/**',
+                '**/ui/**',
+              ],
+              message:
+                'Search must depend on injected normalized ports, without UI or browser transport.',
+            },
+          ],
+        },
+      ],
+      'no-restricted-globals': ['error', 'chrome', 'browser', 'window', 'document', 'fetch'],
+    },
+  },
 ]);

@@ -61,8 +61,8 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
     return document
       .querySelector('a[href^="https://accounts.google.com/SignOutOptions"]')
       ?.getAttribute('aria-label')
-      ?.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]
-      .toLowerCase();
+      ?.match(/\(([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\)\s*$/i)?.[1]
+      ?.toLowerCase();
   }
 
   async function body(response: Response): Promise<string> {
