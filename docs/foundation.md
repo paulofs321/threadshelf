@@ -81,8 +81,8 @@ Loading/navigation, URL changes and removal/replacement of a bound source, permi
 and port loss invalidate access. Tab/window focus changes retain independent provider bindings.
 A connected panel sends local 20-second keepalive messages without provider reads; timers stop
 when scopes or the panel close. Scope disappears before terminal worker replies. Worker loss is
-explicit `interrupted` behavior; the next Connect opens a fresh port. Clear selection releases
-memory; Chrome settings own permission revocation. Cancelling a native permission prompt blocks
+explicit `interrupted` behavior; the next Connect opens a fresh port. Disconnect under Connection
+options releases memory; Chrome settings own permission revocation. Cancelling a native permission prompt blocks
 later access but cannot dismiss Chrome's prompt itself.
 
 ## Test evidence and remaining work

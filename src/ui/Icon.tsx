@@ -9,6 +9,9 @@ const paths = {
   open: 'M7 17 17 7M7 7h10v10',
   refresh: 'M20 7a9 9 0 0 0-15-2L2 8m0-5v5h5m-3 9a9 9 0 0 0 15 2l3-3m0 5v-5h-5',
   chat: 'M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 21l2.1-5.4A8.5 8.5 0 1 1 21 11.5',
+  back: 'm15 18-6-6 6-6',
+  check: 'm5 12 4 4L19 6',
+  lock: 'M7 10V7a5 5 0 0 1 10 0v3M5 10h14v11H5zM12 14v3',
 };
 
 export function Icon({ name, ...props }: ComponentProps<'svg'> & { name: keyof typeof paths }) {

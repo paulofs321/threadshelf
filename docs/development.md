@@ -75,9 +75,12 @@ subcomponents were omitted. The upstream MIT notice ships in `public/third-party
 Button text wraps for narrow panels. `src/ui/styles.css` contains shared
 CSS variable tokens adapted to the supplied Figma reference (white surfaces, muted green accents),
 and imports Tailwind 4 through `@tailwindcss/vite` in WXT’s Vite hook. Radix-backed source tabs expose
-All sources/ChatGPT/Google AI Mode without repeating provider requests; advanced settings collapse
-behind the header button. Compact previews expand exact evidence, and date sorting keeps unknown
-dates last. The footer repeats a real search rather than reporting unavailable sync/history totals.
+All sources/ChatGPT/Google AI Mode without repeating provider requests. Connections live on a
+separate welcome page reached through the conversation header’s Connect button; connected
+providers show a confirmation instead of another Connect action. Search state and provider clients
+stay mounted across page navigation, with focus recovery and no extra permission requests. Advanced
+search settings collapse behind the header button. Compact previews expand exact evidence, and
+date sorting keeps unknown dates last. The footer repeats a real search rather than reporting unavailable sync/history totals.
 Explicit CSS source roots scan only UI and panel source. No replacement Vite app/tsconfig, hosted
 fonts, remote code or new extension permissions are required. ESLint prevents browser/provider
 imports and fetches in shared UI. Native labels, select, checkboxes and date inputs retain their

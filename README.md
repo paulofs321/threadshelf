@@ -80,16 +80,18 @@ npm run build
 
 For manual inspection, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**,
 and select `.output/chrome-mv3/`. Click the ThreadShelf toolbar action or select it in Chrome's side
-panel menu. Open **Search settings** for provider connections and date filters; settings start open
-when nothing is connected. Click **Connect** for either provider from any tab. ThreadShelf reuses a suitable provider
-page in this window or opens its fixed landing page in a background tab when needed.
+panel menu. The welcome page provides connection buttons for each provider. The conversation
+header’s **Connect** button returns to that page; connected providers show “already connected.”
+**Search settings** contains provider/date filters. Connect either provider from any tab. ThreadShelf
+reuses a suitable provider page in this window or opens its fixed landing page in a background tab
+when needed.
 Chrome requests optional `scripting` and either `https://chatgpt.com/*` or `https://www.google.com/*`.
 After connecting, enter keywords and search the checked provider. The date interval uses local
 calendar boundaries; **Before** is exclusive. Each provider stays connected while you browse other
 tabs. Closing/navigating its source page or losing account/site access can require reconnecting.
 Only `sidePanel` is required at installation. Google locale hosts and the Gemini app are unsupported.
-**Clear selection** releases the in-memory context; revoke granted site access in Chrome's extension
-settings. After rebuilding/updating the unpacked extension, click **Reload** in `chrome://extensions`
+**Connection options → Disconnect** releases the in-memory context; revoke granted site access in
+Chrome’s extension settings. After rebuilding/updating the unpacked extension, click **Reload** in `chrome://extensions`
 and reopen the panel so its UI and worker use the same build. Incognito is disabled. Actual-account
 acceptance is separate from synthetic native-panel transport checks. See
 [developer notes](docs/development.md) for permissions, protocol, and remaining verification.

@@ -64,7 +64,11 @@ function outcomeStatus(outcome: SearchOutcome): string {
 /** Capability-independent presentation; browser/session composition belongs to the entrypoint. */
 export function SearchScreen(props: SearchScreenProps) {
   const [text, setText] = useState('');
-  const [settingsOpen, setSettingsOpen] = useState(props.scopes.length === 0);
+  const [page, setPage] = useState<'search' | 'connections'>(
+    props.scopes.length === 0 ? 'connections' : 'search',
+  );
+  const previousPage = useRef(page);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [selected, setSelected] = useState<ProviderId[]>(
     props.scopes.map((scope) => scope.provider),
   );
@@ -89,6 +93,15 @@ export function SearchScreen(props: SearchScreenProps) {
       item.status === 'rate-limited' ? (item.retryAfterMs ?? 1000) : 0,
     ) ?? []),
   );
+
+  useEffect(() => {
+    if (previousPage.current === page) return;
+
+    previousPage.current = page;
+
+    if (page === 'connections') document.getElementById('connections-heading')?.focus();
+    else queryInput.current?.focus();
+  }, [page]);
 
   useEffect(() => {
     setSelected(props.scopes.map((scope) => scope.provider));
@@ -203,27 +216,90 @@ export function SearchScreen(props: SearchScreenProps) {
 
   return (
     <main className="mx-auto flex min-h-svh min-w-0 max-w-xl flex-col bg-background text-sm">
-      <header className="flex items-center gap-3 px-4 pb-4 pt-5">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-          <Icon name="shelf" className="size-6" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-medium tracking-tight">ThreadShelf</h1>
-          <p className="mt-0.5 text-xs text-muted-foreground">Your AI conversations, together.</p>
+      <header
+        className={`flex flex-wrap items-center gap-3 px-4 pb-4 pt-5 ${page === 'connections' ? 'border-b' : ''}`}
+      >
+        <div className="flex min-w-0 flex-1 basis-44 items-center gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <Icon name="shelf" className="size-6" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-medium tracking-tight">ThreadShelf</h1>
+            <p className="mt-0.5 text-xs text-muted-foreground">Your AI conversations, together.</p>
+          </div>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="Search settings"
-          aria-expanded={settingsOpen}
-          aria-controls="search-settings"
-          onClick={() => setSettingsOpen((previous) => !previous)}
-        >
-          <Icon name="settings" className="size-5" />
-        </Button>
+        {page === 'search' ? (
+          <div className="ml-auto flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setPage('connections')}
+            >
+              Connect
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Search settings"
+              aria-expanded={settingsOpen}
+              aria-controls="search-settings"
+              onClick={() => setSettingsOpen((previous) => !previous)}
+            >
+              <Icon name="settings" className="size-5" />
+            </Button>
+          </div>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="ml-auto"
+            aria-label="Back to search"
+            onClick={() => setPage('search')}
+          >
+            <Icon name="back" className="size-5" />
+          </Button>
+        )}
       </header>
-      <div className="space-y-4 px-4">
+      <section hidden={page !== 'connections'} aria-labelledby="connections-heading">
+        <div className="space-y-6 px-6 py-8">
+          <SetupScreen
+            providers={props.providers}
+            onConnect={props.onConnect}
+            onInspect={props.onInspect}
+            onDisconnect={props.onDisconnect}
+            onCancel={props.onCancel}
+          />
+          {props.scopes.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => setPage('search')}
+            >
+              Continue to search
+            </Button>
+          )}
+        </div>
+        <footer className="flex flex-wrap items-start justify-between gap-3 border-t bg-muted/60 px-6 py-4 text-xs text-muted-foreground">
+          <p className="flex items-center gap-2">
+            <Icon name="lock" className="size-4 text-primary" />
+            Secure, password-free sign in
+          </p>
+          <details className="max-w-full">
+            <summary className="w-fit cursor-pointer rounded-sm text-primary">Need help?</summary>
+            <p className="mt-3 max-w-xs leading-relaxed">
+              Sign in on the provider site first, then connect here. ThreadShelf uses your existing
+              browser session and never asks for your password. A background provider tab may open.
+              ChatGPT supports personal accounts; Google AI Mode supports the default account.
+              Connections stay available while you browse other tabs.
+            </p>
+          </details>
+        </footer>
+      </section>
+      <div hidden={page !== 'search'} className="space-y-4 px-4">
         <form
           role="search"
           noValidate
@@ -291,13 +367,6 @@ export function SearchScreen(props: SearchScreenProps) {
           aria-label="Search settings"
           className="space-y-4 rounded-xl border bg-muted/40 p-3"
         >
-          <SetupScreen
-            providers={props.providers}
-            onConnect={props.onConnect}
-            onInspect={props.onInspect}
-            onDisconnect={props.onDisconnect}
-            onCancel={props.onCancel}
-          />
           <Card className="shadow-none">
             <CardContent className="space-y-4 p-3">
               <div className="space-y-2">
@@ -389,7 +458,10 @@ export function SearchScreen(props: SearchScreenProps) {
             outcome={outcome}
             verifiers={props.verifiers}
             timeZone={props.timeZone}
-            onConnect={props.onConnect}
+            onConnect={(provider) => {
+              setPage('connections');
+              props.onConnect(provider);
+            }}
           >
             <h2
               id="search-status"
@@ -458,7 +530,10 @@ export function SearchScreen(props: SearchScreenProps) {
           )}
         </section>
       </div>
-      <footer className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t bg-muted/60 px-4 py-3 text-xs text-muted-foreground">
+      <footer
+        hidden={page !== 'search'}
+        className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t bg-muted/60 px-4 py-3 text-xs text-muted-foreground"
+      >
         <p>
           <span className="mr-1.5 inline-block size-1.5 rounded-full bg-primary" />
           Session only · No model uploads

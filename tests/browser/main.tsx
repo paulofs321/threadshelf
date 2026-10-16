@@ -32,7 +32,7 @@ function Smoke() {
             if (signal.aborted)
               return { requestId: request.requestId, scope: request.scope, status: 'cancelled' };
 
-            if (request.query.text === 'expired')
+            if (request.query.text === 'expired' && provider === 'chatgpt')
               return {
                 requestId: request.requestId,
                 scope: request.scope,

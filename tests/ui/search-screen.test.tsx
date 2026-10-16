@@ -46,6 +46,10 @@ function setup(overrides: Partial<SearchScreenProps> = {}, openSettings = true) 
     ...overrides,
   };
   const rendered = render(<SearchScreen {...props} />);
+  const back = screen.queryByRole('button', { name: 'Back to search' });
+
+  if (back) fireEvent.click(back);
+
   const settings = screen.getByRole('button', { name: 'Search settings' });
 
   if (openSettings && settings.getAttribute('aria-expanded') === 'false') fireEvent.click(settings);
@@ -88,6 +92,103 @@ afterEach(() => {
 });
 
 describe('shared search panel with real keyword orchestration', () => {
+  it('opens the separate connection page from Connect and restores the query, selected source and sort', async () => {
+    const user = userEvent.setup();
+    const { props, chat, google } = setup({}, false);
+    await search();
+    await user.click(screen.getByRole('tab', { name: 'Google AI Mode 1' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Sort results' }), {
+      target: { value: 'provider' },
+    });
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.getByText('ChatGPT is already connected.')).toBeTruthy();
+    expect(screen.getByText('Google Search AI Mode is already connected.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Connect ChatGPT' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Connect Google Search AI Mode' })).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: 'Welcome to ThreadShelf' }),
+    );
+    expect(props.onConnect).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Back to search' }));
+    expect(document.activeElement).toBe(input());
+    expect((input() as HTMLInputElement).value).toBe('floating library');
+    expect(
+      screen.getByRole('tab', { name: 'Google AI Mode 1' }).getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(
+      (screen.getByRole('combobox', { name: 'Sort results' }) as HTMLSelectElement).value,
+    ).toBe('provider');
+    expect(results().getAllByRole('article')).toHaveLength(1);
+    expect(chat.search).toHaveBeenCalledOnce();
+    expect(google.search).toHaveBeenCalledOnce();
+  });
+  it('preserves filters while the connection page is open and supports continuing to search', async () => {
+    const user = userEvent.setup();
+    setup();
+    fireEvent.change(screen.getByLabelText('From date'), { target: { value: '2026-03-29' } });
+    fireEvent.change(screen.getByLabelText('Before date (exclusive)'), {
+      target: { value: '2026-03-30' },
+    });
+    await user.click(screen.getByRole('checkbox', { name: 'Google Search AI Mode' }));
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    await user.click(screen.getByText('Need help?'));
+    expect(screen.getByText(/ThreadShelf uses your existing/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Continue to search' }));
+    expect((screen.getByLabelText('From date') as HTMLInputElement).value).toBe('2026-03-29');
+    expect((screen.getByLabelText('Before date (exclusive)') as HTMLInputElement).value).toBe(
+      '2026-03-30',
+    );
+    expect(
+      (screen.getByRole('checkbox', { name: 'Google Search AI Mode' }) as HTMLInputElement).checked,
+    ).toBe(false);
+  });
+  it('keeps an in-flight search running across page navigation without stealing connection-page focus', async () => {
+    const user = userEvent.setup();
+    const pending = deferred<SearchOutcome>();
+    const port = {
+      search: vi.fn<SearchPort['search']>().mockReturnValue(pending.promise),
+      invalidate: vi.fn(),
+    };
+    setup({ search: port }, false);
+    await search();
+    const call = port.search.mock.calls[0];
+
+    if (!call) throw new Error('Missing synthetic request');
+
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    expect(call[1].signal.aborted).toBe(false);
+    await act(async () => pending.resolve(failure(call[0], 'timeout')));
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: 'Welcome to ThreadShelf' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Back to search' }));
+    expect(results().getByRole('status').textContent).toContain('Search failed');
+  });
+  it('updates the connection page immediately on scope loss and clears hidden search results', async () => {
+    const user = userEvent.setup();
+    const { props, rerender } = setup({}, false);
+    await search();
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    rerender(
+      <SearchScreen
+        {...props}
+        scopes={[]}
+        providers={props.providers.map((item) => ({
+          ...item,
+          selected: false,
+          status: 'permission-needed',
+        }))}
+      />,
+    );
+    expect(screen.queryByText('ChatGPT is already connected.')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Connect ChatGPT' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Continue to search' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Back to search' }));
+    expect(results().queryAllByRole('article')).toHaveLength(0);
+    expect((input() as HTMLInputElement).value).toBe('floating library');
+  });
   it('keeps connected search compact while settings remain available through a keyboard toggle', async () => {
     const user = userEvent.setup();
     const { chat, google } = setup({}, false);

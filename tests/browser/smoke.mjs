@@ -91,15 +91,31 @@ try {
   await page.goto(`${extensionOrigin}/sidepanel.html`);
   await expect(page.getByRole('heading', { name: 'ThreadShelf', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Connect ChatGPT', exact: true })).toBeVisible();
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await expect(page.getByRole('heading', { name: 'Welcome to ThreadShelf' })).toBeVisible();
+  await expect(page.getByRole('searchbox')).toHaveCount(0);
+
+  for (const width of [240, 280, 320, 400]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+      `connection page overflow at ${width}px`,
+    );
+  }
+
+  if (process.env.THREADSHELF_CONNECTION_SCREENSHOT)
+    await page.screenshot({ path: process.env.THREADSHELF_CONNECTION_SCREENSHOT, fullPage: true });
+
   const computed = await page
-    .getByRole('button', { name: 'Search', exact: true })
+    .getByRole('button', { name: 'Connect ChatGPT', exact: true })
     .evaluate((button) => ({
-      color: getComputedStyle(button).color,
+      color: getComputedStyle(button).backgroundColor,
       radius: getComputedStyle(button).borderRadius,
     }));
   assert.equal(computed.color, 'rgb(44, 80, 69)');
   assert.notEqual(computed.radius, '0px');
+  await page.getByRole('button', { name: 'Back to search' }).click();
+  await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeVisible();
   await page.goto(`${extensionOrigin}/smoke.html`);
   const query = page.getByRole('searchbox', { name: 'Search conversations' });
   const results = page.getByRole('region', { name: 'Search results' });
@@ -115,14 +131,23 @@ try {
     results.getByText('Login expired. Sign in on the provider site, then reconnect.', {
       exact: true,
     }),
-  ).toHaveCount(2);
+  ).toHaveCount(1);
   await results.getByRole('button', { name: 'Reconnect ChatGPT', exact: true }).click();
+  await expect(page.getByText('ChatGPT is already connected.', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Google Search AI Mode is already connected.', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Connect ChatGPT', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Recheck connection' })).not.toBeVisible();
+  await page.getByRole('button', { name: 'Continue to search' }).click();
   await expect(results.getByRole('status')).toContainText('Ready');
-  await page.getByRole('button', { name: 'Search settings', exact: true }).click();
-  await page.getByRole('button', { name: 'Connect Google Search AI Mode', exact: true }).click();
-  await page.getByRole('button', { name: 'Search settings', exact: true }).click();
   await query.fill('long excerpt');
   await query.press('Enter');
+  await expect(results.getByRole('article')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(query).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back to search' }).click();
+  await expect(query).toHaveValue('long excerpt');
   await expect(results.getByRole('article')).toHaveCount(2);
   await expect(results.getByText('Date unavailable', { exact: true })).toBeVisible();
   const firstResult = results.getByRole('article').first();
@@ -237,9 +262,14 @@ try {
     );
   await expect.poll(async () => (await drive('snapshot').catch(() => null))?.ready).toBe(true);
   await drive('connect-chat');
-  await expect.poll(async () => (await drive('snapshot')).statuses[0]).toContain('Site selected');
+  await expect
+    .poll(async () => (await drive('snapshot')).statuses[0])
+    .toContain('already connected');
   await drive('connect-google');
-  await expect.poll(async () => (await drive('snapshot')).statuses[1]).toContain('Site selected');
+  await expect
+    .poll(async () => (await drive('snapshot')).statuses[1])
+    .toContain('already connected');
+  await drive('continue');
   await page.bringToFront();
   await drive('search');
   await expect
@@ -253,9 +283,11 @@ try {
   await page.bringToFront();
   const retained = await drive('snapshot');
   assert.equal(
-    retained.statuses.slice(0, 2).every((status) => status.includes('Site selected')),
+    retained.statuses.slice(0, 2).every((status) => status.includes('already connected')),
     true,
   );
+  await drive('show-connections');
+  await drive('continue');
   await drive('search');
   await expect.poll(() => keywordReads).toBe(4);
   await expect.poll(async () => (await drive('snapshot')).results).toBe(2);

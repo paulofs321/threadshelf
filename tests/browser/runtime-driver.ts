@@ -14,7 +14,13 @@ browser.runtime.onMessage.addListener((input: unknown, _sender, sendResponse) =>
     return;
 
   const button = (text: string) =>
-    [...document.querySelectorAll('button')].find((item) => item.textContent === text);
+    [...document.querySelectorAll('button')].find(
+      (item) => item.getAttribute('aria-label') === text || item.textContent === text,
+    );
+
+  if (input.command === 'show-connections') button('Connect')?.click();
+
+  if (input.command === 'continue') button('Continue to search')?.click();
 
   if (input.command === 'connect-chat') button('Connect ChatGPT')?.click();
 

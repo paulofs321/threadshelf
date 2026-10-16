@@ -6,8 +6,18 @@ policies. They import no Chrome APIs, provider adapters, authenticated transport
 
 The compact header, search field, green accents and result cards follow the supplied ThreadShelf
 Figma reference. Submit with Enter or the search icon; clear restores query focus and cancels pending
-work. **Search settings** reveals connections, search mode, provider checkboxes and date filters.
-Settings start open when no providers are connected and preserve their values when collapsed.
+work. The conversation header's **Connect** button opens a separate connection page matching the
+Figma welcome screen. This page also appears on first open when no providers are connected, with
+one Connect action per provider and expandable sign-in help. Connected providers show
+“ChatGPT is already connected.” or “Google Search AI Mode is already connected.” instead of another
+Connect button. **Connection options** keeps rechecking/disconnection available without cluttering
+the main connection state. This status describes the browser connection; each search still checks
+account identity and can report expired login or revoked access.
+
+**Back to search** and **Continue to search** preserve the query, filters, selected source tab, sort,
+results and pending search. Page navigation does not reconnect providers or stop their keepalive.
+Focus moves to the connection heading or back to the query. **Search settings** contains search
+mode, provider checkboxes and date filters, preserving their values when collapsed.
 
 **All sources**, **ChatGPT** and **Google AI Mode** tabs show counts from the current validated result
 set. Switching tabs only changes the view; it does not repeat requests or change search filters.

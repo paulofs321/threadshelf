@@ -150,3 +150,10 @@ account changes. A separate live read-only check through the actual installed Ch
 returned three Google matches with an inactive source and verified source preservation/reader
 cleanup. Its diagnostic owning-window capability bypassed the side-panel sender handshake.
 No private payloads or credentials were retained; temporary diagnostics and their tab were removed.
+
+Connection-page regressions cover the first-open welcome screen, per-provider already-connected
+states without duplicate Connect actions, pending cancellation, expanded management actions, and
+return navigation preserving query/filters/source tab/sort/results. Tests verify an in-flight search
+continues across pages without stealing connection-page focus, scope loss clears hidden results,
+and both real runtime clients retain their connection/keepalive without new permission requests.
+Chromium checks both pages at 240–400px and repeats native-panel searches after page/tab switches.
