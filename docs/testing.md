@@ -163,7 +163,7 @@ Chromium checks both pages at 240–400px and repeats native-panel searches afte
 Synthetic tests cover full English dates, leap days, invalid/unsupported labels, time-only today in
 different timezones, DST and skipped days; day-boundary/provenance contracts; first visible label
 selection, delayed rendering and date-only payloads; existing date filtering and card display/tooltips;
-three concurrent reads, remaining deadline, missing metadata, cancellation, replacement, late replies
+sequential date reads, remaining deadline, missing metadata, cancellation, replacement, late replies
 and account/scope/permission failures. Host tests cover safe existing-tab reuse, changed/unsupported
 tab rejection and preserving user tabs. The native-panel fixture verifies a full rendered date and
 then a clock-only label normalized to the browser’s current local day across repeated searches.
@@ -175,3 +175,10 @@ only the owned source, refusal to replace a missing pinned source and retention 
 Google connection. Native Chrome verification of this scenario selected the new inactive document
 and preserved both existing ChatGPT tabs; its owned source and diagnostic tab were removed. That
 probe verifies browser selection, separately from authentication/search and native panel gestures.
+
+Google identity regressions make the AI Mode fetch return HTTP 200 without account markup while the
+fixed homepage supplies the verified account control. Unit and native-panel browser tests require
+successful keyword results in that case. Existing mismatch/missing-identity, HTTP/redirect,
+permission and cancellation guards remain covered. Owned date-page redirects are tested for source
+reverification, unknown dates, cleanup, paused date navigation and successful repeated keyword reads;
+a source-account change still fails closed. The phase stops on unavailable/rate-limited metadata.

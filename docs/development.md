@@ -352,16 +352,19 @@ Search/list enrich dates through optional `openDate`, using the first visible re
 Full English dates retain their day; valid 24-hour clock-only labels use the observation’s local day
 in the query/browser timezone. `calendarDay` records day precision and the explicit today fallback;
 `at` represents the local day boundary for filtering, with message-sent/rendered-message provenance.
-Unsupported or unreadable dates remain unknown. Date work uses at most three owned inactive tabs,
+Unsupported or unreadable dates remain unknown. Date work uses one owned inactive tab at a time,
 a seven-second phase budget and at most 10.5 seconds from retrieval start. It preserves native
-matches when optional metadata fails; account/scope/permission/context changes still fail closed.
+matches when optional metadata fails. Unavailable/rate-limited date reads end the metadata phase;
+an owned date-page URL change pauses new date reads for that connection after rechecking the source.
+Account/scope/permission/context changes still fail closed.
 The [adapter reference](google-ai-mode-adapter.md#rendered-message-dates) describes parsing and cleanup.
 
 `document-read.ts` is self-contained code serialized into Chrome’s isolated world. It performs
 only fixed same-origin GET operations with browser-managed authentication, manual redirects, an
 8-second deadline, a 3 MB streaming response cap, bounded document concurrency and explicit abort
-cleanup. Before and after a data read, it fetches a fresh AI Mode landing page and compares its
-account control with the selected document. Only a local partition-salted SHA-256 fingerprint can
+cleanup. Before and after a data read, it fetches the fixed Google homepage (`https://www.google.com/`)
+and compares its account control with the selected document. Only a local partition-salted SHA-256
+fingerprint can
 leave the identity check; account email/labels are not returned or logged. A changed/missing identity
 prevents success. Nondefault account selectors are currently unavailable rather than silently read
 through the default account. This reader passed native and actual unpacked-extension isolated-world checks using the existing

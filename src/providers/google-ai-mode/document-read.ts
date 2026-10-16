@@ -119,7 +119,9 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
 
     if (!renderedAccount) fail('unavailable');
 
-    const response = await get(origin + '/search?udm=50');
+    // AI Mode HTML can be a successful response without an account header. The fixed homepage
+    // supplies the observed default-account control; compare it afresh around every operation.
+    const response = await get(origin + '/');
 
     if (response.status === 401) fail('login-expired');
 

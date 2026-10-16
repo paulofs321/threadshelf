@@ -38,7 +38,7 @@ beforeEach(() => {
   fetchMock
     .mockReset()
     .mockImplementation(async (raw) =>
-      new URL(String(raw)).pathname === '/search' ? identity() : json(),
+      new URL(String(raw)).pathname === '/' ? identity() : json(),
     );
 });
 afterEach(() => {
@@ -64,8 +64,8 @@ describe('self-contained Google document reads', () => {
       expect(JSON.stringify(result)).not.toContain('orchard@example.invalid');
       expect(fetchMock).toHaveBeenCalledTimes(kind === 'inspect' ? 2 : 3);
       const urls = fetchMock.mock.calls.map(([url]) => new URL(String(url)));
-      expect(urls[0]?.href).toBe('https://www.google.com/search?udm=50');
-      expect(urls.at(-1)?.href).toBe('https://www.google.com/search?udm=50');
+      expect(urls[0]?.href).toBe('https://www.google.com/');
+      expect(urls.at(-1)?.href).toBe('https://www.google.com/');
 
       if (kind !== 'inspect')
         expect(JSON.parse(urls[1]?.searchParams.get('reqpld') ?? '')).toEqual(
@@ -84,6 +84,33 @@ describe('self-contained Google document reads', () => {
       expect(registry.__threadshelfGoogleReadControllers).toBeUndefined();
     },
   );
+
+  it('searches when fresh AI Mode HTML omits identity, using only the fixed homepage for account checks', async () => {
+    fetchMock.mockImplementation(async (raw) => {
+      const url = new URL(String(raw));
+
+      if (url.pathname === '/') return identity();
+
+      if (url.pathname === '/search')
+        return new Response('<p>Fictional client-rendered shell.</p>', {
+          headers: { 'content-type': 'text/html' },
+        });
+
+      return json();
+    });
+    expect(await readGoogleDocument(input())).toMatchObject({
+      status: 'success',
+      response: { status: 200 },
+    });
+    expect(fetchMock.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
+      '/',
+      '/httpservice/web/AimThreadsService/SearchThreads',
+      '/',
+    ]);
+    expect(JSON.stringify(await readGoogleDocument(input('inspect')))).not.toContain(
+      'orchard@example.invalid',
+    );
+  });
 
   it.each([
     'https://evil.invalid/search?udm=50',
@@ -124,7 +151,7 @@ describe('self-contained Google document reads', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each([401, 403, 429, 503])(
+  it.each([302, 401, 403, 429, 503])(
     'maps HTTP %s during identity verification before touching history',
     async (status) => {
       fetchMock.mockResolvedValueOnce(new Response('', { status }));
@@ -154,7 +181,7 @@ describe('self-contained Google document reads', () => {
     const displayName = 'orchard@example.invalid';
     document.body.innerHTML = html('first@example.invalid', displayName);
     fetchMock.mockImplementation(async (raw) =>
-      new URL(String(raw)).pathname === '/search'
+      new URL(String(raw)).pathname === '/'
         ? identity('first@example.invalid', displayName)
         : json(),
     );
@@ -163,7 +190,7 @@ describe('self-contained Google document reads', () => {
 
     document.body.innerHTML = html('second@example.invalid', displayName);
     fetchMock.mockImplementation(async (raw) =>
-      new URL(String(raw)).pathname === '/search'
+      new URL(String(raw)).pathname === '/'
         ? identity('second@example.invalid', displayName)
         : json(),
     );
@@ -192,7 +219,7 @@ describe('self-contained Google document reads', () => {
       fetchMock
         .mockClear()
         .mockImplementation(async (raw) =>
-          new URL(String(raw)).pathname === '/search'
+          new URL(String(raw)).pathname === '/'
             ? annotated === 'rendered'
               ? identity()
               : new Response(annotatedHtml, { headers: { 'content-type': 'text/html' } })

@@ -44,7 +44,9 @@ source or access can require reconnecting. Disconnect removes only unchanged ina
 created by the connection, preserving existing user tabs and pages the user activated or navigated.
 
 The document reader executes in Chrome's isolated world. It compares the rendered Google account
-control with a fresh, uncached same-origin AI Mode landing response before and after each operation.
+control with a fresh, uncached response from the fixed `https://www.google.com/` homepage before
+and after each operation. AI Mode `/search` responses can return HTTP 200 without an account control;
+they are not used as fresh identity documents.
 Identity comes from the final parenthesized account address in the account control, rather than
 email-like display-name text. The rendered label may append the observed comma-separated
 accessibility annotation; the parser accepts it only without additional addresses, parentheses or
@@ -131,11 +133,15 @@ that local day’s first real instant for sorting and filtering; the contract va
 The card renders the calendar day and exposes its basis in a tooltip. This does not assert a
 conversation creation/update timestamp or exact midnight message time.
 
-At most three temporary date tabs run concurrently. The metadata phase has at most seven seconds,
-further reduced to fit within 10.5 seconds from retrieval start and the engine’s 12-second provider
-deadline. No retry or persistent date cache is added. Slow/unavailable/malformed optional metadata
+Date reads run sequentially, with at most one temporary date tab at a time. The metadata phase has
+at most seven seconds, reduced to fit within 10.5 seconds from retrieval start and the engine’s
+12-second provider deadline. No retry or persistent date cache is added. Slow/unavailable/malformed optional metadata
 leaves native matches intact with unknown dates; a filtered search excludes them with coverage
-disclosure. Account/scope/permission/context failures and caller cancellation discard the outcome.
+disclosure. Unavailable or rate-limited date reads stop that metadata phase. If an owned date tab
+loads an unexpected URL, its contents are not read. The original source is rechecked, its date stays
+unknown, and new date reads pause for that connection; reconnecting creates a fresh reader. This
+preserves verified keyword matches without following unknown redirects. Changes to the source
+account, scope, permissions or owning context, and caller cancellation, still discard the outcome.
 Cancellation, replacement and the phase deadline abort pending date reads and discard late replies;
 owned tabs are closed, including late tab creation. The active source remains untouched.
 
@@ -219,6 +225,15 @@ source preserved and no temporary tabs remaining. Subsequent three-match retriev
 matches but left dates unknown when optional fresh identity checks returned unavailable. This does
 not establish universal date availability; the time-only fallback is covered separately by synthetic
 unit and native-panel Chromium checks. Diagnostics and their temporary assets/tabs were removed.
+
+A later 16 October regression returned HTTP 200 without account markup from both the AI Mode
+landing response and the current thread response. The fixed Google homepage supplied the matching
+fresh account control, restoring native search. The full real adapter then returned seven matches
+for two consecutive searches from an inactive source, preserving its URL and leaving no temporary
+tabs. One optional date tab changed its URL; the reader discarded its metadata and paused date
+navigation, retaining keyword results. No private text, account labels or identifiers were recorded.
+This provider diagnostic bypassed the native panel sender handshake; the panel flow is exercised
+separately with synthetic HTTP, including an account-free AI Mode response.
 
 The current panel has **All sources**, **ChatGPT** and **Google AI Mode** result tabs with compact
 expandable excerpts and provider-specific failures. Isolated Chromium tests exercise the real native

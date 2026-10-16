@@ -32,6 +32,7 @@ export function createGoogleAiModeProvider(binding: SelectedDocumentBinding): Go
 }
 
 export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
+  private dateNavigationBlocked = false;
   constructor(private readonly binding: SelectedDocumentBinding) {}
 
   read(
@@ -66,6 +67,8 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
   }
 
   openDate(candidate: Candidate, expectedIdentity: string, context: OperationContext) {
+    if (this.dateNavigationBlocked) return Promise.resolve(failure('unavailable'));
+
     return this.openConversation(candidate, expectedIdentity, context, 'date');
   }
 
@@ -93,25 +96,9 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
       let destination = candidate.originalUrl;
 
       try {
-        const before = await this.source(signal);
+        const before = await this.confirmSource(expectedIdentity, signal);
 
         if (before) return before;
-
-        const identity = await this.execute(
-          this.binding.tab.id,
-          this.binding.documentId,
-          { kind: 'inspect' },
-          expectedIdentity,
-          signal,
-        );
-
-        if (identity.status !== 'success') return identity;
-
-        if (
-          identity.identityBefore !== expectedIdentity ||
-          identity.identityAfter !== expectedIdentity
-        )
-          return failure('scope-changed');
 
         if (signal.aborted) return failure('cancelled');
 
@@ -169,8 +156,19 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
             return failure('scope-changed');
 
           if (current.status === 'complete') {
-            if (current.url !== destination || current.pendingUrl !== undefined)
+            if (current.url !== destination || current.pendingUrl !== undefined) {
+              // A rejected/redirected optional date page does not invalidate verified keyword matches.
+              // No data is read from that document; reverify the original source before degrading.
+              if (kind === 'date' && owned) {
+                this.dateNavigationBlocked = true;
+
+                return (
+                  (await this.confirmSource(expectedIdentity, signal)) ?? failure('unavailable')
+                );
+              }
+
               return failure('scope-changed');
+            }
 
             break;
           }
@@ -209,31 +207,37 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
         )
           return failure('scope-changed');
 
-        const after = await this.source(signal);
+        const after = await this.confirmSource(expectedIdentity, signal);
 
         if (after) return after;
-
-        const confirmation = await this.execute(
-          this.binding.tab.id,
-          this.binding.documentId,
-          { kind: 'inspect' },
-          expectedIdentity,
-          signal,
-        );
-
-        if (confirmation.status !== 'success') return confirmation;
-
-        if (
-          confirmation.identityBefore !== expectedIdentity ||
-          confirmation.identityAfter !== expectedIdentity
-        )
-          return failure('scope-changed');
 
         return result;
       } finally {
         if (owned && tabId !== undefined) await browser.tabs.remove(tabId).catch(() => {});
       }
     });
+  }
+
+  private async confirmSource(
+    expectedIdentity: string,
+    signal: AbortSignal,
+  ): Promise<ReadResult | undefined> {
+    const source = await this.source(signal);
+
+    if (source) return source;
+
+    const identity = await this.execute(
+      this.binding.tab.id,
+      this.binding.documentId,
+      { kind: 'inspect' },
+      expectedIdentity,
+      signal,
+    );
+
+    if (identity.status !== 'success') return identity;
+
+    if (identity.identityBefore !== expectedIdentity || identity.identityAfter !== expectedIdentity)
+      return failure('scope-changed');
   }
 
   private async source(signal: AbortSignal): Promise<ReadResult | undefined> {

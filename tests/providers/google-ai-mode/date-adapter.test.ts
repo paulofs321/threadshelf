@@ -158,18 +158,18 @@ describe('Google date enrichment', () => {
     expect((await provider.search(request, context())).status).toBe('scope-changed');
     expect((await provider.inspectSession(context())).status).toBe('scope-changed');
   });
-  it('bounds date work to three concurrent tabs and seven seconds, ignores late replies, and releases timers', async () => {
+  it('bounds date work to one tab at a time and seven seconds, ignores late replies, and releases timers', async () => {
     vi.useFakeTimers();
     const { provider, request, port } = fixture(10);
     const finishes: ((value: unknown) => void)[] = [];
     port.openDate.mockImplementation(() => new Promise((resolve) => finishes.push(resolve)));
     const pending = provider.search(request, context());
     await vi.advanceTimersByTimeAsync(0);
-    expect(port.openDate).toHaveBeenCalledTimes(3);
+    expect(port.openDate).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(7000);
     const result = await pending;
     expect(result.status).toBe('success');
-    expect(port.openDate).toHaveBeenCalledTimes(3);
+    expect(port.openDate).toHaveBeenCalledTimes(1);
 
     for (const [, , ctx] of port.openDate.mock.calls) expect(ctx.signal.aborted).toBe(true);
 
@@ -246,3 +246,19 @@ it('discards completion when the scope retires after the native read but before 
   );
   expect((await provider.search(request, context())).status).toBe('scope-changed');
 });
+
+it.each(['unavailable', 'rate-limited'] as const)(
+  'stops optional date reads on %s and preserves all matches',
+  async (status) => {
+    const { provider, request, port } = fixture(5);
+    port.openDate.mockResolvedValue({ status });
+    const result = await provider.search(request, context());
+    expect(result.status).toBe('success');
+
+    if (result.status !== 'success') throw new Error('Expected synthetic success');
+
+    expect(result.candidates).toHaveLength(5);
+    expect(result.coverage.reasons).toContain('unknown-dates');
+    expect(port.openDate).toHaveBeenCalledOnce();
+  },
+);

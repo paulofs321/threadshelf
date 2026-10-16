@@ -56,6 +56,8 @@ each conversation’s available date and stated meaning/source; a conversation u
 when a topic was discussed. Undated results are excluded by date filters and disclosed in coverage.
 Google uses the first visible message’s date from the conversation. A time-only label uses the
 local date when read. Hover the date for its basis; unknown or unreadable dates remain unavailable.
+If Google redirects an optional date page, date reads pause for that connection while keyword
+search remains available.
 
 The search bridge carries normalized keyword requests and cancellation IDs, alongside strict
 access commands and empty local keepalive messages. The worker

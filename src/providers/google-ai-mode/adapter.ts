@@ -237,7 +237,7 @@ export class GoogleAiModeProvider implements ProviderPort {
   ): Promise<Exclude<ProviderOutcome['status'], 'success'> | undefined> {
     if (!this.readPort?.openDate || !candidates.length) return undefined;
 
-    // Three owned tabs at most; metadata never consumes the entire 12-second provider deadline.
+    // One date page at a time; metadata never consumes the entire 12-second provider deadline.
     // A missing/slow/changed date format leaves the native match intact with an unknown date.
     const budget = Math.min(7000, 10_500 - (performance.now() - started));
 
@@ -266,6 +266,8 @@ export class GoogleAiModeProvider implements ProviderPort {
         );
 
         if (controller.signal.aborted) return;
+
+        if (result.status === 'unavailable' || result.status === 'rate-limited') return;
 
         if (
           result.status === 'scope-changed' ||
@@ -296,7 +298,7 @@ export class GoogleAiModeProvider implements ProviderPort {
     try {
       if (context.signal.aborted) return 'cancelled';
 
-      await Promise.all(Array.from({ length: Math.min(3, candidates.length) }, worker));
+      await worker();
 
       return fatal;
     } finally {

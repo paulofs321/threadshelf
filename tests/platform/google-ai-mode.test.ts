@@ -670,3 +670,63 @@ it('does not create a conversation tab when cancellation arrives during existing
   await Promise.resolve();
   expect(chrome.tabs.create).not.toHaveBeenCalled();
 });
+
+it('preserves source access when an owned date tab cannot open its original URL', async () => {
+  chrome.tabs.get.mockResolvedValue({
+    windowId: 3,
+    status: 'complete',
+    url: 'https://www.google.com/sorry/index?continue=fictional',
+  });
+  expect(await port.openDate(candidate(), identity, context())).toEqual({ status: 'unavailable' });
+  expect(
+    chrome.scripting.executeScript.mock.calls
+      .filter(([options]) => options.func === readGoogleDocument)
+      .map(([options]) => options.args[0].operation.kind),
+  ).toEqual(['inspect', 'inspect']);
+  expect(chrome.tabs.remove).toHaveBeenCalledExactlyOnceWith(8);
+  chrome.scripting.executeScript.mockClear();
+  expect(await port.openDate(candidate(), identity, context())).toEqual({ status: 'unavailable' });
+  expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+  expect(chrome.tabs.create).toHaveBeenCalledOnce();
+});
+
+it('still invalidates a changed source account while dropping a redirected optional date page', async () => {
+  chrome.tabs.get.mockResolvedValue({
+    windowId: 3,
+    status: 'complete',
+    url: 'https://www.google.com/sorry/index',
+  });
+  let inspect = 0;
+  chrome.scripting.executeScript.mockImplementation(async (options) =>
+    options.func === readGoogleDocument &&
+    options.args[0].operation.kind === 'inspect' &&
+    ++inspect === 2
+      ? [{ frameId: 0, documentId: 'fiction-source', result: { status: 'scope-changed' } }]
+      : script(options),
+  );
+  expect(await port.openDate(candidate(), identity, context())).toEqual({
+    status: 'scope-changed',
+  });
+  expect(chrome.tabs.remove).toHaveBeenCalledExactlyOnceWith(8);
+});
+
+it('keeps keyword matches if Google rejects optional conversation-date navigation', async () => {
+  chrome.tabs.get.mockResolvedValue({
+    windowId: 3,
+    status: 'complete',
+    url: 'https://www.google.com/sorry/index',
+  });
+  const provider = createGoogleAiModeProvider(binding);
+  const result = await provider.search(request, context());
+  expect(result).toMatchObject({
+    status: 'success',
+    candidates: [{ conversationId: 'fictional-thread-1' }],
+  });
+
+  if (result.status !== 'success') throw new Error('Expected synthetic success');
+
+  expect(result.candidates[0]).not.toHaveProperty('date');
+  expect((await provider.search(request, context())).status).toBe('success');
+  expect(chrome.tabs.create).toHaveBeenCalledOnce();
+  expect(chrome.tabs.remove).toHaveBeenCalledExactlyOnceWith(8);
+});

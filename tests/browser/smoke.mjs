@@ -225,10 +225,18 @@ try {
       });
     }
 
+    if (url.origin === 'https://www.google.com' && url.pathname === '/')
+      return route.fulfill({
+        contentType: 'text/html',
+        body: '<a href="https://accounts.google.com/SignOutOptions?hl=en" aria-label="Google Account: Fiction (orchard@example.invalid)">Account</a>',
+      });
+
     if (url.origin === 'https://www.google.com' && url.pathname === '/search')
       return route.fulfill({
         contentType: 'text/html',
-        body: `<a href="https://accounts.google.com/SignOutOptions?hl=en" aria-label="Google Account: Fiction (orchard@example.invalid)${route.request().isNavigationRequest() ? ', Opens account menu' : ''}">Account</a>${url.searchParams.has('mtid') ? '<div class="UYpEO"><div class="kwdzO">13 October 2026</div></div>' : ''}`,
+        body: route.request().isNavigationRequest()
+          ? `<a href="https://accounts.google.com/SignOutOptions?hl=en" aria-label="Google Account: Fiction (orchard@example.invalid), Opens account menu">Account</a>${url.searchParams.has('mtid') ? '<div class="UYpEO"><div class="kwdzO">13 October 2026</div></div>' : ''}`
+          : '<p>Fictional AI Mode response without account metadata.</p>',
       });
 
     if (
