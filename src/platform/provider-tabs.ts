@@ -51,8 +51,8 @@ export class ProviderTabs {
     if (pinned !== undefined && !tab) return null;
 
     if (!tab) {
-      if (matching.length > 0) return null;
-
+      // A fresh landing document resolves ambiguous inactive pages without choosing an account tab.
+      // This applies only to initial selection; a missing pinned source must still fail above.
       tab = await browser.tabs.create({ windowId, active: false, url: landingUrls[provider] });
 
       if (tab.id === undefined) return null;

@@ -85,16 +85,50 @@ describe('independent provider document ownership', () => {
     expect(chrome.tabs.create).not.toHaveBeenCalled();
     expect(chrome.tabs.remove).not.toHaveBeenCalled();
   });
-  it('selects an explicit active provider tab among several and never guesses between inactive accounts', async () => {
+  it('prefers the active provider tab among several without creating another page', async () => {
     const { select } = harness();
     chrome.tabs.query.mockResolvedValue([tab, { ...tab, id: 8, active: false }]);
     expect(await select()).toEqual(tab);
-    const other = harness();
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+  });
+  it.each(['chatgpt', 'google-ai-mode'] as const)(
+    'connects to %s from another site when several provider pages are inactive',
+    async (provider) => {
+      const { manager, controller } = harness();
+      const url =
+        provider === 'chatgpt' ? 'https://chatgpt.com/' : 'https://www.google.com/search?udm=50';
+      const existing = [
+        { ...tab, url, active: false },
+        { ...tab, id: 8, url, active: false },
+      ];
+      const created = { ...tab, id: 9, url, active: false };
+      chrome.tabs.query.mockResolvedValue(existing);
+      chrome.tabs.create.mockResolvedValue(created);
+      chrome.tabs.get.mockResolvedValue(created);
+      expect(await manager.select(3, provider, controller.signal)).toEqual(created);
+      expect(chrome.tabs.create).toHaveBeenCalledExactlyOnceWith({
+        windowId: 3,
+        active: false,
+        url,
+      });
+      chrome.tabs.query.mockResolvedValue([...existing, created]);
+      expect(await manager.select(3, provider, controller.signal, 9)).toEqual(created);
+      expect(await manager.select(3, provider, controller.signal)).toEqual(created);
+      expect(chrome.tabs.create).toHaveBeenCalledOnce();
+      await manager.release(provider);
+      expect(chrome.tabs.remove).toHaveBeenCalledExactlyOnceWith(9);
+    },
+  );
+  it('never replaces a disappeared pinned source with a new landing or another inactive page', async () => {
+    const { manager, controller, select } = harness();
+    chrome.tabs.query.mockResolvedValue([tab]);
+    await select();
     chrome.tabs.query.mockResolvedValue([
-      { ...tab, active: false },
       { ...tab, id: 8, active: false },
+      { ...tab, id: 9, active: false },
     ]);
-    expect(await other.select()).toBeNull();
+    expect(await manager.select(3, 'chatgpt', controller.signal, 7)).toBeNull();
+    expect(await select()).toBeNull();
     expect(chrome.tabs.create).not.toHaveBeenCalled();
   });
   it('pins the source ID through rechecks without substituting another provider document', async () => {

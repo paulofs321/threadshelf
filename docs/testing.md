@@ -130,8 +130,8 @@ fixture pages are prepared before navigation. No existing browser profile or liv
 Screen-reader acceptance and final authenticated panel interaction remain separate checks.
 
 Provider-connection regressions cover independent inactive source bindings, default AI Mode route
-selection, ambiguous-account refusal, automatic fixed background tab creation, creation/loading
-cancellation, late tab creation cleanup, preserving user tabs, rechecking pinned IDs/documents,
+selection, fixed landing-page creation with multiple inactive matches, automatic background tab
+creation when no source exists, creation/loading cancellation, late tab creation cleanup, preserving user tabs, rechecking pinned IDs/documents,
 continued reads across tab/window activation, targeted revocation, local keepalive without provider
 reads, malformed heartbeat rejection and interval teardown. Existing cancellation, identity-change,
 login, permission and stale-response tests remain enforced; their old focus-invalidation expectations
@@ -168,3 +168,10 @@ and account/scope/permission failures. Host tests cover safe existing-tab reuse,
 tab rejection and preserving user tabs. The native-panel fixture verifies a full rendered date and
 then a clock-only label normalized to the browser’s current local day across repeated searches.
 These checks use handwritten data and make no numeric timestamp or complete-history claim.
+
+A connection regression reproduces ChatGPT Connect from another site with two inactive ChatGPT
+pages. It verifies a fresh fixed inactive source, pinned reuse without duplicate tabs, cleanup of
+only the owned source, refusal to replace a missing pinned source and retention of an existing
+Google connection. Native Chrome verification of this scenario selected the new inactive document
+and preserved both existing ChatGPT tabs; its owned source and diagnostic tab were removed. That
+probe verifies browser selection, separately from authentication/search and native panel gestures.

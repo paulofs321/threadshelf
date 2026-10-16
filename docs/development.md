@@ -218,10 +218,11 @@ the live regular-profile side panel, but global panels report `windowId: -1`, wh
 binding. If it supplies a nonnegative window ID, that value must agree with the binding. Missing or
 unexpected context metadata fails closed. `ProviderTabs` resolves an independent provider source
 in the bound window: an unambiguous supported existing page, an active matching page when several
-exist, or a newly created inactive fixed landing page. It never guesses between multiple inactive
-accounts. Rechecks pin its tab ID, exact URL, completed load, regular profile and Chrome document ID;
-provider sources can remain inactive. Provider operation
-messages cannot supply a window, tab, URL, header, body, or executable argument.
+exist, or a newly created inactive fixed landing page. Several inactive matches trigger a fresh
+landing page. Rechecks remain pinned to the selected tab ID, exact URL, completed load, regular
+profile and Chrome document ID; they fail closed if that source disappears. Provider sources can
+remain inactive. Provider operation messages cannot supply a window, tab, URL, header, body, or
+executable argument.
 
 | Operation         | Allowed payload and result                                                                     |
 | ----------------- | ---------------------------------------------------------------------------------------------- |

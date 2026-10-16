@@ -85,7 +85,7 @@ panel menu. The welcome page provides connection buttons for each provider. The 
 header’s **Connect** button returns to that page; connected providers show “already connected.”
 **Search settings** contains provider/date filters. Connect either provider from any tab. ThreadShelf
 reuses a suitable provider page in this window or opens its fixed landing page in a background tab
-when needed.
+when needed, including when several provider tabs are open but inactive.
 Chrome requests optional `scripting` and either `https://chatgpt.com/*` or `https://www.google.com/*`.
 After connecting, enter keywords and search the checked provider. The date interval uses local
 calendar boundaries; **Before** is exclusive. Each provider stays connected while you browse other

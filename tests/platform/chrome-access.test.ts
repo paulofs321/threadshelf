@@ -200,6 +200,71 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     port.onDisconnect.emit();
   });
 
+  it('connects ChatGPT from another site with multiple inactive tabs while retaining Google', async () => {
+    const port = connection();
+    const googleScope = await select(port, 'google-ai-mode');
+    port.postMessage.mockClear();
+    const existing = [
+      { ...tab, active: false },
+      { ...tab, id: 9, active: false },
+    ];
+    const landing = { ...tab, id: 10, active: false };
+    let created = false;
+    chrome.tabs.query.mockImplementation(async ({ url }: { url: string }) =>
+      url === 'https://chatgpt.com/*'
+        ? [...existing, ...(created ? [landing] : [])]
+        : [sites['google-ai-mode'].tab],
+    );
+    chrome.tabs.create.mockImplementation(async () => {
+      created = true;
+
+      return landing;
+    });
+    chrome.tabs.get.mockResolvedValue(landing);
+    chrome.scripting.executeScript.mockImplementation(async (options: { args: [string] }) =>
+      options.args[0] === 'https://www.google.com' ? [sites['google-ai-mode'].probe] : [probe],
+    );
+    port.onMessage.emit({
+      operation: 'connect',
+      provider: 'chatgpt',
+      requestId: 'fiction-background-chat',
+    });
+    await vi.waitFor(() =>
+      expect(port.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: 'fiction-background-chat',
+          status: 'selected',
+          session: 'unverified',
+        }),
+      ),
+    );
+    expect(chrome.tabs.create).toHaveBeenCalledExactlyOnceWith({
+      windowId: 3,
+      active: false,
+      url: 'https://chatgpt.com/',
+    });
+    port.onMessage.emit({
+      operation: 'inspect-context',
+      provider: 'google-ai-mode',
+      requestId: 'fiction-google-still-connected',
+      scope: googleScope,
+    });
+    await vi.waitFor(() =>
+      expect(port.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: 'fiction-google-still-connected',
+          status: 'selected',
+        }),
+      ),
+    );
+    expect(port.postMessage.mock.calls.some(([message]) => message.kind === 'invalidated')).toBe(
+      false,
+    );
+    expect(chrome.tabs.remove).not.toHaveBeenCalled();
+    port.onDisconnect.emit();
+    await vi.waitFor(() => expect(chrome.tabs.remove).toHaveBeenCalledExactlyOnceWith(10));
+  });
+
   it('targets only the selected panel window/top-level document in the isolated world', async () => {
     const port = connection();
     await select(port);

@@ -35,9 +35,9 @@ frame zero and the expected Chrome document ID. No runtime operation accepts arb
 headers, account selectors or executable code.
 
 The panel's **Connect** action reuses an unambiguous supported Google page in its window, preferring
-an active matching page when several exist. If none exists, it opens the fixed AI Mode landing page
-in an inactive tab. Multiple inactive matching pages are not chosen arbitrarily. The binding survives
-tab and window focus changes; searching does not require keeping Google active. A local 20-second
+an active matching page when several exist. If none exists, or several match and all are inactive,
+it opens the fixed AI Mode landing page in a new inactive tab. The binding survives tab and window
+focus changes; searching does not require keeping Google active. A local 20-second
 heartbeat keeps the worker available while the panel has connected scopes, without provider reads.
 Connections remain in memory for the panel session. Closing the panel/browser or losing the bound
 source or access can require reconnecting. Disconnect removes only unchanged inactive source tabs

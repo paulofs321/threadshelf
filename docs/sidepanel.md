@@ -29,7 +29,8 @@ invented total of saved history. Message counts and provider sync metadata are n
 
 Click **Connect** for either provider from any tab. Permission is requested only from that gesture.
 ThreadShelf reuses an unambiguous supported provider page in this window, preferring its active page
-when several exist. If none exists, it opens the provider’s fixed landing page in an inactive tab.
+when several exist. If no provider page exists, or several match and all are inactive, it opens
+the provider’s fixed landing page in a new inactive tab.
 You do not need to open or stay on that tab manually. This still uses a real browser tab for isolated
 session access; it does not export credentials or promise tab-free authenticated requests.
 
