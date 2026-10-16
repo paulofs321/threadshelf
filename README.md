@@ -39,7 +39,8 @@ links, bounded rendered-thread evidence, HTTP failures and fresh identity checks
 empty search, a capped partial list and a rendered excerpt from an owned background tab that closed
 afterward. Nondefault accounts, timestamp meanings, continuation beyond 300 listed records and
 complete-message retrieval remain unresolved. Unknown dates are omitted; complete-history coverage
-is never claimed. Live checks are separate from synthetic tests.
+is never claimed. Live checks are separate from synthetic tests. See the
+[Google Search AI Mode adapter](docs/google-ai-mode-adapter.md) for the technical reference.
 
 Without a selected-document binding, either adapter remains unavailable. Model inference,
 persistent storage, demo and release packaging remain unimplemented. GitHub Actions runs locked
