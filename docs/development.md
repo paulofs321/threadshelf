@@ -262,6 +262,9 @@ established. Search orchestration and panel UI remain separate tasks.
 
 ## Google Search AI Mode adapter
 
+See the [Google Search AI Mode adapter reference](google-ai-mode-adapter.md) for its API, trust
+boundaries, native request forms, normalization, rendered evidence, failure mapping and verified limits.
+
 `src/providers/google-ai-mode/adapter.ts` implements `GoogleAiModeProvider` with an injected
 `GoogleAiModeReadPort`. A missing port keeps the original unavailable behavior. `search(request,
 context)` and `list(request, context)` validate the normalized request and selected scope, then
