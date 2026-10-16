@@ -11,6 +11,7 @@ import { validate } from '../../contracts/validation';
 import { CandidateSchema, EvidenceSchema } from '../../contracts/conversation';
 import type { Candidate } from '../../contracts/conversation';
 import { limits } from '../../contracts/primitives';
+import { parseGoogleDateLabel } from './dates';
 import { googleAiModeAvailability } from './availability';
 import { GoogleReadResultSchema } from './transport';
 import type { GoogleAiModeReadPort, GoogleReadOperation } from './transport';
@@ -34,6 +35,7 @@ export class GoogleAiModeProvider implements ProviderPort {
   private identity: string | undefined;
   private readonly candidates = new Map<string, Candidate>();
   private readonly pending = new Set<AbortController>();
+  private retrievalEpoch = 0;
   private candidateRequestKey: string | undefined;
 
   constructor(
@@ -52,7 +54,8 @@ export class GoogleAiModeProvider implements ProviderPort {
       if (
         result.status === 'success' &&
         result.response === undefined &&
-        result.rendered === undefined
+        result.rendered === undefined &&
+        result.dateLabel === undefined
       )
         return { status: 'ready', scope: { ...this.selectedScope } };
 
@@ -97,6 +100,8 @@ export class GoogleAiModeProvider implements ProviderPort {
 
     if (status !== 'unavailable' || !this.readPort) return this.failure(request, status);
 
+    const epoch = ++this.retrievalEpoch;
+    const started = performance.now();
     this.candidates.clear();
     this.candidateRequestKey = undefined;
     const result = await this.read(
@@ -106,7 +111,7 @@ export class GoogleAiModeProvider implements ProviderPort {
 
     if (result.status !== 'success') return this.failure(request, result.status);
 
-    if (!result.response || result.rendered !== undefined)
+    if (!result.response || result.rendered !== undefined || result.dateLabel !== undefined)
       return this.failure(request, 'schema-changed');
 
     const failure = googleHttpFailure(result.response, this.options.now?.() ?? Date.now());
@@ -128,6 +133,26 @@ export class GoogleAiModeProvider implements ProviderPort {
         request,
         this.options.freshId ?? (() => crypto.randomUUID()),
       );
+      const dateFailure = await this.enrichDates(
+        parsed.candidates,
+        request,
+        context,
+        epoch,
+        started,
+      );
+
+      if (context.signal.aborted) return this.failure(request, 'cancelled');
+
+      if (dateFailure) return this.failure(request, dateFailure);
+
+      if (epoch !== this.retrievalEpoch || this.invalidated)
+        return this.failure(request, 'scope-changed');
+
+      if (parsed.candidates.every((candidate) => candidate.date !== undefined))
+        parsed.coverage.reasons = parsed.coverage.reasons.filter(
+          (reason) => reason !== 'unknown-dates',
+        );
+
       const outcome = requireValid(
         providerOutcomeSchemaFor(request, { 'google-ai-mode': verifyGoogleOriginalLink }),
         { requestId: request.requestId, scope: request.scope, status: 'success', ...parsed },
@@ -171,7 +196,7 @@ export class GoogleAiModeProvider implements ProviderPort {
 
     if (result.status !== 'success') return this.failure(request, result.status);
 
-    if (!result.rendered || result.response !== undefined)
+    if (!result.rendered || result.response !== undefined || result.dateLabel !== undefined)
       return this.failure(request, 'schema-changed');
 
     const enriched = requireValid(CandidateSchema, candidate);
@@ -196,11 +221,88 @@ export class GoogleAiModeProvider implements ProviderPort {
           reasons: [
             'unknown-reach',
             'missing-evidence',
-            ...(request.query.dateRange ? ['unknown-dates'] : []),
+            ...(request.query.dateRange && !candidate.date ? ['unknown-dates'] : []),
           ],
         },
       },
     );
+  }
+
+  private async enrichDates(
+    candidates: Candidate[],
+    request: ProviderRequest,
+    context: OperationContext,
+    epoch: number,
+    started: number,
+  ): Promise<Exclude<ProviderOutcome['status'], 'success'> | undefined> {
+    if (!this.readPort?.openDate || !candidates.length) return undefined;
+
+    // Three owned tabs at most; metadata never consumes the entire 12-second provider deadline.
+    // A missing/slow/changed date format leaves the native match intact with an unknown date.
+    const budget = Math.min(7000, 10_500 - (performance.now() - started));
+
+    if (budget <= 0) return undefined;
+
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    context.signal.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(abort, budget);
+    let next = 0;
+    let fatal: Exclude<ProviderOutcome['status'], 'success'> | undefined;
+
+    const worker = async () => {
+      while (!controller.signal.aborted && epoch === this.retrievalEpoch && !fatal) {
+        const candidate = candidates[next++];
+
+        if (!candidate) return;
+
+        if (!candidate.originalUrl) continue;
+
+        const result = await this.read(
+          { kind: 'date', conversationId: candidate.conversationId },
+          { signal: controller.signal },
+          candidate,
+          false,
+        );
+
+        if (controller.signal.aborted) return;
+
+        if (
+          result.status === 'scope-changed' ||
+          result.status === 'login-expired' ||
+          result.status === 'permission-needed' ||
+          result.status === 'interrupted' ||
+          result.status === 'cancelled'
+        ) {
+          fatal = result.status;
+          controller.abort();
+
+          return;
+        }
+
+        if (
+          result.status === 'success' &&
+          result.dateLabel &&
+          result.response === undefined &&
+          result.rendered === undefined
+        ) {
+          const date = parseGoogleDateLabel(result.dateLabel, request.query.timeZone);
+
+          if (date) candidate.date = date;
+        }
+      }
+    };
+
+    try {
+      if (context.signal.aborted) return 'cancelled';
+
+      await Promise.all(Array.from({ length: Math.min(3, candidates.length) }, worker));
+
+      return fatal;
+    } finally {
+      clearTimeout(timer);
+      context.signal.removeEventListener('abort', abort);
+    }
   }
 
   private failure(
@@ -218,9 +320,10 @@ export class GoogleAiModeProvider implements ProviderPort {
     operation: GoogleReadOperation,
     context: OperationContext,
     candidate?: Candidate,
+    replace = true,
   ): Promise<v.InferOutput<typeof GoogleReadResultSchema>> {
     // A replacement operation retires older work even when its port ignores AbortSignal.
-    for (const pending of this.pending) pending.abort();
+    if (replace) for (const pending of this.pending) pending.abort();
 
     const controller = new AbortController();
     this.pending.add(controller);
@@ -243,9 +346,11 @@ export class GoogleAiModeProvider implements ProviderPort {
     }, 10_000);
 
     try {
+      const open =
+        operation.kind === 'date' ? this.readPort?.openDate : this.readPort?.openEvidence;
       const pending =
-        candidate && this.readPort?.openEvidence && this.identity
-          ? this.readPort.openEvidence(requireValid(CandidateSchema, candidate), this.identity, {
+        candidate && open && this.identity
+          ? open.call(this.readPort, requireValid(CandidateSchema, candidate), this.identity, {
               signal: controller.signal,
             })
           : this.readPort?.read(operation, this.identity, { signal: controller.signal });

@@ -204,3 +204,41 @@ describe('result evidence and navigation', () => {
     },
   );
 });
+
+describe('rendered day precision', () => {
+  it.each(['provider-date', 'time-only-today'] as const)(
+    'shows the original calendar day and explains its %s basis',
+    (basis) => {
+      render(
+        <ResultCard
+          candidate={{
+            ...googleCandidate,
+            date: {
+              at: '2026-10-12T22:00:00.000Z',
+              meaning: 'message-sent',
+              source: 'rendered-message',
+              calendarDay: { date: '2026-10-13', timeZone: 'Europe/Zurich', basis },
+            },
+          }}
+          verifiers={linkVerifiers}
+          timeZone="America/Los_Angeles"
+        />,
+      );
+      const time = document.querySelector('time');
+      expect(time?.dateTime).toBe('2026-10-13');
+      expect(time?.textContent).toBe(
+        new Intl.DateTimeFormat(undefined, {
+          dateStyle: 'medium',
+          timeZone: 'Europe/Zurich',
+        }).format(new Date('2026-10-12T22:00:00.000Z')),
+      );
+      expect(time?.title).toBe(
+        basis === 'provider-date'
+          ? 'Message date shown in the conversation (day precision)'
+          : 'Time-only label; used the local date when read',
+      );
+      expect(screen.getByText('Message sent:')).toBeTruthy();
+      expect(screen.getByText('(rendered message)')).toBeTruthy();
+    },
+  );
+});

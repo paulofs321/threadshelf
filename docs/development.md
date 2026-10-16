@@ -121,6 +121,7 @@ member validation. Limits measure UTF-16 code units for strings. See the officia
 | -------------------------------- | ------------------------------------------------------------------------------------ |
 | `primitives.ts`, `validation.ts` | Branded opaque IDs, bounds, safe failure results, canonical UTC dates and HTTPS URLs |
 | `session.ts`                     | Verified/ephemeral scopes, generation comparison and session outcomes                |
+| `calendar.ts`                    | Calendar validation, timezone formatting and DST-aware local day boundaries          |
 | `conversation.ts`                | Candidates, exact evidence/provenance, date meanings and scoped conversation keys    |
 | `query.ts`                       | Query/provider selection, half-open date intervals and request/scope consistency     |
 | `outcome.ts`                     | Distinct provider failures/successes, coverage and aggregate reference validation    |
@@ -153,7 +154,10 @@ Missing titles/dates/links stay absent. Available dates carry a meaning (`conver
 `conversation-updated`, or `message-sent`) and provenance. A conversation creation/update timestamp
 does not establish when a topic was discussed. Date constraints use normalized UTC `[start, end)`
 intervals with a browser timezone on the query. Unknown dates cannot satisfy constraints and must be
-disclosed as excluded in aggregate coverage. Relative-date interpretation is not implemented yet.
+disclosed as excluded in aggregate coverage. Optional `calendarDay` preserves date-only precision,
+timezone and provider-date/time-only-today basis; its `at` must match the local day boundary. Google
+time-only labels use the local date when read by explicit policy; general relative-label interpretation
+is not implemented.
 
 Provider success may contain an empty candidate list. Failures contain no candidates or fabricated
 coverage. Aggregate results reference unchanged candidates in independent successful outcomes; all
@@ -342,9 +346,15 @@ remain enforced. Original links use only the observed four metadata pairs on the
 unknown, mismatched or unsafe link parameters are rejected. A native temporary-tab check verified
 that the metadata-only link reopens the saved thread under the same account.
 
-The two timestamp pairs lack verified creation/update meanings. They are omitted from normalized
-dates, and a date constraint adds `unknown-dates` coverage. The adapter never invents a timezone,
-midnight instant, creation date or last-update semantic from positional numbers or relative labels.
+The two native numeric timestamp pairs lack verified creation/update meanings and remain unmapped.
+Search/list enrich dates through optional `openDate`, using the first visible rendered question date.
+Full English dates retain their day; valid 24-hour clock-only labels use the observation’s local day
+in the query/browser timezone. `calendarDay` records day precision and the explicit today fallback;
+`at` represents the local day boundary for filtering, with message-sent/rendered-message provenance.
+Unsupported or unreadable dates remain unknown. Date work uses at most three owned inactive tabs,
+a seven-second phase budget and at most 10.5 seconds from retrieval start. It preserves native
+matches when optional metadata fails; account/scope/permission/context changes still fail closed.
+The [adapter reference](google-ai-mode-adapter.md#rendered-message-dates) describes parsing and cleanup.
 
 `document-read.ts` is self-contained code serialized into Chrome’s isolated world. It performs
 only fixed same-origin GET operations with browser-managed authentication, manual redirects, an
@@ -373,8 +383,10 @@ old evidence access.
 the same request, then uses the host's optional `openEvidence` capability. It cannot accept arbitrary
 URLs or fabricate full messages. The reader supports only bounded exact text from the observed
 rendered last-turn block. Native reopening showed two saved answers, but no complete-message API was
-observed. Evidence coverage remains unknown with `missing-evidence`. The concrete host owns the temporary tab, validates its URL and Chrome document ID, rechecks the
-source context/account, and closes the tab in `finally`, including late creation after cancellation.
+observed. Evidence coverage remains unknown with `missing-evidence`. The concrete host reuses a
+complete matching conversation when available, or opens an owned temporary tab. It validates the URL
+and Chrome document ID, rechecks the source context/account and preserves reused user tabs. Only
+owned tabs are closed in `finally`, including late creation after cancellation.
 It creates passive tabs without activating or replacing the pinned source document.
 
 `src/platform/google-ai-mode.ts` exports `createGoogleAiModeProvider(binding)` and

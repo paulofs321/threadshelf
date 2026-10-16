@@ -157,3 +157,14 @@ return navigation preserving query/filters/source tab/sort/results. Tests verify
 continues across pages without stealing connection-page focus, scope loss clears hidden results,
 and both real runtime clients retain their connection/keepalive without new permission requests.
 Chromium checks both pages at 240–400px and repeats native-panel searches after page/tab switches.
+
+## Google rendered dates
+
+Synthetic tests cover full English dates, leap days, invalid/unsupported labels, time-only today in
+different timezones, DST and skipped days; day-boundary/provenance contracts; first visible label
+selection, delayed rendering and date-only payloads; existing date filtering and card display/tooltips;
+three concurrent reads, remaining deadline, missing metadata, cancellation, replacement, late replies
+and account/scope/permission failures. Host tests cover safe existing-tab reuse, changed/unsupported
+tab rejection and preserving user tabs. The native-panel fixture verifies a full rendered date and
+then a clock-only label normalized to the browser’s current local day across repeated searches.
+These checks use handwritten data and make no numeric timestamp or complete-history claim.

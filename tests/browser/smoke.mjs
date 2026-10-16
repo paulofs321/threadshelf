@@ -228,7 +228,7 @@ try {
     if (url.origin === 'https://www.google.com' && url.pathname === '/search')
       return route.fulfill({
         contentType: 'text/html',
-        body: `<a href="https://accounts.google.com/SignOutOptions?hl=en" aria-label="Google Account: Fiction (orchard@example.invalid)${route.request().isNavigationRequest() ? ', Opens account menu' : ''}">Account</a>`,
+        body: `<a href="https://accounts.google.com/SignOutOptions?hl=en" aria-label="Google Account: Fiction (orchard@example.invalid)${route.request().isNavigationRequest() ? ', Opens account menu' : ''}">Account</a>${url.searchParams.has('mtid') ? '<div class="UYpEO"><div class="kwdzO">13 October 2026</div></div>' : ''}`,
       });
 
     if (
@@ -252,7 +252,12 @@ try {
   const chatPage = await context.newPage();
   await chatPage.goto('https://chatgpt.com/');
   const googlePage = await context.newPage();
-  await googlePage.goto('https://www.google.com/search?udm=50');
+  const googleThreadUrl = new URL('https://www.google.com/search');
+
+  for (const [key, value] of googleFixtures.googleThread()[22])
+    googleThreadUrl.searchParams.set(key, value);
+
+  await googlePage.goto(googleThreadUrl.href);
   await page.goto(`${extensionOrigin}/opener.html`);
   await page.getByRole('button', { name: 'Open native panel', exact: true }).click();
   const drive = (command) =>
@@ -274,7 +279,7 @@ try {
   await drive('search');
   await expect
     .poll(async () => await drive('snapshot'))
-    .toMatchObject({ results: 2 })
+    .toMatchObject({ results: 2, dates: expect.arrayContaining(['2026-10-13']) })
     .catch(async () => {
       throw new Error(`Synthetic native-panel failure: ${JSON.stringify(await drive('snapshot'))}`);
     });
@@ -288,9 +293,23 @@ try {
   );
   await drive('show-connections');
   await drive('continue');
+  await googlePage.locator('.kwdzO').evaluate((label) => {
+    label.textContent = '19:28';
+  });
+  const today = await googlePage.evaluate(() => {
+    const now = new Date();
+
+    return [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-');
+  });
   await drive('search');
   await expect.poll(() => keywordReads).toBe(4);
-  await expect.poll(async () => (await drive('snapshot')).results).toBe(2);
+  await expect
+    .poll(async () => await drive('snapshot'))
+    .toMatchObject({ results: 2, dates: expect.arrayContaining([today]) });
   assert.deepEqual(externalRequests, []);
   assert.deepEqual(errors, []);
 

@@ -68,10 +68,19 @@ export function ResultCard({
             {candidate.date ? (
               <>
                 <span className="sr-only">{dateLabels[candidate.date.meaning]}: </span>
-                <time dateTime={candidate.date.at}>
+                <time
+                  dateTime={candidate.date.calendarDay?.date ?? candidate.date.at}
+                  title={
+                    candidate.date.calendarDay
+                      ? candidate.date.calendarDay.basis === 'time-only-today'
+                        ? 'Time-only label; used the local date when read'
+                        : 'Message date shown in the conversation (day precision)'
+                      : undefined
+                  }
+                >
                   {new Intl.DateTimeFormat(undefined, {
                     dateStyle: 'medium',
-                    timeZone,
+                    timeZone: candidate.date.calendarDay?.timeZone ?? timeZone,
                   }).format(new Date(candidate.date.at))}
                 </time>{' '}
                 <span className="sr-only">({sources[candidate.date.source]})</span>

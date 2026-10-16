@@ -8,10 +8,12 @@ import {
   limits,
   OriginalUrlSchema,
   TimestampSchema,
+  TimeZoneSchema,
   unique,
 } from './primitives';
 import type { ConversationId, ProviderId } from './primitives';
 import { SessionScopeSchema, scopeKey } from './session';
+import { CalendarDateSchema, calendarFormatter, dayStart } from './calendar';
 
 export const EvidenceSchema = v.strictObject({
   id: EvidenceIdSchema,
@@ -24,11 +26,31 @@ export const ConversationDateSchema = v.pipe(
     at: TimestampSchema,
     meaning: v.picklist(['conversation-created', 'conversation-updated', 'message-sent']),
     source: v.picklist(['provider-metadata', 'rendered-message']),
+    calendarDay: v.exactOptional(
+      v.strictObject({
+        date: CalendarDateSchema,
+        timeZone: TimeZoneSchema,
+        basis: v.picklist(['provider-date', 'time-only-today']),
+      }),
+    ),
   }),
   v.check(
     (date) => date.source !== 'rendered-message' || date.meaning === 'message-sent',
     'Rendered messages cannot establish conversation creation/update dates.',
   ),
+  v.check((date) => {
+    if (date.calendarDay === undefined) return true;
+
+    if (date.source !== 'rendered-message') return false;
+
+    try {
+      return (
+        date.at === dayStart(date.calendarDay.date, calendarFormatter(date.calendarDay.timeZone))
+      );
+    } catch {
+      return false;
+    }
+  }, 'Calendar days require rendered-message provenance and a matching local day boundary.'),
 );
 
 export const CandidateSchema = v.pipe(

@@ -53,7 +53,8 @@ Provider filters are explicit. Date controls convert local calendar boundaries i
 browser timezone to `[From, Before)` UTC intervals. Supply both dates or neither. Filtering uses
 each conversation’s available date and stated meaning/source; a conversation update is not proof of
 when a topic was discussed. Undated results are excluded by date filters and disclosed in coverage.
-Google currently supplies no verified dates.
+Google uses the first visible message’s date from the conversation. A time-only label uses the
+local date when read. Hover the date for its basis; unknown or unreadable dates remain unavailable.
 
 The search bridge carries normalized keyword requests and cancellation IDs, alongside strict
 access commands and empty local keepalive messages. The worker

@@ -102,19 +102,24 @@ async function script(options: ScriptOptions): Promise<unknown[]> {
       frameId: 0,
       documentId,
       result:
-        operation.kind === 'inspect'
-          ? success
-          : operation.kind === 'messages'
-            ? { ...success, rendered: ['An exact fictional rendered turn.'] }
-            : {
-                ...success,
-                response: {
-                  status: 200,
-                  contentType: 'application/json',
-                  retryAfter: null,
-                  body: googleJson([[googleMatch()]]),
+        operation.kind === 'date'
+          ? {
+              ...success,
+              dateLabel: { text: '13 October 2026', observedAt: '2026-10-16T10:00:00.000Z' },
+            }
+          : operation.kind === 'inspect'
+            ? success
+            : operation.kind === 'messages'
+              ? { ...success, rendered: ['An exact fictional rendered turn.'] }
+              : {
+                  ...success,
+                  response: {
+                    status: 200,
+                    contentType: 'application/json',
+                    retryAfter: null,
+                    body: googleJson([[googleMatch()]]),
+                  },
                 },
-              },
     },
   ];
 }
@@ -202,6 +207,7 @@ describe('Chrome Google selected-document transport', () => {
   });
   it.each([
     { kind: 'messages', conversationId: 'fictional-thread-1' },
+    { kind: 'date', conversationId: 'fictional-thread-1' },
     { kind: 'search', query: '' },
     { kind: 'list', url: 'https://evil.invalid' },
   ])('rejects a generic message read or extra arguments: %j', async (operation) => {
@@ -564,4 +570,103 @@ describe('Chrome Google selected-document transport', () => {
     await vi.waitFor(() => expect(chrome.tabs.remove).toHaveBeenCalledWith(8));
     expect(chrome.tabs.get).not.toHaveBeenCalled();
   });
+});
+
+describe('Chrome Google date tabs', () => {
+  it('reads calendar metadata through the same pinned, account-checked owned-tab lifecycle', async () => {
+    expect(await port.openDate(candidate(), identity, context())).toEqual({
+      ...success,
+      dateLabel: { text: '13 October 2026', observedAt: '2026-10-16T10:00:00.000Z' },
+    });
+    expect(chrome.tabs.create).toHaveBeenCalledExactlyOnceWith({
+      windowId: 3,
+      active: false,
+      url: candidate().originalUrl,
+    });
+    expect(chrome.tabs.remove).toHaveBeenCalledExactlyOnceWith(8);
+    expect(
+      chrome.scripting.executeScript.mock.calls
+        .filter(([o]) => o.func === readGoogleDocument)
+        .map(([o]) => o.args[0].operation.kind),
+    ).toEqual(['inspect', 'date', 'inspect']);
+  });
+  it('rejects an unvalidated link before opening a date tab', async () => {
+    expect(
+      await port.openDate(
+        { ...candidate(), originalUrl: 'https://evil.invalid/' },
+        identity,
+        context(),
+      ),
+    ).toEqual({ status: 'unavailable' });
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('already rendered Google conversations', () => {
+  it('reuses a matching conversation without navigating, creating or closing a user tab', async () => {
+    const existingUrl =
+      'https://www.google.com/search?udm=50&mtid=fictional-thread-1&source=synthetic';
+    chrome.tabs.query.mockResolvedValue([
+      { ...tab },
+      {
+        ...tab,
+        id: 8,
+        active: false,
+        url: existingUrl,
+      },
+    ]);
+    chrome.tabs.get.mockResolvedValue({ ...tab, id: 8, url: existingUrl });
+    expect((await port.openDate(candidate(), identity, context())).status).toBe('success');
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+    expect(chrome.tabs.remove).not.toHaveBeenCalled();
+  });
+  it.each([
+    { incognito: true },
+    { windowId: 9 },
+    { status: 'loading' },
+    { pendingUrl: 'https://www.google.com/' },
+    { url: undefined },
+    { url: 'invalid' },
+    { url: 'https://user:secret@www.google.com/search?udm=50&mtid=fictional-thread-1' },
+    { url: 'https://www.google.com/other?udm=50&mtid=fictional-thread-1' },
+    { url: 'https://www.google.com/search?udm=50&mtid=fictional-thread-1&authuser=1' },
+    { url: 'https://www.google.com/search?udm=14&mtid=fictional-thread-1' },
+    { url: 'https://other.invalid/search?udm=50&mtid=fictional-thread-1' },
+  ])('does not reuse unsupported or changing pages: %j', async (patch) => {
+    chrome.tabs.query.mockResolvedValue([
+      { ...tab },
+      {
+        ...tab,
+        id: 9,
+        url: candidate().originalUrl,
+        ...patch,
+      },
+    ]);
+    expect((await port.openDate(candidate(), identity, context())).status).toBe('success');
+    expect(chrome.tabs.create).toHaveBeenCalledOnce();
+    expect(chrome.tabs.remove).toHaveBeenCalledExactlyOnceWith(8);
+  });
+  it('preserves an existing user tab even when it changes during a date read', async () => {
+    chrome.tabs.query.mockResolvedValue([
+      { ...tab },
+      { ...tab, id: 8, url: candidate().originalUrl },
+    ]);
+    chrome.tabs.get.mockResolvedValue({ ...tab, id: 8, url: 'https://www.google.com/other' });
+    expect((await port.openDate(candidate(), identity, context())).status).toBe('scope-changed');
+    expect(chrome.tabs.remove).not.toHaveBeenCalled();
+  });
+});
+
+it('does not create a conversation tab when cancellation arrives during existing-tab lookup', async () => {
+  const held = deferred<unknown[]>();
+  chrome.tabs.query.mockResolvedValueOnce([tab]).mockReturnValueOnce(held.promise);
+  const controller = new AbortController();
+  const pending = port.openDate(candidate(), identity, { signal: controller.signal });
+  await vi.waitFor(() => expect(chrome.tabs.query).toHaveBeenCalledTimes(2));
+  controller.abort();
+  expect(await pending).toEqual({ status: 'cancelled' });
+  held.resolve([tab]);
+  await held.promise;
+  await Promise.resolve();
+  expect(chrome.tabs.create).not.toHaveBeenCalled();
 });

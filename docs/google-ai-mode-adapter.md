@@ -1,10 +1,10 @@
 # Google Search AI Mode adapter
 
 The Google Search AI Mode adapter implements read-only keyword search, a bounded saved-thread list,
-and optional rendered-thread evidence through an existing logged-in browser session. It supports
-the default-account context on `https://www.google.com/search?udm=50` verified on 15 October 2026.
-It does not use the Gemini app. Nondefault account selection, other Google locale hosts, timestamp
-meanings, pagination and complete-history coverage remain unsupported or unverified.
+rendered message dates, and optional rendered-thread evidence through an existing logged-in browser
+session. It supports the default-account context on `https://www.google.com/search?udm=50` verified on 15 October 2026.
+It does not use the Gemini app. Nondefault account selection, other Google locale hosts, numeric
+timestamp meanings, pagination and complete-history coverage remain unsupported or unverified.
 
 The adapter is an in-process capability consumed through normalized provider ports. The side panel
 composes it with the keyword search engine through a validated runtime bridge; shared UI and search
@@ -79,8 +79,8 @@ are inferred. Empty keyword input is not a substitute for listing.
 
 The provider does not interpret descriptions or send server date filters. The
 [keyword search engine](keyword-search.md) owns provider selection and deterministic date filtering.
-Since Google supplies no verified normalized dates, these candidates cannot satisfy a date filter;
-the outcome discloses `unknown-dates`.
+Rendered message dates can satisfy a date filter. Candidates whose dates cannot be read remain
+undated; a date constraint discloses `unknown-dates` while any candidate is undated.
 
 ## Normalization
 
@@ -104,9 +104,40 @@ omitted. Native snippets remain exact plain-text substrings with `native-snippet
 title evidence uses `title`. Clipping adds no ellipses, rewrites no punctuation and preserves UTF-16
 surrogate pairs. Omitted or clipped evidence is disclosed with `missing-evidence`.
 
-Observed timestamp pairs and relative labels have no verified creation/update meaning. Normalized
-dates are deliberately absent. Numeric positions are not relabeled as creation dates, last-update
-times or invented midnight instants. Available-date filtering retains that uncertainty.
+Observed native numeric timestamp pairs and relative labels still have no verified creation/update
+meaning and are not mapped to dates.
+
+## Rendered message dates
+
+After native search/list normalization, the optional trusted `openDate` capability reads each retrieved
+original link through the same pinned, account-checked conversation lifecycle used for evidence.
+A complete regular AI Mode tab with the same thread ID in the bound window is reused when available;
+its actual URL and Chrome document are pinned. It is never navigated, activated or closed. Otherwise
+the host opens an owned inactive tab and closes it afterward.
+Generic host `read` rejects direct `date` and `messages` operations. No runtime message accepts a URL.
+The reader extracts only the first visible, nonempty `.UYpEO > .kwdzO` label (capital letter O),
+observed below a question, and the read time. It waits within its deadline for client rendering;
+fresh response HTML alone does not contain these labels. No transcript is extracted for this operation.
+
+Full English labels such as `13 October 2026` provide that message’s calendar date. Valid 24-hour
+clock-only labels such as `19:28` use the observation’s local calendar day in the query/browser timezone,
+as an explicit product policy. They do not establish an exact message time. Unsupported locales,
+relative labels, invalid dates and missing labels remain unknown. The parser validates leap days,
+timezones, DST boundaries and skipped civil days without locale-dependent date parsing.
+
+Normalized dates use `meaning: message-sent`, `source: rendered-message` and optional `calendarDay`
+metadata containing the actual date, timezone and `provider-date` or `time-only-today` basis. `at` is
+that local day’s first real instant for sorting and filtering; the contract validates this boundary.
+The card renders the calendar day and exposes its basis in a tooltip. This does not assert a
+conversation creation/update timestamp or exact midnight message time.
+
+At most three temporary date tabs run concurrently. The metadata phase has at most seven seconds,
+further reduced to fit within 10.5 seconds from retrieval start and the engine’s 12-second provider
+deadline. No retry or persistent date cache is added. Slow/unavailable/malformed optional metadata
+leaves native matches intact with unknown dates; a filtered search excludes them with coverage
+disclosure. Account/scope/permission/context failures and caller cancellation discard the outcome.
+Cancellation, replacement and the phase deadline abort pending date reads and discard late replies;
+owned tabs are closed, including late tab creation. The active source remains untouched.
 
 ## Rendered evidence
 
@@ -114,17 +145,17 @@ There is no verified complete-message API. `messages` accepts only an ID retaine
 from its latest successful retrieval with the exact originating request ID and query. A failed or
 replacement retrieval clears that inventory, and mutations to returned results cannot rebind it.
 The read port must supply the optional trusted `openEvidence` capability; otherwise evidence is
-explicitly unavailable. The host's generic `read` method rejects direct `messages` operations.
+explicitly unavailable. The host's generic `read` method rejects direct conversation operations.
 
-The concrete host rechecks source identity, opens the retrieved original link in an owned passive
-background tab, validates its URL/document and reads only the observed visible `[data-last-turn]`
-blocks. It extracts at most four exact excerpts of 2,000 UTF-16 code units each, subject to the shared
+The concrete host rechecks source identity, reuses an already-open matching conversation or opens
+the retrieved original link in an owned passive background tab, validates its URL/document and reads
+only the observed visible `[data-last-turn]` blocks. It extracts at most four exact excerpts of 2,000 UTF-16 code units each, subject to the shared
 eight-item candidate evidence bound. Provenance is `rendered-message`, with `unknown-reach` and
 `missing-evidence` coverage. This is partial rendered evidence, not a complete transcript.
 
-The host verifies the temporary URL/document after extraction and rechecks the original source
-context/account. It closes only its owned tab in `finally`, including cleanup when tab creation
-finishes after cancellation. The source binding is preserved; opening evidence does not activate or
+The host verifies the conversation URL/document after extraction and rechecks the original source
+context/account. It preserves reused user tabs and closes only its owned tab in `finally`, including
+cleanup when tab creation finishes after cancellation. The source binding is preserved; opening evidence does not activate or
 navigate its tab. Evidence enrichment is available through the adapter, outside the current keyword
 panel UI.
 
@@ -182,6 +213,13 @@ window capability and bypassed the side-panel sender handshake; final authentica
 interaction after the redesign remains a separate acceptance check. Temporary diagnostics and their
 tab were removed without retaining account labels, credentials or raw responses.
 
+A further read-only date check on 16 October used the actual unpacked extension, real adapter and
+isolated Chrome reader: two native keyword matches both acquired rendered message dates, with the
+source preserved and no temporary tabs remaining. Subsequent three-match retrievals preserved
+matches but left dates unknown when optional fresh identity checks returned unavailable. This does
+not establish universal date availability; the time-only fallback is covered separately by synthetic
+unit and native-panel Chromium checks. Diagnostics and their temporary assets/tabs were removed.
+
 The current panel has **All sources**, **ChatGPT** and **Google AI Mode** result tabs with compact
 expandable excerpts and provider-specific failures. Isolated Chromium tests exercise the real native
 panel, runtime clients, broker, both adapters and isolated readers with synthetic intercepted HTTP,
@@ -190,17 +228,18 @@ does not establish live account access or screen-reader acceptance.
 
 Live probes observed successful HTTP 200 reads. Forced logout/account switching, HTTP failures,
 permission revocation and every Chrome lifecycle race were not induced; synthetic tests cover those
-paths separately. Tests also cover annotated account labels, account-address extraction when display names resemble addresses,
-scope/request isolation, malformed envelopes, unsafe links, evidence budgets, replacement/late replies,
-temporary-tab cleanup and unrelated permission changes. These are recorded checks; this documentation
-update performs no new live probe.
+paths separately. Tests also cover rendered dates, time-only today fallback, timezone/day precision,
+metadata budgets, annotated account labels, account-address extraction when display names resemble
+addresses, scope/request isolation, malformed envelopes, unsafe links, evidence budgets, replacement/late replies,
+temporary-tab cleanup and unrelated permission changes. These are recorded checks; synthetic
+failure cases do not establish live provider behavior.
 
 Production requires a pinned permitted Google AI Mode tab and its existing browser login; the panel
 can create that tab in the background. Login or browser challenges can still require provider-site
 interaction. After rebuilding the unpacked extension, reload it in `chrome://extensions` and reopen
 the panel so the UI and worker use the same build.
-Nondefault selectors, locale hosts, timestamp semantics, continuation beyond 300 records, tab-free
-operation and complete-message/history coverage remain unresolved. No Gemini-app or public Google
+Nondefault selectors, locale hosts, native numeric timestamp semantics, continuation beyond 300
+records, tab-free operation and complete-message/history coverage remain unresolved. No Gemini-app or public Google
 API fallback is substituted for the saved Search AI Mode account.
 
 See the [side panel reference](sidepanel.md), [development notes](development.md), [test coverage](testing.md) and the

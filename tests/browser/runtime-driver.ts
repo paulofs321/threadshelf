@@ -44,6 +44,9 @@ browser.runtime.onMessage.addListener((input: unknown, _sender, sendResponse) =>
     ready: document.querySelector('h1')?.textContent === 'ThreadShelf',
     statuses: [...document.querySelectorAll('[role="status"]')].map((item) => item.textContent),
     results: document.querySelectorAll('[role="article"]').length,
+    dates: [...document.querySelectorAll<HTMLTimeElement>('[role="article"] time')].map(
+      (item) => item.dateTime,
+    ),
     notes: [...document.querySelectorAll('[role="note"]')].map((item) => item.textContent),
     checkedProviders: [...document.querySelectorAll<HTMLInputElement>('input[type=checkbox]')]
       .filter((item) => item.checked)
