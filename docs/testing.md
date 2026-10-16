@@ -101,5 +101,52 @@ Live checks did not force logout/account switching, HTTP failures or permission 
 paths have synthetic coverage. Google nondefault accounts, timestamp meanings, continuation beyond
 300 and complete-message access remain unresolved. ChatGPT workspaces, tab-free behavior, pagination
 and full-history reach remain unsupported or unverified. The actual Google panel Connect path selected
-the site after the context fix; panel search controls, multi-window interaction and full accessibility
-acceptance remain future work. Fixtures contain no live payloads.
+the site after the context fix. Panel search controls now have component and native Chromium
+synthetic coverage; authenticated multi-window interaction and full accessibility acceptance remain
+separate. Fixtures contain no live payloads.
+
+## Search panel regressions
+
+Shared UI tests use real keyword orchestration with synthetic ports and cover query/provider/date
+forwarding, DST boundaries, unknown dates, every provider failure, successful empty versus partial
+zero matches, preserved partial matches, retry cooldowns and fresh IDs, cancellation and replacement,
+unmount/scope invalidation, stale/unsafe/out-of-scope output, plain-text hostile evidence, metadata
+fallbacks, validated navigation, keyboard submission and focus recovery. Runtime tests exercise real
+access/search clients, broker binding, provider factories/adapters and mocked isolated-world reads.
+A focused adversarial test caught credential-bearing links accepted by a permissive injected policy;
+result cards now require both the shared safe-URL schema and the provider verifier.
+
+Connection status focus recovery causes jsdom to schedule its own zero-delay `selectionchange`
+event, and Radix tabs schedule mount animation frames. Fake-clock cleanup assertions flush only
+those DOM events and the next animation frame before requiring zero remaining timers; request deadlines and cooldown timers remain tested separately.
+
+For the isolated Chromium smoke command and its precise limits, see
+[developer notes](development.md#shared-shadcnui-panel). It verifies the built production mount/theme
+and shared synthetic UI under MV3 CSP at 240–400px, plus a real native docked panel with real runtime
+clients/broker/adapters/isolated readers and intercepted synthetic HTTP responses. Both providers
+remain connected and search again after tab switches. Optional capabilities are pregranted in the
+temporary manifest; permission-dialog gestures remain separate component tests. DNS is blocked and
+fixture pages are prepared before navigation. No existing browser profile or live account is used.
+Screen-reader acceptance and final authenticated panel interaction remain separate checks.
+
+Provider-connection regressions cover independent inactive source bindings, default AI Mode route
+selection, ambiguous-account refusal, automatic fixed background tab creation, creation/loading
+cancellation, late tab creation cleanup, preserving user tabs, rechecking pinned IDs/documents,
+continued reads across tab/window activation, targeted revocation, local keepalive without provider
+reads, malformed heartbeat rejection and interval teardown. Existing cancellation, identity-change,
+login, permission and stale-response tests remain enforced; their old focus-invalidation expectations
+were updated to the requested persistent-connection behavior.
+
+Source-tab tests cover per-provider counts/links, filtered failure badges/reconnect, excluded versus
+successfully empty providers, arrow/Home/End focus and ARIA relationships, sorting known/unknown
+dates, scope clearing across inactive panels, and switching views without network work. Search
+settings, query clearing/cancellation, refresh with fresh IDs, and compact expandable Unicode-safe
+evidence have keyboard/component regressions and Chromium smoke checks.
+
+The Google account reader accepts the observed comma-separated accessibility annotation after a
+parenthesized address, while rejecting misleading annotations and retaining rendered/fresh identity
+equality checks. Synthetic tests cover each side's label variation, display-name addresses and
+account changes. A separate live read-only check through the actual installed Chrome extension
+returned three Google matches with an inactive source and verified source preservation/reader
+cleanup. Its diagnostic owning-window capability bypassed the side-panel sender handshake.
+No private payloads or credentials were retained; temporary diagnostics and their tab were removed.

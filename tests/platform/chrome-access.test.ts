@@ -4,6 +4,10 @@ import type { AccessMessage } from '../../src/platform/protocol';
 import { panelPortName } from '../../src/platform/protocol';
 import { registerChromeAccess } from '../../src/platform/chrome-access';
 import { deferred, event, probe, tab } from './helpers';
+import { SearchRequestSchema, requireValid } from '../../src/contracts';
+import type { SearchReply } from '../../src/platform/search-protocol';
+import { readResult, searchBody } from '../fixtures/chatgpt/wire';
+import { googleJson, googleMatch } from '../fixtures/google-ai-mode/wire';
 
 const chrome = vi.hoisted(() => {
   function channel<Args extends unknown[]>() {
@@ -39,6 +43,9 @@ const chrome = vi.hoisted(() => {
     scripting: { executeScript: vi.fn() },
     tabs: {
       query: vi.fn(),
+      create: vi.fn(),
+      get: vi.fn(),
+      remove: vi.fn(),
       onUpdated: channel<[number, { status?: string; url?: string }]>(),
       onRemoved: channel<[number]>(),
       onReplaced: channel<[number, number]>(),
@@ -71,7 +78,7 @@ function connection(patch = {}, name: string = panelPortName(3)) {
   const port = {
     name,
     sender: { ...sender, ...patch },
-    postMessage: vi.fn<(message: AccessMessage) => void>(),
+    postMessage: vi.fn<(message: AccessMessage | SearchReply) => void>(),
     disconnect: vi.fn(),
     onMessage: event<[unknown]>(),
     onDisconnect: event<[]>(),
@@ -84,7 +91,7 @@ function connection(patch = {}, name: string = panelPortName(3)) {
 const sites = {
   chatgpt: { tab, probe },
   'google-ai-mode': {
-    tab: { ...tab, id: 8, url: 'https://www.google.com/' },
+    tab: { ...tab, id: 8, url: 'https://www.google.com/search?udm=50' },
     probe: {
       ...probe,
       documentId: 'fiction-google-document',
@@ -132,6 +139,9 @@ beforeEach(() => {
   chrome.windows.onRemoved.clear();
   chrome.windows.get.mockResolvedValue({ id: 3, incognito: false });
   chrome.runtime.getContexts.mockResolvedValue([context]);
+  chrome.tabs.create.mockRejectedValue(new Error('fiction-no-background-page'));
+  chrome.tabs.get.mockResolvedValue(tab);
+  chrome.tabs.remove.mockResolvedValue(undefined);
   chrome.permissions.contains.mockResolvedValue(true);
   chrome.tabs.query.mockResolvedValue([tab]);
   chrome.scripting.executeScript.mockResolvedValue([probe]);
@@ -139,10 +149,61 @@ beforeEach(() => {
 });
 
 describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
+  it('acknowledges strictly allowlisted keepalive messages without browser/provider access', () => {
+    const port = connection();
+    port.onMessage.emit({ operation: 'keepalive' });
+    expect(port.postMessage).toHaveBeenLastCalledWith({ kind: 'alive' });
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+    port.onMessage.emit({ operation: 'keepalive', url: 'https://evil.invalid' });
+    expect(port.disconnect).toHaveBeenCalledOnce();
+  });
+  it('tears down both capabilities if heartbeat delivery fails', () => {
+    const port = connection();
+    port.postMessage.mockImplementation(() => {
+      throw new Error('fiction-port');
+    });
+    port.onMessage.emit({ operation: 'keepalive' });
+    expect(port.disconnect).toHaveBeenCalledOnce();
+  });
+  it('retains both provider selections while switching tabs or window focus', async () => {
+    const port = connection();
+    const chatScope = await select(port);
+    const googleScope = await select(port, 'google-ai-mode');
+    port.postMessage.mockClear();
+    chrome.tabs.onActivated.emit();
+    chrome.windows.onFocusChanged.emit();
+    expect(port.postMessage).not.toHaveBeenCalled();
+    useSite('chatgpt');
+    port.onMessage.emit({
+      operation: 'inspect-context',
+      provider: 'chatgpt',
+      requestId: 'fiction-retained-chat',
+      scope: chatScope,
+    });
+    await vi.waitFor(() =>
+      expect(port.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: 'fiction-retained-chat', status: 'selected' }),
+      ),
+    );
+    useSite('google-ai-mode');
+    port.onMessage.emit({
+      operation: 'inspect-context',
+      provider: 'google-ai-mode',
+      requestId: 'fiction-retained-google',
+      scope: googleScope,
+    });
+    await vi.waitFor(() =>
+      expect(port.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: 'fiction-retained-google', status: 'selected' }),
+      ),
+    );
+    port.onDisconnect.emit();
+  });
+
   it('targets only the selected panel window/top-level document in the isolated world', async () => {
     const port = connection();
     await select(port);
-    expect(chrome.tabs.query).toHaveBeenCalledWith({ active: true, windowId: 3 });
+    expect(chrome.tabs.query).toHaveBeenCalledWith({ windowId: 3, url: 'https://chatgpt.com/*' });
     expect(chrome.windows.get).toHaveBeenCalledWith(3, { populate: false });
     expect(chrome.runtime.getContexts).toHaveBeenCalledWith({
       contextTypes: ['SIDE_PANEL'],
@@ -200,7 +261,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
     port.onDisconnect.emit();
   });
-  it.each(['navigation', 'removed', 'replaced', 'activated', 'focus', 'permission'] as const)(
+  it.each(['navigation', 'removed', 'replaced', 'permission'] as const)(
     'invalidates selected scope on %s',
     async (change) => {
       const port = connection();
@@ -209,8 +270,6 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
       if (change === 'navigation') chrome.tabs.onUpdated.emit(7, { status: 'loading' });
       else if (change === 'removed') chrome.tabs.onRemoved.emit(7);
       else if (change === 'replaced') chrome.tabs.onReplaced.emit(8, 7);
-      else if (change === 'activated') chrome.tabs.onActivated.emit();
-      else if (change === 'focus') chrome.windows.onFocusChanged.emit();
       else chrome.permissions.onRemoved.emit({ permissions: ['scripting'] });
 
       expect(port.postMessage).toHaveBeenLastCalledWith({
@@ -287,13 +346,17 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
       expect.arrayContaining([3, 4]),
     );
     chrome.windows.onFocusChanged.emit();
+    first.postMessage.mockClear();
     first.onMessage.emit({ operation: 'connect', provider: 'chatgpt', requestId: 'fiction-retry' });
     await vi.waitFor(() =>
       expect(first.postMessage).toHaveBeenLastCalledWith(
         expect.objectContaining({ status: 'selected' }),
       ),
     );
-    expect(chrome.tabs.query).toHaveBeenLastCalledWith({ active: true, windowId: 3 });
+    expect(chrome.tabs.query).toHaveBeenLastCalledWith({
+      windowId: 3,
+      url: 'https://chatgpt.com/*',
+    });
     chrome.windows.onRemoved.emit(3);
     expect(first.disconnect).toHaveBeenCalledOnce();
     expect(second.disconnect).not.toHaveBeenCalled();
@@ -524,7 +587,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     },
   );
   it('uses the separate exact Google origin/permission and still labels session access unverified', async () => {
-    chrome.tabs.query.mockResolvedValue([{ ...tab, url: 'https://www.google.com/' }]);
+    chrome.tabs.query.mockResolvedValue([{ ...tab, url: 'https://www.google.com/search?udm=50' }]);
     chrome.scripting.executeScript.mockResolvedValue([
       { ...probe, result: { origin: 'https://www.google.com', topLevel: true } },
     ]);
@@ -600,5 +663,121 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
       expect.objectContaining({ status: 'interrupted' }),
     );
     port.onDisconnect.emit();
+  });
+});
+
+describe('runtime keyword bridge with actual factories and synthetic isolated readers', () => {
+  it.each(['chatgpt', 'google-ai-mode'] as const)(
+    'routes a scoped %s keyword request through the real adapter and host',
+    async (provider) => {
+      const port = connection();
+      const scope = await select(port, provider);
+      const result =
+        provider === 'chatgpt'
+          ? readResult(searchBody())
+          : {
+              status: 'success',
+              identityBefore: 'a'.repeat(64),
+              identityAfter: 'a'.repeat(64),
+              response: {
+                status: 200,
+                contentType: 'application/json',
+                retryAfter: null,
+                body: googleJson([[googleMatch()]]),
+              },
+            };
+      chrome.scripting.executeScript.mockImplementation(
+        async ({ func }: { func: { name: string } }) => [
+          {
+            ...sites[provider].probe,
+            result: func.name === 'inspectSelectedDocument' ? sites[provider].probe.result : result,
+          },
+        ],
+      );
+      const request = requireValid(SearchRequestSchema, {
+        requestId: `fiction-runtime-${provider}`,
+        query: {
+          text: 'fictional orchard',
+          mode: 'keyword',
+          providers: [provider],
+          timeZone: 'Europe/Zurich',
+        },
+        scopes: [scope],
+      });
+      port.onMessage.emit({ operation: 'keyword-search', request });
+      await vi.waitFor(() =>
+        expect(port.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ kind: 'search-result' }),
+        ),
+      );
+      const reply = port.postMessage.mock.lastCall?.[0];
+
+      if (reply?.kind !== 'search-result') throw new Error('Expected search result');
+
+      expect(reply.outcome.state).toBe('success');
+      expect(reply.outcome.results).toHaveLength(1);
+      expect(
+        chrome.scripting.executeScript.mock.calls.some(
+          ([argument]) =>
+            argument.func.name ===
+            (provider === 'chatgpt' ? 'readChatGptDocument' : 'readGoogleDocument'),
+        ),
+      ).toBe(true);
+      port.onDisconnect.emit();
+      expect(port.onMessage.size()).toBe(0);
+    },
+  );
+  it('clears an in-flight search on permission invalidation and discards late provider data', async () => {
+    const port = connection();
+    const scope = await select(port);
+    const pending = deferred<unknown>();
+    chrome.scripting.executeScript.mockImplementation(
+      async ({ func }: { func: { name: string } }) =>
+        func.name === 'readChatGptDocument' ? pending.promise : [probe],
+    );
+    const request = requireValid(SearchRequestSchema, {
+      requestId: 'fiction-runtime-pending',
+      query: { text: 'library', mode: 'keyword', providers: ['chatgpt'], timeZone: 'UTC' },
+      scopes: [scope],
+    });
+    port.onMessage.emit({ operation: 'keyword-search', request });
+    await vi.waitFor(() =>
+      expect(
+        chrome.scripting.executeScript.mock.calls.some(
+          ([argument]) => argument.func.name === 'readChatGptDocument',
+        ),
+      ).toBe(true),
+    );
+    chrome.permissions.onRemoved.emit({ origins: ['https://chatgpt.com/*'] });
+    await vi.waitFor(() =>
+      expect(port.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'search-result' }),
+      ),
+    );
+    const reply = port.postMessage.mock.lastCall?.[0];
+
+    if (reply?.kind !== 'search-result') throw new Error('Expected result');
+
+    expect(reply.outcome.results).toEqual([]);
+    expect(reply.outcome.outcomes[0]?.status).toBe('scope-changed');
+    pending.resolve([{ ...probe, result: readResult(searchBody()) }]);
+    await Promise.resolve();
+    port.onDisconnect.emit();
+  });
+  it('closes both capabilities when sending a search result fails', async () => {
+    const port = connection();
+    const scope = await select(port);
+    port.postMessage.mockImplementation((message) => {
+      if (message.kind === 'search-result') throw new Error('fiction-private-port-error');
+    });
+    const request = requireValid(SearchRequestSchema, {
+      requestId: 'fiction-send-failure',
+      query: { text: 'library', mode: 'keyword', providers: ['chatgpt'], timeZone: 'UTC' },
+      scopes: [{ ...scope, generation: 99 }],
+    });
+    port.onMessage.emit({ operation: 'keyword-search', request });
+    await vi.waitFor(() => expect(port.disconnect).toHaveBeenCalledOnce());
+    expect(port.onMessage.size()).toBe(0);
+    expect(port.onDisconnect.size()).toBe(0);
   });
 });

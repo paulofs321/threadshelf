@@ -202,7 +202,9 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
     if (!(await browser.permissions.contains(providerPermission('google-ai-mode'))))
       return failure('permission-needed');
 
-    const tabs = await browser.tabs.query({ active: true, windowId: binding.tab.windowId });
+    const tabs = (
+      await browser.tabs.query({ windowId: binding.tab.windowId, url: 'https://www.google.com/*' })
+    ).filter((tab) => tab.id === binding.tab.id);
     const tab = tabs[0];
 
     if (
@@ -211,7 +213,6 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
       tab.id !== binding.tab.id ||
       tab.windowId !== binding.tab.windowId ||
       tab.incognito ||
-      !tab.active ||
       tab.status !== 'complete' ||
       tab.pendingUrl !== undefined ||
       tab.url !== binding.tab.url
@@ -325,7 +326,6 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
 
     const replaced = (_added: number, removed: number) => changed(removed);
     const removed = (id: number) => changed(id);
-    const activated = () => stop('scope-changed');
 
     const permission = (removed: { permissions?: string[]; origins?: string[] }) => {
       if (
@@ -340,8 +340,6 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
     browser.tabs.onUpdated.addListener(changed);
     browser.tabs.onRemoved.addListener(removed);
     browser.tabs.onReplaced.addListener(replaced);
-    browser.tabs.onActivated.addListener(activated);
-    browser.windows.onFocusChanged.addListener(activated);
     browser.permissions.onRemoved.addListener(permission);
 
     try {
@@ -356,8 +354,6 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
       browser.tabs.onUpdated.removeListener(changed);
       browser.tabs.onRemoved.removeListener(removed);
       browser.tabs.onReplaced.removeListener(replaced);
-      browser.tabs.onActivated.removeListener(activated);
-      browser.windows.onFocusChanged.removeListener(activated);
       browser.permissions.onRemoved.removeListener(permission);
     }
   }

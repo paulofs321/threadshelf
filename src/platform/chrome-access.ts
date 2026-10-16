@@ -1,5 +1,10 @@
 import { browser } from 'wxt/browser';
 import { AccessBroker } from './broker';
+import { PanelSearchBroker } from './search-broker';
+import { createChatGptProvider } from './chatgpt';
+import { createGoogleAiModeProvider } from './google-ai-mode';
+import { ProviderTabs } from './provider-tabs';
+import { HeartbeatCommandSchema } from './protocol';
 import type { SelectedTabAccessPort } from './broker';
 import { inspectSelectedDocument } from './document-probe';
 import { validate } from '../contracts/validation';
@@ -26,6 +31,7 @@ export function registerChromeAccess(): void {
       return;
     }
 
+    const providerTabs = new ProviderTabs();
     const access: SelectedTabAccessPort = {
       async ownerWindow() {
         const window = validate(
@@ -59,21 +65,10 @@ export function registerChromeAccess(): void {
         return windowId;
       },
       hasPermission: (provider) => browser.permissions.contains(providerPermission(provider)),
-      async selectedTab(windowId) {
-        const tabs = await browser.tabs.query({ active: true, windowId });
-        const tab = tabs.length === 1 ? tabs[0] : undefined;
-
-        if (!tab || tab.pendingUrl !== undefined) return null;
-
-        // Exclude titles, favicons and unrelated browser properties at the boundary.
-        return {
-          id: tab.id,
-          windowId: tab.windowId,
-          active: tab.active,
-          incognito: tab.incognito,
-          status: tab.status,
-          url: tab.url,
-        };
+      selectedTab: (windowId, provider, signal, pinnedId) =>
+        providerTabs.select(windowId, provider, signal, pinnedId),
+      release: (provider) => {
+        void providerTabs.release(provider);
       },
       async inspectDocument(provider, target, signal) {
         if (signal.aborted) return null;
@@ -94,6 +89,8 @@ export function registerChromeAccess(): void {
     const broker = new AccessBroker(
       access,
       (message) => {
+        if (message.kind === 'invalidated') search.invalidate(message.provider);
+
         try {
           connection.postMessage(message);
         } catch {
@@ -101,6 +98,8 @@ export function registerChromeAccess(): void {
         }
       },
       () => {
+        search.close();
+        providerTabs.close();
         brokers.delete(broker);
         connection.onMessage.removeListener(receive);
         connection.onDisconnect.removeListener(disconnect);
@@ -109,7 +108,30 @@ export function registerChromeAccess(): void {
       },
       () => crypto.randomUUID(),
     );
-    const receive = (message: unknown) => broker.receive(message);
+    const search = new PanelSearchBroker(
+      broker,
+      {
+        chatgpt: createChatGptProvider,
+        'google-ai-mode': createGoogleAiModeProvider,
+      },
+      (message) => {
+        try {
+          connection.postMessage(message);
+        } catch {
+          broker.close();
+        }
+      },
+    );
+
+    const receive = (message: unknown) => {
+      if (validate(HeartbeatCommandSchema, message).ok) {
+        try {
+          connection.postMessage({ kind: 'alive' });
+        } catch {
+          broker.close();
+        }
+      } else if (!search.receive(message)) broker.receive(message);
+    };
 
     const disconnect = () => {
       // Consume Chrome's error without logging any browser/provider details.
@@ -137,12 +159,6 @@ export function registerChromeAccess(): void {
   });
   browser.tabs.onReplaced.addListener((_added, removed) => {
     for (const broker of brokers) broker.tabChanged(removed);
-  });
-  browser.tabs.onActivated.addListener(() => {
-    for (const broker of brokers) broker.invalidateAll('scope-changed');
-  });
-  browser.windows.onFocusChanged.addListener(() => {
-    for (const broker of brokers) broker.invalidateAll('scope-changed');
   });
   browser.permissions.onRemoved.addListener((removed) => {
     for (const broker of brokers) {

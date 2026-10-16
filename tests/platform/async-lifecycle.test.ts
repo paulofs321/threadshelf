@@ -198,16 +198,15 @@ describe('broker isolation, recovery and invalidation order', () => {
     expect((await reply).status).toBe('selected');
     h.broker.close();
   });
-  it('conservatively cancels when navigation occurs before a tab ID is established', async () => {
+  it('ignores unrelated navigation before a provider tab ID is established', async () => {
     const h = brokerHarness();
     const held = deferred<number | null>();
     h.port.ownerWindow.mockReturnValueOnce(held.promise);
     const reply = h.connect();
     h.broker.tabChanged(99);
-    expect((await reply).status).toBe('scope-changed');
     held.resolve(3);
-    await held.promise;
-    expect(h.port.selectedTab).not.toHaveBeenCalled();
+    expect((await reply).status).toBe('selected');
+    expect(h.port.selectedTab).toHaveBeenCalledTimes(2);
     h.broker.close();
   });
   it('publishes invalidation before its terminal reply and supports explicit reconnect after failure', async () => {

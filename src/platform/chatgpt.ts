@@ -65,7 +65,6 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
 
     const removed = (tabId: number) => changed(tabId);
     const replaced = (_added: number, old: number) => changed(old);
-    const activated = () => stop('scope-changed');
 
     const permission = (removed: { origins?: string[]; permissions?: string[] }) => {
       if (
@@ -80,8 +79,6 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
     browser.tabs.onUpdated.addListener(changed);
     browser.tabs.onRemoved.addListener(removed);
     browser.tabs.onReplaced.addListener(replaced);
-    browser.tabs.onActivated.addListener(activated);
-    browser.windows.onFocusChanged.addListener(activated);
     browser.permissions.onRemoved.addListener(permission);
 
     try {
@@ -107,8 +104,6 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
       browser.tabs.onUpdated.removeListener(changed);
       browser.tabs.onRemoved.removeListener(removed);
       browser.tabs.onReplaced.removeListener(replaced);
-      browser.tabs.onActivated.removeListener(activated);
-      browser.windows.onFocusChanged.removeListener(activated);
       browser.permissions.onRemoved.removeListener(permission);
     }
   }
@@ -129,7 +124,9 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
     if (!(await browser.permissions.contains(providerPermission('chatgpt'))))
       return failure('permission-needed');
 
-    const tabs = await browser.tabs.query({ active: true, windowId: b.tab.windowId });
+    const tabs = (
+      await browser.tabs.query({ windowId: b.tab.windowId, url: 'https://chatgpt.com/*' })
+    ).filter((tab) => tab.id === b.tab.id);
     const tab = tabs[0];
 
     if (
@@ -138,7 +135,6 @@ export class ChromeChatGptReadPort implements ChatGptReadPort {
       tab.id !== b.tab.id ||
       tab.windowId !== b.tab.windowId ||
       tab.incognito ||
-      !tab.active ||
       tab.status !== 'complete' ||
       tab.pendingUrl !== undefined ||
       tab.url !== b.tab.url

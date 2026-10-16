@@ -4,8 +4,9 @@ ThreadShelf currently has a validated data model and a bounded Chrome document-a
 The [ChatGPT adapter](chatgpt-adapter.md) adds verified personal-account reads and transient identity
 checks. The [keyword engine](keyword-search.md) coordinates injected providers, filters, deduplication,
 cancellation and bounded outcomes. Model inference and persistent storage remain unavailable. The
-current panel still checks browser context only and reports an unverified selection; it does not
-yet invoke the adapter.
+[shadcn/ui panel](sidepanel.md) now connects keyword controls to the engine and real provider
+adapters through a validated runtime search bridge. A selected document stays unverified until
+the provider checks account identity around a search.
 
 ## Shared contracts
 
@@ -48,12 +49,15 @@ The required installation permission is `sidePanel`. Connect synchronously reque
 The background configures the toolbar action through Chrome's native panel behavior. Incognito is
 disabled; broad browsing, cookie, debugger and storage permissions are absent.
 
-The only allowed messages are `connect`, `inspect-context`, `disconnect` and `cancel`, with bounded
-IDs/providers/scopes. Caller-supplied URLs, tab IDs, headers, bodies or executable code cannot
+Access messages are `connect`, `inspect-context`, `disconnect` and `cancel`, with bounded
+IDs/providers/scopes. The panel also has a validated keyword/cancellation bridge and empty local
+keepalive messages. Caller-supplied URLs, tab IDs, headers, bodies or executable code cannot
 reach the script API. The receiving worker validates Chrome's sender metadata and independently
 finds the live regular-profile side panel. Panel code calls `windows.getCurrent` in its own document
 and includes the resulting window ID in the port name. The worker pins that binding, verifies the
-window still exists outside incognito, and queries only its active completed provider tab. Global
+window still exists outside incognito, and resolves independent completed provider source tabs.
+A suitable existing source can remain inactive; if none is available, Connect prepares a fixed
+provider landing page in a background tab. No arbitrary account/tab/URL selector crosses the port. Global
 panel runtime contexts report `windowId: -1`; they verify panel identity rather than select a window.
 Provider operation messages cannot override the bound window or frame.
 
@@ -73,8 +77,10 @@ silent/suspended worker cannot leave an operation pending indefinitely. Cancella
 prevents subsequent checks and discards late output. Request IDs correlate replies, while generation
 high-water marks prevent old invalidation events from clearing a newer selection.
 
-Loading/navigation, URL changes, removed/replaced/activated tabs, focus changes, permission removal
-and port loss invalidate access. Scope disappears before terminal worker replies. Worker loss is
+Loading/navigation, URL changes and removal/replacement of a bound source, permission removal
+and port loss invalidate access. Tab/window focus changes retain independent provider bindings.
+A connected panel sends local 20-second keepalive messages without provider reads; timers stop
+when scopes or the panel close. Scope disappears before terminal worker replies. Worker loss is
 explicit `interrupted` behavior; the next Connect opens a fresh port. Clear selection releases
 memory; Chrome settings own permission revocation. Cancelling a native permission prompt blocks
 later access but cannot dismiss Chrome's prompt itself.

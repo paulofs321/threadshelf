@@ -1,4 +1,5 @@
 import { defineConfig } from 'wxt';
+import tailwindcss from '@tailwindcss/vite';
 
 const privateFiles = [
   '.ai/**',
@@ -18,7 +19,8 @@ export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   manifest: {
     name: 'ThreadShelf',
-    description: 'Select site access for ThreadShelf. Conversation search is not implemented yet.',
+    description:
+      'Search saved ChatGPT and Google Search AI Mode conversations in your selected account.',
     minimum_chrome_version: '116',
     permissions: ['sidePanel'],
     optional_permissions: ['scripting'],
@@ -26,7 +28,7 @@ export default defineConfig({
     action: { default_title: 'Open ThreadShelf' },
     incognito: 'not_allowed',
   },
-  vite: () => ({ build: { sourcemap: false } }),
+  vite: () => ({ plugins: [tailwindcss()], build: { sourcemap: false } }),
   zip: {
     zipSources: false,
     exclude: privateFiles,

@@ -48,7 +48,7 @@ export function panelWindowId(name: string): number | null {
 export const SelectedTabSchema = v.strictObject({
   id: CountSchema,
   windowId: CountSchema,
-  active: v.literal(true),
+  active: v.boolean(),
   incognito: v.literal(false),
   status: v.literal('complete'),
   url: boundedText(2048),

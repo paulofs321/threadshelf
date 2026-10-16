@@ -7,6 +7,8 @@ import {
   readGoogleDocument,
 } from '../../../src/providers/google-ai-mode/document-read';
 import type { GoogleDocumentRead } from '../../../src/providers/google-ai-mode/document-read';
+import { requireValid } from '../../../src/contracts';
+import { GoogleReadResultSchema } from '../../../src/providers/google-ai-mode/transport';
 import { googleJson, googleMatch } from '../../fixtures/google-ai-mode/wire';
 
 const html = (email = 'orchard@example.invalid', displayName = 'Fiction') =>
@@ -172,6 +174,69 @@ describe('self-contained Google document reads', () => {
     expect(second).toMatchObject({ status: 'success' });
     expect(first).not.toEqual(second);
   });
+
+  it.each(['rendered', 'fresh', 'both'] as const)(
+    'accepts an account-menu annotation in the %s label without changing the verified identity',
+    async (annotated) => {
+      const plain = requireValid(
+        GoogleReadResultSchema,
+        await readGoogleDocument(input('inspect')),
+      );
+      const annotatedHtml = html('ORCHARD@example.invalid', 'display@example.invalid').replace(
+        ')">',
+        '), Opens account menu">',
+      );
+
+      if (annotated !== 'fresh') document.body.innerHTML = annotatedHtml;
+
+      fetchMock
+        .mockClear()
+        .mockImplementation(async (raw) =>
+          new URL(String(raw)).pathname === '/search'
+            ? annotated === 'rendered'
+              ? identity()
+              : new Response(annotatedHtml, { headers: { 'content-type': 'text/html' } })
+            : json(),
+        );
+      const result = await readGoogleDocument(input());
+
+      expect(result).toMatchObject(plain);
+      expect(result).toMatchObject({ status: 'success', response: { status: 200 } });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(JSON.stringify(result)).not.toContain('example.invalid');
+      expect(registry.__threadshelfGoogleReadControllers).toBeUndefined();
+    },
+  );
+
+  it('still rejects account changes when rendered labels have an annotation', async () => {
+    document.body.innerHTML = html().replace(')">', '), Opens account menu">');
+    fetchMock.mockResolvedValueOnce(identity('other@example.invalid'));
+    expect(await readGoogleDocument(input())).toEqual({ status: 'scope-changed' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock
+      .mockReset()
+      .mockResolvedValueOnce(identity())
+      .mockResolvedValueOnce(json())
+      .mockResolvedValueOnce(identity('other@example.invalid'));
+    expect(await readGoogleDocument(input())).toEqual({ status: 'scope-changed' });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    'Google Account: Fiction (orchard@example.invalid), other@example.invalid',
+    'Google Account: Fiction (orchard@example.invalid), (Account menu)',
+    'Google Account: Fiction (orchard@example.invalid),\nAccount menu',
+    'Google Account: Fiction (orchard@example.invalid) Account menu',
+    'Google Account: Fiction orchard@example.invalid, Account menu',
+    'Google Account: (display@example.invalid) actual@example.invalid',
+  ])(
+    'rejects ambiguous or unsupported annotated identity %s before reading history',
+    async (label) => {
+      document.querySelector('a')?.setAttribute('aria-label', label);
+      expect(await readGoogleDocument(input())).toEqual({ status: 'unavailable' });
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects a changed account before a read, after a read, or against an established partition', async () => {
     const other = () =>

@@ -91,7 +91,6 @@ describe('selected-tab broker', () => {
   });
   it.each([
     { ...tab, url: 'https://accounts.google.com/' },
-    { ...tab, active: false },
     { ...tab, incognito: true },
     { ...tab, status: 'loading' },
     { ...tab, windowId: 4 },

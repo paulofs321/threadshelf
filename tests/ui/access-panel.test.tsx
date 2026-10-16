@@ -6,6 +6,9 @@ import { AccessPanel } from '../../src/entrypoints/sidepanel/AccessPanel';
 import type { AccessOperation, AccessRequest, FailureStatus } from '../../src/platform/protocol';
 import { clientTimeoutMs } from '../../src/platform/protocol';
 import { deferred, event } from '../platform/helpers';
+import { CandidateSchema, SearchRequestSchema, requireValid } from '../../src/contracts';
+import type { SearchCommand } from '../../src/platform/search-protocol';
+import { chatCandidate } from '../fixtures/contracts';
 
 const chrome = vi.hoisted(() => ({
   permissions: { request: vi.fn() },
@@ -16,7 +19,7 @@ vi.mock('wxt/browser', () => ({ browser: chrome }));
 
 function connection() {
   return {
-    postMessage: vi.fn<(input: AccessRequest) => void>(),
+    postMessage: vi.fn<(input: AccessRequest | SearchCommand) => void>(),
     disconnect: vi.fn(),
     onMessage: event<[unknown]>(),
     onDisconnect: event<[]>(),
@@ -40,7 +43,12 @@ function connectButton(region = chat()) {
 function lastRequest(port = ports[0]): AccessOperation {
   const request = port?.postMessage.mock.calls.at(-1)?.[0];
 
-  if (!request || request.operation === 'cancel')
+  if (
+    !request ||
+    request.operation === 'cancel' ||
+    request.operation === 'keyword-search' ||
+    request.operation === 'cancel-search'
+  )
     throw new Error('Expected synthetic access operation.');
 
   return request;
@@ -94,6 +102,70 @@ afterEach(() => {
 });
 
 describe('side-panel permission and operation flow with real AccessClient', () => {
+  it.each(['valid', 'unsafe'] as const)(
+    'composes real search/access clients, handles a %s reply, and clears stale results on invalidation',
+    async (kind) => {
+      render(<AccessPanel />);
+      await select();
+      fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'fictional library' } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+      });
+      const command = ports[0]?.postMessage.mock.lastCall?.[0];
+
+      if (command?.operation !== 'keyword-search') throw new Error('Expected search command');
+
+      const request = requireValid(SearchRequestSchema, command.request);
+      const scope = request.scopes[0];
+      const candidate = requireValid(CandidateSchema, {
+        ...chatCandidate,
+        scope,
+        conversationId: '11111111-1111-1111-1111-111111111111',
+        originalUrl:
+          kind === 'valid'
+            ? 'https://chatgpt.com/c/11111111-1111-1111-1111-111111111111'
+            : 'https://evil.invalid/thread',
+      });
+      await act(async () => {
+        ports[0]?.onMessage.emit({
+          kind: 'search-result',
+          outcome: {
+            requestId: request.requestId,
+            state: 'success',
+            results: [candidate.id],
+            outcomes: [
+              {
+                requestId: request.requestId,
+                scope,
+                status: 'success',
+                candidates: [candidate],
+                coverage: { extent: 'complete', reasons: [] },
+              },
+            ],
+            coverage: { extent: 'complete', reasons: [] },
+          },
+        });
+      });
+
+      if (kind === 'unsafe') {
+        expect(ports[0]?.disconnect).toHaveBeenCalledOnce();
+        expect(within(chat()).getByRole('status').textContent).toContain('interrupted');
+        expect(screen.queryByRole('article')).toBeNull();
+      } else {
+        expect(screen.getByRole('article')).toBeTruthy();
+        expect(ports[0]?.disconnect).not.toHaveBeenCalled();
+        await act(async () => {
+          ports[0]?.onMessage.emit({
+            kind: 'invalidated',
+            provider: 'chatgpt',
+            generation: 2,
+            status: 'permission-needed',
+          });
+        });
+        expect(screen.queryByRole('article')).toBeNull();
+      }
+    },
+  );
   it('starts idle, exposes labeled native buttons/statuses, and requests no access on mount even in StrictMode', () => {
     render(
       <StrictMode>
@@ -101,7 +173,7 @@ describe('side-panel permission and operation flow with real AccessClient', () =
       </StrictMode>,
     );
     expect(screen.getByRole('heading', { level: 1, name: 'ThreadShelf' })).toBeTruthy();
-    expect(screen.getAllByRole('status')).toHaveLength(2);
+    expect(screen.getAllByRole('status')).toHaveLength(3);
     expect(within(chat()).getByRole('status').textContent).toBe('No site selected.');
     expect(chrome.permissions.request).not.toHaveBeenCalled();
     expect(chrome.runtime.connect).not.toHaveBeenCalled();
@@ -208,7 +280,7 @@ describe('side-panel permission and operation flow with real AccessClient', () =
   it('renders selected as unverified, checks the current scope, and clears without silently revoking permission', async () => {
     render(<AccessPanel />);
     await select();
-    expect(within(chat()).getByRole('status').textContent).toContain('search is unavailable');
+    expect(within(chat()).getByRole('status').textContent).toContain('unverified until a search');
     await act(async () => {
       fireEvent.click(within(chat()).getByRole('button', { name: 'Check selected site' }));
     });
@@ -339,6 +411,11 @@ describe('side-panel permission and operation flow with real AccessClient', () =
       });
     });
     expect(within(chat()).getByRole('status').textContent).toContain('timed out');
+    // Flush DOM selection events and Radix mount frames, retaining any leaked request timers.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersToNextFrame();
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
   it('unmount aborts pending operations, disconnects the port, and removes client listeners/timers', async () => {
@@ -349,6 +426,11 @@ describe('side-panel permission and operation flow with real AccessClient', () =
     expect(ports[0]?.disconnect).toHaveBeenCalledOnce();
     expect(ports[0]?.onMessage.size()).toBe(0);
     expect(ports[0]?.onDisconnect.size()).toBe(0);
+    // Flush DOM selection events and Radix mount frames, retaining any leaked request timers.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersToNextFrame();
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
   it('unmount during a Chrome permission prompt prevents all later access', async () => {
@@ -408,6 +490,11 @@ describe('side-panel permission and operation flow with real AccessClient', () =
       expect(within(chat()).getByRole('status').textContent).toContain('interrupted');
       expect(chrome.runtime.connect).not.toHaveBeenCalled();
       expect(document.body.textContent).not.toContain('fiction-private-window-error');
+      // Flush DOM selection events and Radix mount frames, retaining any leaked request timers.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersToNextFrame();
+      });
       expect(vi.getTimerCount()).toBe(0);
     },
   );
@@ -429,6 +516,11 @@ describe('side-panel permission and operation flow with real AccessClient', () =
         owner.resolve({ id: 3, incognito: false });
       });
       expect(chrome.runtime.connect).not.toHaveBeenCalled();
+      // Flush DOM selection events and Radix mount frames, retaining any leaked request timers.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersToNextFrame();
+      });
       expect(vi.getTimerCount()).toBe(0);
 
       if (stop === 'cancel')

@@ -91,6 +91,8 @@ status combinations, date boundaries, malformed replies, deduplication, budgets,
 cancellation, timeout and scope races. Fake timers verify deadlines and cleanup without live waits.
 These checks do not establish live Chrome or provider authentication.
 
-The engine is implemented independently of the panel. The current extension still exposes setup
-controls; full search controls and browser lifecycle composition remain separate work. No dependency,
-extension permission, live probe, model call or persistent storage was added by this engine.
+The engine stays independent of UI and browser APIs. The [side panel](sidepanel.md) now invokes it
+through the validated runtime bridge with current document-bound provider factories. Composition
+uses only each provider’s `provider` and `search` capabilities. No model call or persistent storage
+is enabled. Provider authentication and native docked-panel acceptance remain separate from synthetic
+engine/UI tests.

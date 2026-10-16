@@ -58,11 +58,15 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
   }
 
   function account(document: Document): string | undefined {
-    return document
-      .querySelector('a[href^="https://accounts.google.com/SignOutOptions"]')
-      ?.getAttribute('aria-label')
-      ?.match(/\(([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\)\s*$/i)?.[1]
-      ?.toLowerCase();
+    return (
+      document
+        .querySelector('a[href^="https://accounts.google.com/SignOutOptions"]')
+        ?.getAttribute('aria-label')
+        // The rendered account control can append a comma-separated accessibility annotation.
+        // Keep the address parenthesized and final; annotation text cannot contain another account.
+        ?.match(/\(([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\)(?:,[^\S\r\n]+[^@()\r\n]+)?\s*$/i)?.[1]
+        ?.toLowerCase()
+    );
   }
 
   async function body(response: Response): Promise<string> {

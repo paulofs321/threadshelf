@@ -149,6 +149,24 @@ afterEach(() => {
 });
 const read = () => port.read({ kind: 'search', query: 'authentication' }, identity, context());
 describe('Chrome Google selected-document transport', () => {
+  it('continues a pinned inactive source read across tab/window focus changes', async () => {
+    chrome.tabs.query.mockResolvedValue([{ ...tab, active: false }]);
+    const held = deferred<unknown[]>();
+    chrome.scripting.executeScript.mockImplementation(async (options) =>
+      options.func === readGoogleDocument ? held.promise : script(options),
+    );
+    const pending = read();
+    await vi.waitFor(() =>
+      expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
+        expect.objectContaining({ func: readGoogleDocument }),
+      ),
+    );
+    chrome.tabs.onActivated.emit({});
+    chrome.windows.onFocusChanged.emit(4);
+    held.resolve([{ frameId: 0, documentId: 'fiction-source', result: success }]);
+    expect(await pending).toEqual(success);
+  });
+
   it('composes the real adapter, pins Chrome document/frame metadata, and normalizes the response', async () => {
     const provider = createGoogleAiModeProvider(binding);
     const result = await provider.search(request, context());
@@ -230,7 +248,6 @@ describe('Chrome Google selected-document transport', () => {
       [{ ...tab, id: 9 }],
       [{ ...tab, windowId: 4 }],
       [{ ...tab, incognito: true }],
-      [{ ...tab, active: false }],
       [{ ...tab, status: 'loading' }],
       [{ ...tab, pendingUrl: tab.url }],
       [{ ...tab, url: tab.url + '&q=changed' }],
@@ -425,63 +442,53 @@ describe('Chrome Google selected-document transport', () => {
     });
     expect(chrome.tabs.query).not.toHaveBeenCalled();
   });
-  it.each([
-    'update',
-    'remove',
-    'replace',
-    'activate',
-    'focus',
-    'permission',
-    'scripting',
-    'cancel',
-  ] as const)('aborts the isolated read and discards a late result after %s', async (event) => {
-    const data = deferred<unknown[]>();
-    const original = script;
-    chrome.scripting.executeScript.mockImplementation(async (o) =>
-      o.func === readGoogleDocument ? data.promise : original(o),
-    );
-    const controller = new AbortController();
-    const pending = port.read({ kind: 'list' }, identity, { signal: controller.signal });
-    await vi.waitFor(() =>
+  it.each(['update', 'remove', 'replace', 'permission', 'scripting', 'cancel'] as const)(
+    'aborts the isolated read and discards a late result after %s',
+    async (event) => {
+      const data = deferred<unknown[]>();
+      const original = script;
+      chrome.scripting.executeScript.mockImplementation(async (o) =>
+        o.func === readGoogleDocument ? data.promise : original(o),
+      );
+      const controller = new AbortController();
+      const pending = port.read({ kind: 'list' }, identity, { signal: controller.signal });
+      await vi.waitFor(() =>
+        expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
+          expect.objectContaining({ func: readGoogleDocument }),
+        ),
+      );
+
+      if (event === 'update') chrome.tabs.onUpdated.emit(7, { status: 'loading' });
+
+      if (event === 'remove') chrome.tabs.onRemoved.emit(7, {});
+
+      if (event === 'replace') chrome.tabs.onReplaced.emit(9, 7);
+
+      if (event === 'permission')
+        chrome.permissions.onRemoved.emit({ origins: ['https://www.google.com/*'] });
+
+      if (event === 'scripting') chrome.permissions.onRemoved.emit({ permissions: ['scripting'] });
+
+      if (event === 'cancel') controller.abort();
+
+      data.resolve([{ frameId: 0, documentId: 'fiction-source', result: success }]);
+      expect(await pending).toEqual({
+        status:
+          event === 'permission' || event === 'scripting'
+            ? 'permission-needed'
+            : event === 'cancel'
+              ? 'cancelled'
+              : 'scope-changed',
+      });
       expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
-        expect.objectContaining({ func: readGoogleDocument }),
-      ),
-    );
-
-    if (event === 'update') chrome.tabs.onUpdated.emit(7, { status: 'loading' });
-
-    if (event === 'remove') chrome.tabs.onRemoved.emit(7, {});
-
-    if (event === 'replace') chrome.tabs.onReplaced.emit(9, 7);
-
-    if (event === 'activate') chrome.tabs.onActivated.emit({});
-
-    if (event === 'focus') chrome.windows.onFocusChanged.emit(3);
-
-    if (event === 'permission')
-      chrome.permissions.onRemoved.emit({ origins: ['https://www.google.com/*'] });
-
-    if (event === 'scripting') chrome.permissions.onRemoved.emit({ permissions: ['scripting'] });
-
-    if (event === 'cancel') controller.abort();
-
-    data.resolve([{ frameId: 0, documentId: 'fiction-source', result: success }]);
-    expect(await pending).toEqual({
-      status:
-        event === 'permission' || event === 'scripting'
-          ? 'permission-needed'
-          : event === 'cancel'
-            ? 'cancelled'
-            : 'scope-changed',
-    });
-    expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
-      expect.objectContaining({
-        func: abortGoogleDocumentRead,
-        world: 'ISOLATED',
-        target: { tabId: 7, documentIds: ['fiction-source'] },
-      }),
-    );
-  });
+        expect.objectContaining({
+          func: abortGoogleDocumentRead,
+          world: 'ISOLATED',
+          target: { tabId: 7, documentIds: ['fiction-source'] },
+        }),
+      );
+    },
+  );
   it.each([
     {},
     { permissions: [], origins: [] },
