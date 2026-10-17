@@ -8,6 +8,7 @@ import {
   EvidenceSchema,
 } from '../../contracts';
 import type { Candidate, Coverage, OriginalLinkVerifier, ProviderRequest } from '../../contracts';
+import { parseGoogleRecordDate } from './dates';
 
 export const googleAiModeOrigin = 'https://www.google.com';
 export const googleResponseLimit = 3_000_000;
@@ -150,12 +151,14 @@ export function parseGoogleRecords(
         continue;
       }
 
+      const date = parseGoogleRecordDate(row[5]);
       candidate = requireValid(CandidateSchema, {
         id: freshId(),
         scope: request.scope,
         conversationId: id,
         originalUrl: url,
         ...(title !== undefined && title.length <= limits.title ? { title } : {}),
+        ...(date ? { date } : {}),
         evidence: [],
       });
 
@@ -202,9 +205,8 @@ export function parseGoogleRecords(
     } else if (kind === 'search') limited('missing-evidence');
   }
 
-  // The two observed timestamp pairs have no verified creation/update meaning yet.
-  // Preserve unknown dates rather than attach a fabricated semantic to a numeric position.
-  if (request.query.dateRange !== undefined) limited('unknown-dates');
+  if (request.query.dateRange !== undefined && [...candidates.values()].some((c) => !c.date))
+    limited('unknown-dates');
 
   return {
     candidates: requireValid(CandidateListSchema, [...candidates.values()]),

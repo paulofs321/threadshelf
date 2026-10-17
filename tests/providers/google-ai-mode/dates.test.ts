@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { parseGoogleDateLabel } from '../../../src/providers/google-ai-mode/dates';
+import {
+  parseGoogleDateLabel,
+  parseGoogleRecordDate,
+} from '../../../src/providers/google-ai-mode/dates';
 
 const observedAt = '2026-10-15T23:30:00.000Z';
 const parse = (text: string, timeZone = 'Europe/Zurich', at = observedAt) =>
@@ -68,5 +71,45 @@ describe('Google rendered calendar dates', () => {
     expect(parse('30 December 2011', 'Pacific/Apia')).toBeUndefined();
     expect(parse('19:28', 'UTC', 'invalid')).toBeUndefined();
     expect(parse('13 October 2026', 'Invalid/Zone')).toBeUndefined();
+  });
+});
+
+describe('optional native Google record timestamps', () => {
+  it.each([0, 1, 999_999, 1_000_000, 123_000_000, 999_999_999])(
+    'normalizes nanoseconds %i to UTC milliseconds without assigning creation/update semantics',
+    (nanos) => {
+      expect(parseGoogleRecordDate([1_791_936_000, nanos])).toEqual({
+        at: new Date(1_791_936_000_000 + Math.floor(nanos / 1_000_000)).toISOString(),
+        meaning: 'provider-record',
+        source: 'provider-metadata',
+      });
+    },
+  );
+  it.each([
+    null,
+    undefined,
+    {},
+    [],
+    [1],
+    [1, 0, 0],
+    ['1791936000', 0],
+    [0, 0],
+    [-1, 0],
+    [1.5, 0],
+    [NaN, 0],
+    [Infinity, 0],
+    [Number.MAX_SAFE_INTEGER + 1, 0],
+    [1, '0'],
+    [1, null],
+    [1, -1],
+    [1, 1.5],
+    [1, NaN],
+    [1, Infinity],
+    [1, 1_000_000_000],
+    [Number.MAX_SAFE_INTEGER, 0],
+    [8_640_000_000_001, 0],
+    [253_402_300_800, 0],
+  ])('leaves malformed, absent or out-of-range native dates unknown: %j', (value) => {
+    expect(parseGoogleRecordDate(value)).toBeUndefined();
   });
 });

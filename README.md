@@ -34,13 +34,15 @@ and a bounded 50-conversation list. Workspaces, pagination and complete-history 
 unsupported or unverified. See the [ChatGPT adapter](docs/chatgpt-adapter.md) for details.
 
 Google Search AI Mode implements default-account search/list reads, exact snippets, verified original
-links, rendered message dates, bounded rendered-thread evidence, HTTP failures and fresh identity
-checks. On October 15, 2026, native and actual unpacked-extension reads returned three snippet-only matches, a genuine
+links, native record and visible message dates, bounded rendered-thread evidence, HTTP failures and
+fresh identity checks. On October 15, 2026, native and actual unpacked-extension reads returned three snippet-only matches, a genuine
 empty search, a capped partial list and a rendered excerpt from an owned background tab that closed
-afterward. Google dates use the first visible message’s date; time-only labels use the local day
-when read. Date reads are bounded and may leave dates unknown. Nondefault accounts, native numeric
-timestamp meanings, continuation beyond 300 listed records and complete-message retrieval remain
-unresolved. Unknown dates are omitted; complete-history coverage is never claimed. Live checks are separate from synthetic tests. See the
+afterward. Google uses the native record timestamp as an available **Provider date**, without claiming
+creation/update semantics. An already-visible matching message date takes priority; time-only labels
+use the local day when read. Keyword search creates no tabs or per-conversation date reads. Missing
+or malformed dates remain unknown. Nondefault accounts, timestamp creation/update meanings,
+continuation and complete-message/history coverage remain unresolved. Unknown dates are omitted;
+complete-history coverage is never claimed. Live checks are separate from synthetic tests. See the
 [Google Search AI Mode adapter](docs/google-ai-mode-adapter.md) for the technical reference.
 
 Without a selected-document binding, either adapter remains unavailable. Model inference,

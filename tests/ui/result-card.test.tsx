@@ -183,6 +183,7 @@ describe('result evidence and navigation', () => {
     ['conversation-created', 'provider-metadata', 'Conversation created', 'provider metadata'],
     ['conversation-updated', 'provider-metadata', 'Conversation updated', 'provider metadata'],
     ['message-sent', 'rendered-message', 'Message sent', 'rendered message'],
+    ['provider-record', 'provider-metadata', 'Provider date', 'provider metadata'],
   ] as const)(
     'shows the %s date meaning and %s provenance',
     (meaning, source, label, provenance) => {
@@ -201,6 +202,11 @@ describe('result evidence and navigation', () => {
         '2026-10-16T22:30:00.000Z',
       );
       expect(document.querySelector('time')?.textContent).toContain('17');
+
+      if (meaning === 'provider-record')
+        expect(document.querySelector('time')?.title).toBe(
+          'Provider date supplied with the conversation record',
+        );
     },
   );
 });

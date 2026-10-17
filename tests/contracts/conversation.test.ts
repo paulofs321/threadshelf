@@ -191,3 +191,16 @@ describe('calendar-day precision contracts', () => {
     expect(validate(CandidateSchema, { ...googleCandidate, date: invalid }).ok).toBe(false);
   });
 });
+
+it('preserves provider record dates with metadata provenance and rejects invented rendered provenance', () => {
+  const date = {
+    at: '2026-10-13T10:00:00.123Z',
+    meaning: 'provider-record',
+    source: 'provider-metadata',
+  };
+  expect(requireValid(CandidateSchema, { ...googleCandidate, date }).date).toEqual(date);
+  expect(
+    validate(CandidateSchema, { ...googleCandidate, date: { ...date, source: 'rendered-message' } })
+      .ok,
+  ).toBe(false);
+});

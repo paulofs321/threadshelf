@@ -32,7 +32,6 @@ export function createGoogleAiModeProvider(binding: SelectedDocumentBinding): Go
 }
 
 export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
-  private dateNavigationBlocked = false;
   constructor(private readonly binding: SelectedDocumentBinding) {}
 
   read(
@@ -42,7 +41,7 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
   ) {
     const parsed = validate(GoogleReadOperationSchema, operation);
 
-    if (!parsed.ok || parsed.value.kind === 'messages' || parsed.value.kind === 'date')
+    if (!parsed.ok || parsed.value.kind === 'messages')
       return Promise.resolve(failure('unavailable'));
 
     return this.run(context, async (signal) => {
@@ -63,21 +62,6 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
   }
 
   openEvidence(candidate: Candidate, expectedIdentity: string, context: OperationContext) {
-    return this.openConversation(candidate, expectedIdentity, context, 'messages');
-  }
-
-  openDate(candidate: Candidate, expectedIdentity: string, context: OperationContext) {
-    if (this.dateNavigationBlocked) return Promise.resolve(failure('unavailable'));
-
-    return this.openConversation(candidate, expectedIdentity, context, 'date');
-  }
-
-  private openConversation(
-    candidate: Candidate,
-    expectedIdentity: string,
-    context: OperationContext,
-    kind: 'messages' | 'date',
-  ) {
     const parsed = validate(CandidateSchema, candidate);
 
     if (
@@ -157,16 +141,6 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
 
           if (current.status === 'complete') {
             if (current.url !== destination || current.pendingUrl !== undefined) {
-              // A rejected/redirected optional date page does not invalidate verified keyword matches.
-              // No data is read from that document; reverify the original source before degrading.
-              if (kind === 'date' && owned) {
-                this.dateNavigationBlocked = true;
-
-                return (
-                  (await this.confirmSource(expectedIdentity, signal)) ?? failure('unavailable')
-                );
-              }
-
               return failure('scope-changed');
             }
 
@@ -194,7 +168,7 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
         const result = await this.execute(
           tabId,
           documentId,
-          { kind, conversationId: candidate.conversationId },
+          { kind: 'messages', conversationId: candidate.conversationId },
           expectedIdentity,
           signal,
         );

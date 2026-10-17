@@ -1,10 +1,11 @@
 # Google Search AI Mode adapter
 
 The Google Search AI Mode adapter implements read-only keyword search, a bounded saved-thread list,
-rendered message dates, and optional rendered-thread evidence through an existing logged-in browser
-session. It supports the default-account context on `https://www.google.com/search?udm=50` verified on 15 October 2026.
-It does not use the Gemini app. Nondefault account selection, other Google locale hosts, numeric
-timestamp meanings, pagination and complete-history coverage remain unsupported or unverified.
+native record dates, visible message dates, and optional rendered-thread evidence through an existing
+logged-in browser session. It supports the default-account context on `https://www.google.com/search?udm=50` verified on 15 October 2026.
+It does not use the Gemini app. Nondefault account selection, other Google locale hosts, native
+timestamp creation/update meanings, pagination and complete-history coverage remain unsupported
+or unverified.
 
 The adapter is an in-process capability consumed through normalized provider ports. The side panel
 composes it with the keyword search engine through a validated runtime bridge; shared UI and search
@@ -81,8 +82,8 @@ are inferred. Empty keyword input is not a substitute for listing.
 
 The provider does not interpret descriptions or send server date filters. The
 [keyword search engine](keyword-search.md) owns provider selection and deterministic date filtering.
-Rendered message dates can satisfy a date filter. Candidates whose dates cannot be read remain
-undated; a date constraint discloses `unknown-dates` while any candidate is undated.
+Available native record or rendered message dates can satisfy a date filter. Candidates whose dates
+cannot be read remain undated; a date constraint discloses `unknown-dates` while any candidate is undated.
 
 ## Normalization
 
@@ -106,44 +107,41 @@ omitted. Native snippets remain exact plain-text substrings with `native-snippet
 title evidence uses `title`. Clipping adds no ellipses, rewrites no punctuation and preserves UTF-16
 surrogate pairs. Omitted or clipped evidence is disclosed with `missing-evidence`.
 
-Observed native numeric timestamp pairs and relative labels still have no verified creation/update
-meaning and are not mapped to dates.
+## Conversation dates
 
-## Rendered message dates
+Search and list use the timestamp pair already returned in each native thread record (position 5).
+The parser accepts exactly `[seconds, nanoseconds]`, validates positive safe integer seconds and
+integer nanoseconds from 0 through 999,999,999, and normalizes to canonical UTC milliseconds.
+Malformed, absent or out-of-range optional dates leave the candidate undated without failing search.
+The second timestamp pair and relative labels are not interpreted.
 
-After native search/list normalization, the optional trusted `openDate` capability reads each retrieved
-original link through the same pinned, account-checked conversation lifecycle used for evidence.
-A complete regular AI Mode tab with the same thread ID in the bound window is reused when available;
-its actual URL and Chrome document are pinned. It is never navigated, activated or closed. Otherwise
-the host opens an owned inactive tab and closes it afterward.
-Generic host `read` rejects direct `date` and `messages` operations. No runtime message accepts a URL.
-The reader extracts only the first visible, nonempty `.UYpEO > .kwdzO` label (capital letter O),
-observed below a question, and the read time. It waits within its deadline for client rendering;
-fresh response HTML alone does not contain these labels. No transcript is extracted for this operation.
+The first timestamp's exact creation/update/message semantics are unverified. Its normalized meaning
+is `provider-record`, with `provider-metadata` provenance. Cards label it **Provider date** for
+accessibility and explain it in a tooltip; it is an available provider date for sorting/filtering,
+not proof of when a topic was discussed.
+
+### Rendered message dates
+
+During the same native search/list read, the reader can also capture the first already-visible,
+nonempty `.UYpEO > .kwdzO` label (capital O), observed below a question in the pinned source document.
+The label includes the source thread ID and observation time. It overrides the native date only for
+that same retrieved thread. An unrelated, missing, oversized or unsupported visible label leaves
+native dates intact. No conversation is opened, navigated or waited for to obtain a date. Search
+and list never create tabs, and there is no per-candidate date operation or enrichment phase.
 
 Full English labels such as `13 October 2026` provide that message’s calendar date. Valid 24-hour
 clock-only labels such as `19:28` use the observation’s local calendar day in the query/browser timezone,
 as an explicit product policy. They do not establish an exact message time. Unsupported locales,
-relative labels, invalid dates and missing labels remain unknown. The parser validates leap days,
+relative labels and invalid dates do not override native metadata. The parser validates leap days,
 timezones, DST boundaries and skipped civil days without locale-dependent date parsing.
 
-Normalized dates use `meaning: message-sent`, `source: rendered-message` and optional `calendarDay`
-metadata containing the actual date, timezone and `provider-date` or `time-only-today` basis. `at` is
-that local day’s first real instant for sorting and filtering; the contract validates this boundary.
-The card renders the calendar day and exposes its basis in a tooltip. This does not assert a
-conversation creation/update timestamp or exact midnight message time.
-
-Date reads run sequentially, with at most one temporary date tab at a time. The metadata phase has
-at most seven seconds, reduced to fit within 10.5 seconds from retrieval start and the engine’s
-12-second provider deadline. No retry or persistent date cache is added. Slow/unavailable/malformed optional metadata
-leaves native matches intact with unknown dates; a filtered search excludes them with coverage
-disclosure. Unavailable or rate-limited date reads stop that metadata phase. If an owned date tab
-loads an unexpected URL, its contents are not read. The original source is rechecked, its date stays
-unknown, and new date reads pause for that connection; reconnecting creates a fresh reader. This
-preserves verified keyword matches without following unknown redirects. Changes to the source
-account, scope, permissions or owning context, and caller cancellation, still discard the outcome.
-Cancellation, replacement and the phase deadline abort pending date reads and discard late replies;
-owned tabs are closed, including late tab creation. The active source remains untouched.
+Rendered dates use `meaning: message-sent`, `source: rendered-message` and `calendarDay` metadata
+containing the date, timezone and `provider-date` or `time-only-today` basis. `at` is that local day’s
+first real instant for sorting and filtering; the contract validates this boundary. The card renders
+the calendar day and explains its basis in a tooltip. No date cache, extra request, permission or
+creation/update assertion is introduced. A candidate without either usable date remains undated;
+date filters exclude it and disclose `unknown-dates`. Fresh account/context checks, cancellation
+and stale-result rejection still apply to the entire native read.
 
 ## Rendered evidence
 
@@ -235,6 +233,15 @@ navigation, retaining keyword results. No private text, account labels or identi
 This provider diagnostic bypassed the native panel sender handshake; the panel flow is exercised
 separately with synthetic HTTP, including an account-free AI Mode response.
 
+The temporary date-tab strategy described in the historical checks above was removed on 17 October
+2026 after the user reported tabs appearing during search. A new read-only check ran the actual
+adapter/parser and document reader in the existing native page's main world: two searches each
+returned seven candidates with seven valid native record dates. Source URL, active selections and
+tab IDs stayed unchanged, and read controllers were cleaned up. This establishes live native
+metadata compatibility; it is separate from Chrome isolated-world and side-panel integration,
+which the updated synthetic Chromium test verifies with zero new pages across three dated searches.
+No native timestamp creation/update semantics or universal date availability are inferred.
+
 The current panel has **All sources**, **ChatGPT** and **Google AI Mode** result tabs with compact
 expandable excerpts and provider-specific failures. Isolated Chromium tests exercise the real native
 panel, runtime clients, broker, both adapters and isolated readers with synthetic intercepted HTTP,
@@ -244,8 +251,8 @@ does not establish live account access or screen-reader acceptance.
 Live probes observed successful HTTP 200 reads. Forced logout/account switching, HTTP failures,
 permission revocation and every Chrome lifecycle race were not induced; synthetic tests cover those
 paths separately. Tests also cover rendered dates, time-only today fallback, timezone/day precision,
-metadata budgets, annotated account labels, account-address extraction when display names resemble
-addresses, scope/request isolation, malformed envelopes, unsafe links, evidence budgets, replacement/late replies,
+native timestamp validation, zero new tabs during search, annotated account labels, account-address
+extraction when display names resemble addresses, scope/request isolation, malformed envelopes, unsafe links, evidence budgets, replacement/late replies,
 temporary-tab cleanup and unrelated permission changes. These are recorded checks; synthetic
 failure cases do not establish live provider behavior.
 
@@ -253,7 +260,7 @@ Production requires a pinned permitted Google AI Mode tab and its existing brows
 can create that tab in the background. Login or browser challenges can still require provider-site
 interaction. After rebuilding the unpacked extension, reload it in `chrome://extensions` and reopen
 the panel so the UI and worker use the same build.
-Nondefault selectors, locale hosts, native numeric timestamp semantics, continuation beyond 300
+Nondefault selectors, locale hosts, native timestamp creation/update semantics, continuation beyond 300
 records, tab-free operation and complete-message/history coverage remain unresolved. No Gemini-app or public Google
 API fallback is substituted for the saved Search AI Mode account.
 

@@ -45,3 +45,34 @@ export function parseGoogleDateLabel(
     return undefined;
   }
 }
+
+// Observed native record timestamp; its creation/update/message meaning is unverified.
+// Keep that distinction explicit instead of assigning a meaning from its numeric position.
+export function parseGoogleRecordDate(value: unknown): Candidate['date'] {
+  if (!Array.isArray(value) || value.length !== 2) return undefined;
+
+  const [seconds, nanos] = value;
+
+  if (
+    !Number.isSafeInteger(seconds) ||
+    seconds <= 0 ||
+    !Number.isInteger(nanos) ||
+    nanos < 0 ||
+    nanos >= 1_000_000_000
+  )
+    return undefined;
+
+  const milliseconds = seconds * 1000 + Math.floor(nanos / 1_000_000);
+
+  if (!Number.isSafeInteger(milliseconds)) return undefined;
+
+  try {
+    return requireValid(ConversationDateSchema, {
+      at: new Date(milliseconds).toISOString(),
+      meaning: 'provider-record',
+      source: 'provider-metadata',
+    });
+  } catch {
+    return undefined;
+  }
+}

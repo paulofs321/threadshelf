@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { GoogleAiModeProvider } from '../../../src/providers/google-ai-mode/adapter';
 import type { GoogleAiModeReadPort } from '../../../src/providers/google-ai-mode/transport';
 import { matchesDateRange } from '../../../src/contracts';
@@ -9,12 +9,30 @@ import { googleJson, googleMatch, googleThread } from '../../fixtures/google-ai-
 const identity = 'a'.repeat(64);
 const success = { status: 'success', identityBefore: identity, identityAfter: identity };
 const context = () => ({ signal: new AbortController().signal });
-const label = (text = '13 October 2026') => ({
-  ...success,
-  dateLabel: { text, observedAt: '2026-10-15T23:30:00.000Z' },
+const label = (text = '13 October 2026', conversationId = 'fiction-0') => ({
+  conversationId,
+  text,
+  observedAt: '2026-10-15T23:30:00.000Z',
 });
 
-function fixture(count = 1) {
+function fixture({
+  count = 1,
+  dated = true,
+  kind = 'search',
+  dateLabel,
+}: {
+  count?: number;
+  dated?: boolean;
+  kind?: 'search' | 'list';
+  dateLabel?: unknown;
+} = {}) {
+  const rows = Array.from({ length: count }, (_, i) => {
+    const row = googleThread(`fiction-${i}`);
+
+    if (!dated) row[5] = null;
+
+    return row;
+  });
   const port = {
     read: vi.fn<GoogleAiModeReadPort['read']>().mockResolvedValue({
       ...success,
@@ -22,12 +40,10 @@ function fixture(count = 1) {
         status: 200,
         contentType: 'application/json',
         retryAfter: null,
-        body: googleJson([
-          Array.from({ length: count }, (_, i) => googleMatch(googleThread(`fiction-${i}`))),
-        ]),
+        body: googleJson([kind === 'search' ? rows.map((row) => googleMatch(row)) : rows]),
       },
+      ...(dateLabel === undefined ? {} : { dateLabel }),
     }),
-    openDate: vi.fn<NonNullable<GoogleAiModeReadPort['openDate']>>().mockResolvedValue(label()),
     openEvidence: vi.fn<NonNullable<GoogleAiModeReadPort['openEvidence']>>().mockResolvedValue({
       ...success,
       rendered: ['A fictional rendered answer.'],
@@ -43,222 +59,146 @@ function fixture(count = 1) {
   return { port, request, provider };
 }
 
-afterEach(() => {
-  vi.useRealTimers();
-  vi.restoreAllMocks();
-});
-
-describe('Google date enrichment', () => {
-  it('reads only retrieved scoped links and removes unknown-date coverage when every date is known', async () => {
-    const { provider, request, port } = fixture(2);
-    port.openDate.mockResolvedValueOnce(label()).mockResolvedValueOnce(label('19:28'));
-    const outcome = await provider.search(request, context());
-
-    if (outcome.status !== 'success') throw new Error('Expected synthetic success');
-
-    expect(outcome.candidates.map((candidate) => candidate.date?.calendarDay?.date)).toEqual([
-      '2026-10-13',
-      '2026-10-16',
-    ]);
-    expect(
-      outcome.candidates.map((candidate) => matchesDateRange(candidate, request.query.dateRange)),
-    ).toEqual([true, false]);
-    expect(outcome.coverage.reasons).not.toContain('unknown-dates');
-    expect(port.openDate).toHaveBeenCalledWith(
-      outcome.candidates[0] &&
-        expect.objectContaining({
-          conversationId: 'fiction-0',
-          scope: request.scope,
-        }),
-      identity,
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    const messages = await provider.messages(request, 'fiction-0', context());
-    expect(messages).toMatchObject({
-      status: 'success',
-      candidates: [{ date: outcome.candidates[0]?.date }],
-    });
-
-    if (messages.status === 'success')
-      expect(messages.coverage.reasons).not.toContain('unknown-dates');
-  });
-  it('also dates listed candidates without claiming native timestamp meanings', async () => {
-    const { provider, request, port } = fixture();
-    port.read.mockResolvedValue({
-      ...success,
-      response: {
-        status: 200,
-        contentType: 'application/json',
-        retryAfter: null,
-        body: googleJson([[googleThread('fiction-0')], null, 0, null, null, 'fiction-tail']),
-      },
-    });
-    expect(await provider.list(request, context())).toMatchObject({
-      status: 'success',
-      candidates: [{ date: { meaning: 'message-sent', source: 'rendered-message' } }],
-    });
-  });
-  it.each([
-    { status: 'unavailable' },
-    { status: 'timeout' },
-    { status: 'schema-changed' },
-    { status: 'rate-limited' },
-    {},
-    success,
-    label('Yesterday'),
-    { ...label(), rendered: ['Unexpected private text'] },
-    { ...label(), response: { status: 200, contentType: null, retryAfter: null, body: '' } },
-    { ...label(), dateLabel: { text: '13 October 2026', observedAt: 'invalid' } },
-  ])(
-    'preserves matches and unknown-date coverage on unavailable/malformed optional dates %#',
-    async (value) => {
-      const { provider, request, port } = fixture();
-      port.openDate.mockResolvedValue(value);
-      const result = await provider.search(request, context());
-      expect(result).toMatchObject({
-        status: 'success',
-        candidates: [{ conversationId: 'fiction-0' }],
-      });
+describe('Google dates without conversation navigation', () => {
+  it.each(['search', 'list'] as const)(
+    'dates every native %s record with one read and no evidence request',
+    async (kind) => {
+      const { provider, request, port } = fixture({ count: 2, kind });
+      const result = await provider[kind](request, context());
 
       if (result.status !== 'success') throw new Error('Expected synthetic success');
 
-      expect(result.candidates[0]).not.toHaveProperty('date');
-      expect(result.coverage.reasons).toContain('unknown-dates');
+      expect(result.candidates.map((c) => c.date)).toEqual(
+        Array.from({ length: 2 }, () => ({
+          at: new Date(1_791_936_000_123).toISOString(),
+          meaning: 'provider-record',
+          source: 'provider-metadata',
+        })),
+      );
+      expect(result.coverage.reasons).toEqual(['unknown-reach']);
+      expect(port.read).toHaveBeenCalledOnce();
+      expect(port.openEvidence).not.toHaveBeenCalled();
     },
   );
-  it('keeps mixed known and unknown candidates without erasing coverage limits', async () => {
-    const { provider, request, port } = fixture(2);
-    port.openDate.mockResolvedValueOnce(label()).mockResolvedValueOnce(label('Yesterday'));
+  it('prefers the matching visible message date, retains other native dates and snapshots it for explicit evidence', async () => {
+    const { provider, request, port } = fixture({ count: 2, dateLabel: label() });
+    const result = await provider.search(request, context());
+
+    if (result.status !== 'success') throw new Error('Expected synthetic success');
+
+    expect(result.candidates[0]?.date).toMatchObject({
+      meaning: 'message-sent',
+      source: 'rendered-message',
+      calendarDay: { date: '2026-10-13', basis: 'provider-date' },
+    });
+    expect(result.candidates[1]?.date?.meaning).toBe('provider-record');
+    const candidate = result.candidates[0];
+
+    if (!candidate?.date) throw new Error('Missing synthetic date');
+
+    expect(matchesDateRange(candidate, request.query.dateRange)).toBe(true);
+    const expectedDate = structuredClone(result.candidates[0]?.date);
+    candidate.date.at = '2020-01-01T00:00:00.000Z';
+    expect(await provider.messages(request, 'fiction-0', context())).toMatchObject({
+      status: 'success',
+      candidates: [{ date: expectedDate }],
+      coverage: { reasons: ['unknown-reach', 'missing-evidence'] },
+    });
+    expect(port.openEvidence).toHaveBeenCalledOnce();
+  });
+  it('uses observation-local today for a time-only label, including across UTC midnight', async () => {
+    const { provider, request } = fixture({ dated: false, dateLabel: label('19:28') });
+    const result = await provider.search(request, context());
+    expect(result).toMatchObject({
+      status: 'success',
+      candidates: [
+        {
+          date: {
+            at: '2026-10-15T22:00:00.000Z',
+            calendarDay: { date: '2026-10-16', basis: 'time-only-today' },
+          },
+        },
+      ],
+    });
+
+    if (result.status === 'success') {
+      const candidate = result.candidates[0];
+
+      if (!candidate) throw new Error('Missing synthetic candidate');
+
+      expect(matchesDateRange(candidate, request.query.dateRange)).toBe(false);
+      expect(result.coverage.reasons).not.toContain('unknown-dates');
+    }
+  });
+  it.each([label('Yesterday'), label('31 April 2026'), label('13 October 2026', 'another-thread')])(
+    'keeps native dates for unsupported or unrelated visible labels: %j',
+    async (dateLabel) => {
+      const { provider, request } = fixture({ dateLabel });
+      expect(await provider.search(request, context())).toMatchObject({
+        status: 'success',
+        candidates: [
+          {
+            date: {
+              meaning: 'provider-record',
+              source: 'provider-metadata',
+            },
+          },
+        ],
+      });
+    },
+  );
+  it('keeps unknown-date coverage for undated records without fabricating today', async () => {
+    const { provider, request } = fixture({ count: 2, dated: false, dateLabel: label() });
     const result = await provider.search(request, context());
 
     if (result.status !== 'success') throw new Error('Expected synthetic success');
 
     expect(result.candidates[0]?.date).toBeTruthy();
-    expect(result.candidates[1]?.date).toBeUndefined();
+    expect(result.candidates[1]).not.toHaveProperty('date');
     expect(result.coverage.reasons).toContain('unknown-dates');
-  });
-  it.each([
-    'scope-changed',
-    'login-expired',
-    'permission-needed',
-    'interrupted',
-    'cancelled',
-  ] as const)(
-    'propagates %s during optional date reads instead of displaying unsafe results',
-    async (status) => {
-      const { provider, request, port } = fixture(4);
-      port.openDate.mockResolvedValue({ status });
-      expect((await provider.search(request, context())).status).toBe(status);
-      expect((await provider.messages(request, 'fiction-0', context())).status).not.toBe('success');
-    },
-  );
-  it('invalidates identity when a date belongs to another account', async () => {
-    const { provider, request, port } = fixture();
-    port.openDate.mockResolvedValue({ ...label(), identityAfter: 'b'.repeat(64) });
-    expect((await provider.search(request, context())).status).toBe('scope-changed');
-    expect((await provider.inspectSession(context())).status).toBe('scope-changed');
-  });
-  it('bounds date work to one tab at a time and seven seconds, ignores late replies, and releases timers', async () => {
-    vi.useFakeTimers();
-    const { provider, request, port } = fixture(10);
-    const finishes: ((value: unknown) => void)[] = [];
-    port.openDate.mockImplementation(() => new Promise((resolve) => finishes.push(resolve)));
-    const pending = provider.search(request, context());
-    await vi.advanceTimersByTimeAsync(0);
-    expect(port.openDate).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(7000);
-    const result = await pending;
-    expect(result.status).toBe('success');
-    expect(port.openDate).toHaveBeenCalledTimes(1);
-
-    for (const [, , ctx] of port.openDate.mock.calls) expect(ctx.signal.aborted).toBe(true);
-
-    for (const finish of finishes) finish(label());
-
-    await vi.advanceTimersByTimeAsync(0);
-
-    if (result.status === 'success')
-      expect(result.candidates.every((candidate) => !candidate.date)).toBe(true);
-
-    expect(vi.getTimerCount()).toBe(0);
-  });
-  it.each(['cancel', 'invalidate', 'replace'] as const)(
-    'discards the date phase after %s without restoring obsolete inventory',
-    async (action) => {
-      vi.useFakeTimers();
-      const { provider, request, port } = fixture();
-      port.openDate.mockImplementationOnce(() => new Promise(() => {}));
-      const controller = new AbortController();
-      const pending = provider.search(request, { signal: controller.signal });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(port.openDate).toHaveBeenCalledTimes(1);
-
-      if (action === 'cancel') controller.abort();
-
-      if (action === 'invalidate') provider.invalidate();
-
-      if (action === 'replace')
-        expect((await provider.search(request, context())).status).toBe('success');
-
-      expect((await pending).status).toBe(action === 'cancel' ? 'cancelled' : 'scope-changed');
-      expect(vi.getTimerCount()).toBe(0);
-    },
-  );
-  it('uses only the remaining provider budget after a slow native search', async () => {
-    vi.useFakeTimers();
-    const { provider, request, port } = fixture();
-    vi.spyOn(performance, 'now').mockReturnValue(0);
-    const original = port.read.getMockImplementation();
-
-    if (!original) throw new Error('Missing synthetic read implementation');
-
-    port.read.mockImplementation(async (...args) => {
-      vi.spyOn(performance, 'now').mockReturnValue(11_000);
-
-      return original(...args);
+    expect(await provider.messages(request, 'fiction-1', context())).toMatchObject({
+      status: 'success',
+      coverage: { reasons: ['unknown-reach', 'missing-evidence', 'unknown-dates'] },
     });
-    expect((await provider.search(request, context())).status).toBe('success');
-    expect(port.openDate).not.toHaveBeenCalled();
-    expect(vi.getTimerCount()).toBe(0);
   });
-  it('does not open tabs for successful empty results', async () => {
-    const { provider, request, port } = fixture(0);
+  it('accepts successful empty results without extra reads or unknown-date limitations', async () => {
+    const { provider, request, port } = fixture({ count: 0, dateLabel: label() });
     expect(await provider.search(request, context())).toMatchObject({
       status: 'success',
       candidates: [],
+      coverage: { reasons: ['unknown-reach'] },
     });
-    expect(port.openDate).not.toHaveBeenCalled();
+    expect(port.read).toHaveBeenCalledOnce();
+    expect(port.openEvidence).not.toHaveBeenCalled();
   });
-});
-
-it('discards completion when the scope retires after the native read but before publication', async () => {
-  const { port, request } = fixture();
-  const provider = new GoogleAiModeProvider(
-    request.scope,
-    { read: port.read },
-    {
+  it.each([
+    { text: '19:28', observedAt: 'invalid', conversationId: 'fiction-0' },
+    { text: '19:28', observedAt: label().observedAt },
+    { ...label(), extra: 'untrusted' },
+  ])('rejects invalid source bindings or transport metadata: %j', async (dateLabel) => {
+    const { provider, request } = fixture({ dateLabel });
+    expect((await provider.search(request, context())).status).toBe('schema-changed');
+  });
+  it('discards results whose optional visible date crosses an account change', async () => {
+    const { provider, request, port } = fixture({ dateLabel: label() });
+    const response = (await port.read(
+      { kind: 'search', query: 'fictional' },
+      undefined,
+      context(),
+    )) as object;
+    port.read.mockResolvedValue({ ...response, identityAfter: 'b'.repeat(64) });
+    expect((await provider.search(request, context())).status).toBe('scope-changed');
+    expect((await provider.inspectSession(context())).status).toBe('scope-changed');
+  });
+  it('discards completion when the scope retires during normalization', async () => {
+    const { port, request } = fixture();
+    const provider = new GoogleAiModeProvider(request.scope, port, {
       freshId: () => {
-        queueMicrotask(() => provider.invalidate());
+        provider.invalidate();
 
         return 'fictional-late-candidate';
       },
-    },
-  );
-  expect((await provider.search(request, context())).status).toBe('scope-changed');
+    });
+    expect((await provider.search(request, context())).status).toBe('scope-changed');
+  });
 });
-
-it.each(['unavailable', 'rate-limited'] as const)(
-  'stops optional date reads on %s and preserves all matches',
-  async (status) => {
-    const { provider, request, port } = fixture(5);
-    port.openDate.mockResolvedValue({ status });
-    const result = await provider.search(request, context());
-    expect(result.status).toBe('success');
-
-    if (result.status !== 'success') throw new Error('Expected synthetic success');
-
-    expect(result.candidates).toHaveLength(5);
-    expect(result.coverage.reasons).toContain('unknown-dates');
-    expect(port.openDate).toHaveBeenCalledOnce();
-  },
-);

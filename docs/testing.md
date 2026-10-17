@@ -158,16 +158,23 @@ continues across pages without stealing connection-page focus, scope loss clears
 and both real runtime clients retain their connection/keepalive without new permission requests.
 Chromium checks both pages at 240–400px and repeats native-panel searches after page/tab switches.
 
-## Google rendered dates
+## Google conversation dates
 
-Synthetic tests cover full English dates, leap days, invalid/unsupported labels, time-only today in
-different timezones, DST and skipped days; day-boundary/provenance contracts; first visible label
-selection, delayed rendering and date-only payloads; existing date filtering and card display/tooltips;
-sequential date reads, remaining deadline, missing metadata, cancellation, replacement, late replies
-and account/scope/permission failures. Host tests cover safe existing-tab reuse, changed/unsupported
-tab rejection and preserving user tabs. The native-panel fixture verifies a full rendered date and
-then a clock-only label normalized to the browser’s current local day across repeated searches.
-These checks use handwritten data and make no numeric timestamp or complete-history claim.
+Synthetic tests cover native seconds/nanoseconds validation, canonical UTC normalization, optional
+missing/malformed dates, generic provider-record meaning and metadata provenance; full English
+message dates, leap days, unsupported labels, time-only today across timezones, DST and skipped days;
+source-thread-bound first-visible labels, native-date fallback, date filtering and card tooltips.
+Search/list integration tests use the real Chrome provider factory with `tabs.create` throwing and
+assert repeated dated results without creating, navigating or closing tabs. Explicit evidence still
+has independent existing-tab reuse, context/account checks and owned-tab cleanup tests.
+
+The isolated native-panel Chromium fixture searches an unopened thread dated from native metadata,
+then an existing source thread with a full visible date, then a clock-only label normalized to the
+browser's current local day. It asserts unchanged tab IDs and zero new pages across all three reads.
+These are handwritten fixtures without live accounts. A separate read-only native-page check
+returned seven dated candidates on each of two searches with unchanged tabs and source; that main-world
+probe verifies live metadata compatibility, separately from isolated-world extension integration.
+Neither check establishes timestamp creation/update semantics or complete-history coverage.
 
 A connection regression reproduces ChatGPT Connect from another site with two inactive ChatGPT
 pages. It verifies a fresh fixed inactive source, pinned reuse without duplicate tabs, cleanup of
@@ -179,6 +186,5 @@ probe verifies browser selection, separately from authentication/search and nati
 Google identity regressions make the AI Mode fetch return HTTP 200 without account markup while the
 fixed homepage supplies the verified account control. Unit and native-panel browser tests require
 successful keyword results in that case. Existing mismatch/missing-identity, HTTP/redirect,
-permission and cancellation guards remain covered. Owned date-page redirects are tested for source
-reverification, unknown dates, cleanup, paused date navigation and successful repeated keyword reads;
-a source-account change still fails closed. The phase stops on unavailable/rate-limited metadata.
+permission and cancellation guards remain covered. Date extraction now shares the bounded native
+read and its account/document guards; the former temporary date tabs and metadata phase are removed.

@@ -151,8 +151,8 @@ scopes cannot form persistent cache keys. Cache schemas do not enable persistenc
 memory-only operation remains the default direction.
 
 Missing titles/dates/links stay absent. Available dates carry a meaning (`conversation-created`,
-`conversation-updated`, or `message-sent`) and provenance. A conversation creation/update timestamp
-does not establish when a topic was discussed. Date constraints use normalized UTC `[start, end)`
+`conversation-updated`, `message-sent`, or `provider-record`) and provenance. A conversation
+creation/update timestamp does not establish when a topic was discussed. Date constraints use normalized UTC `[start, end)`
 intervals with a browser timezone on the query. Unknown dates cannot satisfy constraints and must be
 disclosed as excluded in aggregate coverage. Optional `calendarDay` preserves date-only precision,
 timezone and provider-date/time-only-today basis; its `at` must match the local day boundary. Google
@@ -347,17 +347,16 @@ remain enforced. Original links use only the observed four metadata pairs on the
 unknown, mismatched or unsafe link parameters are rejected. A native temporary-tab check verified
 that the metadata-only link reopens the saved thread under the same account.
 
-The two native numeric timestamp pairs lack verified creation/update meanings and remain unmapped.
-Search/list enrich dates through optional `openDate`, using the first visible rendered question date.
-Full English dates retain their day; valid 24-hour clock-only labels use the observation’s local day
-in the query/browser timezone. `calendarDay` records day precision and the explicit today fallback;
-`at` represents the local day boundary for filtering, with message-sent/rendered-message provenance.
-Unsupported or unreadable dates remain unknown. Date work uses one owned inactive tab at a time,
-a seven-second phase budget and at most 10.5 seconds from retrieval start. It preserves native
-matches when optional metadata fails. Unavailable/rate-limited date reads end the metadata phase;
-an owned date-page URL change pauses new date reads for that connection after rechecking the source.
-Account/scope/permission/context changes still fail closed.
-The [adapter reference](google-ai-mode-adapter.md#rendered-message-dates) describes parsing and cleanup.
+Search/list normalize the first native record timestamp pair as `provider-record` with
+`provider-metadata` provenance. The exact creation/update meaning is unverified; the card describes
+it as a provider date. Strict seconds/nanoseconds validation leaves malformed optional dates unknown.
+A visible question date already in the pinned source document overrides native metadata only for
+that source thread. Full English dates retain their day; valid 24-hour clock-only labels use the
+observation’s local day in the query/browser timezone. `calendarDay` records day precision and the
+explicit today fallback, with message-sent/rendered-message provenance. Search/list create no tabs,
+perform no per-candidate date reads and do not wait for conversation rendering. Account/scope/
+permission/context changes still fail closed.
+The [adapter reference](google-ai-mode-adapter.md#conversation-dates) describes parsing and provenance.
 
 `document-read.ts` is self-contained code serialized into Chrome’s isolated world. It performs
 only fixed same-origin GET operations with browser-managed authentication, manual redirects, an

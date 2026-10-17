@@ -54,10 +54,11 @@ Provider filters are explicit. Date controls convert local calendar boundaries i
 browser timezone to `[From, Before)` UTC intervals. Supply both dates or neither. Filtering uses
 each conversation’s available date and stated meaning/source; a conversation update is not proof of
 when a topic was discussed. Undated results are excluded by date filters and disclosed in coverage.
-Google uses the first visible message’s date from the conversation. A time-only label uses the
-local date when read. Hover the date for its basis; unknown or unreadable dates remain unavailable.
-If Google redirects an optional date page, date reads pause for that connection while keyword
-search remains available.
+Google uses the timestamp supplied with each native conversation record, labeled **Provider date**
+in its accessible description and tooltip. Its exact creation/update meaning is unverified. When a
+matching conversation is already visible in the connected Google tab, its message date takes priority;
+a time-only label uses the local date when read. Search creates no tabs and does not open conversations
+for dates. Missing or unreadable dates remain unavailable.
 
 The search bridge carries normalized keyword requests and cancellation IDs, alongside strict
 access commands and empty local keepalive messages. The worker

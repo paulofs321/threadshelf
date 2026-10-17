@@ -47,8 +47,9 @@ the previous calendar month; it performs no natural-language query interpretatio
 Filtering uses a candidate's available date, preserving its meaning and source. Conversation
 creation/update metadata does not establish when a particular topic or message occurred. Undated
 candidates cannot satisfy a date constraint; their retrieved evidence and `unknown-dates` disclosure
-remain in the outcome. Google supplies bounded rendered-message calendar dates, using today when
-a label shows only a time. Day precision and that fallback are retained in `calendarDay`; unknown
+remain in the outcome. Google supplies native record dates with generic `provider-record` meaning,
+preferring an already-visible matching message date without opening conversations. A visible label
+showing only a time uses today. Day precision and that fallback are retained in `calendarDay`; unknown
 dates remain excluded. The exported
 `availableDateDisclosure` gives future views a shared explanation of these semantics.
 

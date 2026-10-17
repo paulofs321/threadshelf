@@ -21,7 +21,7 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
   )
     return { status: 'unavailable' };
 
-  const kinds = ['inspect', 'list', 'search', 'messages', 'date'];
+  const kinds = ['inspect', 'list', 'search', 'messages'];
 
   if (
     !kinds.includes(input.operation.kind) ||
@@ -33,7 +33,7 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
     return { status: 'unavailable' };
 
   if (
-    (input.operation.kind === 'messages' || input.operation.kind === 'date') &&
+    input.operation.kind === 'messages' &&
     new URLSearchParams(location.search).get('mtid') !== input.operation.conversationId
   )
     return { status: 'scope-changed' };
@@ -180,38 +180,15 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
         retryAfter: result.headers.get('retry-after'),
         body: await body(result),
       };
-    } else if (input.operation.kind === 'date') {
-      // The date beneath the first visible question is a message date, never a creation/update date.
-      // This class (capital O) was observed in the rendered conversation; fresh HTML omits it.
-      for (;;) {
-        if (controller.signal.aborted) fail(timedOut ? 'timeout' : 'cancelled');
 
-        const label = [...document.querySelectorAll<HTMLElement>('.UYpEO > .kwdzO')]
-          .find(
-            (element) => element.getBoundingClientRect().width > 0 && element.textContent?.trim(),
-          )
-          ?.textContent?.trim();
+      // Reuse only a date already visible in this source document. Search never opens a thread.
+      const conversationId = new URLSearchParams(location.search).get('mtid');
+      const label = [...document.querySelectorAll<HTMLElement>('.UYpEO > .kwdzO')]
+        .find((element) => element.getBoundingClientRect().width > 0 && element.textContent?.trim())
+        ?.textContent?.trim();
 
-        if (label) {
-          if (label.length > 80) fail('schema-changed');
-
-          dateLabel = { text: label, observedAt: new Date().toISOString() };
-          break;
-        }
-
-        await new Promise<void>((resolve) => {
-          const stop = () => {
-            clearTimeout(wait);
-            resolve();
-          };
-
-          const wait = setTimeout(() => {
-            controller.signal.removeEventListener('abort', stop);
-            resolve();
-          }, 100);
-          controller.signal.addEventListener('abort', stop, { once: true });
-        });
-      }
+      if (conversationId && conversationId.length <= 256 && label && label.length <= 80)
+        dateLabel = { conversationId, text: label, observedAt: new Date().toISOString() };
     } else if (input.operation.kind === 'messages') {
       // Only the observed rendered last-turn block is supported; no complete-message API is inferred.
       const blocks = [...document.querySelectorAll<HTMLElement>('[data-last-turn]')];
@@ -234,7 +211,9 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
 
     if (
       before !== after ||
-      ((input.operation.kind === 'messages' || input.operation.kind === 'date') &&
+      (dateLabel !== undefined &&
+        new URLSearchParams(location.search).get('mtid') !== dateLabel.conversationId) ||
+      (input.operation.kind === 'messages' &&
         new URLSearchParams(location.search).get('mtid') !== input.operation.conversationId)
     )
       fail('scope-changed');

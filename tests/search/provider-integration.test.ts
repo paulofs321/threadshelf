@@ -8,13 +8,17 @@ import { verifyGoogleOriginalLink } from '../../src/providers/google-ai-mode/wir
 import { selectedChatGptScope } from '../fixtures/chatgpt/requests';
 import { selectedGoogleAiModeScope } from '../fixtures/google-ai-mode/requests';
 import { readResult, searchBody, searchItem } from '../fixtures/chatgpt/wire';
-import { googleJson, googleMatch } from '../fixtures/google-ai-mode/wire';
+import { googleJson, googleMatch, googleThread } from '../fixtures/google-ai-mode/wire';
 
 // Real adapters/parsers with handwritten transport responses. No Chrome or live account access.
-function harness() {
+function harness(dated = true) {
   const chatScope = selectedChatGptScope();
   const googleScope = selectedGoogleAiModeScope();
   const chatRead = vi.fn().mockResolvedValue(readResult(searchBody()));
+  const row = googleThread();
+
+  if (!dated) row[5] = null;
+
   const googleRead = vi.fn().mockResolvedValue({
     status: 'success',
     identityBefore: 'a'.repeat(64),
@@ -23,7 +27,7 @@ function harness() {
       status: 200,
       contentType: 'application/json',
       retryAfter: null,
-      body: googleJson([[googleMatch()]]),
+      body: googleJson([[googleMatch(row)]]),
     },
   });
   const chat = new ChatGptProvider(chatScope, { read: chatRead });
@@ -75,7 +79,7 @@ describe('real normalized adapters composed into the pure search engine', () => 
   });
 
   it('excludes real-adapter unknown dates and preserves available update semantics', async () => {
-    const { engine, request } = harness();
+    const { engine, request } = harness(false);
     request.query.dateRange = calendarDateRange('2025-10-01', '2025-11-01', request.query.timeZone);
     const result = await engine.search(request, { signal: new AbortController().signal });
     expect(result.results).toEqual(['chatgpt:0']);
@@ -86,6 +90,25 @@ describe('real normalized adapters composed into the pure search engine', () => 
     expect(result.outcomes[1]).toMatchObject({
       candidates: [{ scope: selectedGoogleAiModeScope() }],
     });
+  });
+
+  it('filters native Google record dates with their generic meaning and no unknown-date exclusion', async () => {
+    const { engine, request, googleRead } = harness();
+    request.query.dateRange = calendarDateRange('2026-10-01', '2026-11-01', request.query.timeZone);
+    const result = await engine.search(request, { signal: new AbortController().signal });
+    expect(result.results).toEqual(['fictional-google-candidate']);
+    expect(result.coverage.reasons).not.toContain('unknown-dates');
+    expect(result.outcomes[1]).toMatchObject({
+      candidates: [
+        {
+          date: {
+            meaning: 'provider-record',
+            source: 'provider-metadata',
+          },
+        },
+      ],
+    });
+    expect(googleRead).toHaveBeenCalledOnce();
   });
 
   it('keeps a real-adapter empty response partial when the other transport expires', async () => {

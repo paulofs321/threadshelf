@@ -11,6 +11,7 @@ const dateLabels = {
   'conversation-created': 'Conversation created',
   'conversation-updated': 'Conversation updated',
   'message-sent': 'Message sent',
+  'provider-record': 'Provider date',
 };
 const sources = {
   'provider-metadata': 'provider metadata',
@@ -75,7 +76,9 @@ export function ResultCard({
                       ? candidate.date.calendarDay.basis === 'time-only-today'
                         ? 'Time-only label; used the local date when read'
                         : 'Message date shown in the conversation (day precision)'
-                      : undefined
+                      : candidate.date.meaning === 'provider-record'
+                        ? 'Provider date supplied with the conversation record'
+                        : undefined
                   }
                 >
                   {new Intl.DateTimeFormat(undefined, {

@@ -8,7 +8,7 @@ const identity = v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/));
 export const GoogleReadOperationSchema = v.variant('kind', [
   v.strictObject({ kind: v.picklist(['inspect', 'list']) }),
   v.strictObject({ kind: v.literal('search'), query: boundedText(1024) }),
-  v.strictObject({ kind: v.picklist(['messages', 'date']), conversationId: boundedText(256) }),
+  v.strictObject({ kind: v.literal('messages'), conversationId: boundedText(256) }),
 ]);
 export type GoogleReadOperation = v.InferOutput<typeof GoogleReadOperationSchema>;
 
@@ -19,7 +19,11 @@ export const GoogleReadResultSchema = v.variant('status', [
     identityAfter: identity,
     response: v.exactOptional(GoogleHttpResponseSchema),
     dateLabel: v.exactOptional(
-      v.strictObject({ text: boundedText(80), observedAt: TimestampSchema }),
+      v.strictObject({
+        conversationId: boundedText(256),
+        text: boundedText(80),
+        observedAt: TimestampSchema,
+      }),
     ),
     rendered: v.exactOptional(v.pipe(boundedArray(boundedText(2000), 4), v.minLength(1))),
   }),
@@ -46,11 +50,6 @@ export interface GoogleAiModeReadPort {
     context: OperationContext,
   ): Promise<unknown>;
   // Internal adapter-to-host call for an already retrieved, scoped candidate. No message accepts a URL.
-  openDate?(
-    candidate: Candidate,
-    expectedIdentity: string,
-    context: OperationContext,
-  ): Promise<unknown>;
   openEvidence?(
     candidate: Candidate,
     expectedIdentity: string,

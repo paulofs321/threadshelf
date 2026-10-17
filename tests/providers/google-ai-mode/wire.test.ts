@@ -46,7 +46,11 @@ describe('observed Google Search AI Mode wire forms', () => {
         source: 'native-snippet',
       },
     ]);
-    expect(candidate?.date).toBeUndefined();
+    expect(candidate?.date).toEqual({
+      at: new Date(1_791_936_000_123).toISOString(),
+      meaning: 'provider-record',
+      source: 'provider-metadata',
+    });
     expect(new URL(candidate?.originalUrl ?? '').searchParams.get('mtid')).toBe(
       candidate?.conversationId,
     );
@@ -142,7 +146,7 @@ describe('observed Google Search AI Mode wire forms', () => {
     expect(() => parse([[googleMatch(first), googleMatch(second)]])).toThrow();
   });
 
-  it('does not assign timestamp meanings or silently satisfy a date filter', () => {
+  it('labels native timestamps without inventing creation/update semantics and discloses missing dates', () => {
     const request = googleAiModeRequest();
     request.query.dateRange = {
       start: '2026-10-01T00:00:00.000Z',
@@ -154,8 +158,18 @@ describe('observed Google Search AI Mode wire forms', () => {
       request,
       () => 'fictional-date-candidate',
     );
-    expect(result.candidates[0]).not.toHaveProperty('date');
-    expect(result.coverage.reasons).toContain('unknown-dates');
+    expect(result.candidates[0]?.date?.meaning).toBe('provider-record');
+    expect(result.coverage.reasons).not.toContain('unknown-dates');
+    const missing = googleThread();
+    missing[5] = null;
+    const undated = parseGoogleRecords(
+      googleJson([[googleMatch(missing)]]),
+      'search',
+      request,
+      () => 'fictional-undated',
+    );
+    expect(undated.candidates[0]).not.toHaveProperty('date');
+    expect(undated.coverage.reasons).toContain('unknown-dates');
   });
 
   it.each([

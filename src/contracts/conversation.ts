@@ -24,7 +24,12 @@ export const EvidenceSchema = v.strictObject({
 export const ConversationDateSchema = v.pipe(
   v.strictObject({
     at: TimestampSchema,
-    meaning: v.picklist(['conversation-created', 'conversation-updated', 'message-sent']),
+    meaning: v.picklist([
+      'conversation-created',
+      'conversation-updated',
+      'message-sent',
+      'provider-record',
+    ]),
     source: v.picklist(['provider-metadata', 'rendered-message']),
     calendarDay: v.exactOptional(
       v.strictObject({
@@ -36,7 +41,7 @@ export const ConversationDateSchema = v.pipe(
   }),
   v.check(
     (date) => date.source !== 'rendered-message' || date.meaning === 'message-sent',
-    'Rendered messages cannot establish conversation creation/update dates.',
+    'Rendered-message dates must have message-sent meaning.',
   ),
   v.check((date) => {
     if (date.calendarDay === undefined) return true;

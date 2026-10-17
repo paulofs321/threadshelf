@@ -209,6 +209,8 @@ try {
   const chatFixtures = await fixtureModule('chatgpt');
   const googleFixtures = await fixtureModule('google-ai-mode');
   let keywordReads = 0;
+  let googleResultThread = googleFixtures.googleThread('fictional-unopened-thread');
+  googleResultThread[5] = [Date.parse('2026-10-13T12:00:00.000Z') / 1000, 0];
   await context.unroute(/^https?:/);
   await context.route(/^https?:/, async (route) => {
     const url = new URL(route.request().url());
@@ -247,7 +249,7 @@ try {
 
       return route.fulfill({
         contentType: 'application/json',
-        body: googleFixtures.googleJson([[googleFixtures.googleMatch()]]),
+        body: googleFixtures.googleJson([[googleFixtures.googleMatch(googleResultThread)]]),
       });
     }
 
@@ -284,13 +286,33 @@ try {
     .toContain('already connected');
   await drive('continue');
   await page.bringToFront();
+  const tabIds = () =>
+    worker.evaluate(async () =>
+      (await chrome.tabs.query({})).map((tab) => tab.id).sort((a, b) => a - b),
+    );
+  const beforeSearchTabs = await tabIds();
+  let searchCreatedPages = 0;
+  context.on('page', () => searchCreatedPages++);
   await drive('search');
   await expect
     .poll(async () => await drive('snapshot'))
-    .toMatchObject({ results: 2, dates: expect.arrayContaining(['2026-10-13']) })
+    .toMatchObject({ results: 2, dates: expect.arrayContaining(['2026-10-13T12:00:00.000Z']) })
     .catch(async () => {
       throw new Error(`Synthetic native-panel failure: ${JSON.stringify(await drive('snapshot'))}`);
     });
+  assert.deepEqual(await tabIds(), beforeSearchTabs);
+  assert.equal(searchCreatedPages, 0);
+  // The next search returns the thread already rendered in the source tab. Its visible date wins.
+  googleResultThread = googleFixtures.googleThread();
+  await drive('search');
+  await expect
+    .poll(async () => await drive('snapshot'))
+    .toMatchObject({
+      results: 2,
+      dates: expect.arrayContaining(['2026-10-13']),
+    });
+  assert.deepEqual(await tabIds(), beforeSearchTabs);
+  assert.equal(searchCreatedPages, 0);
   await chatPage.bringToFront();
   await googlePage.bringToFront();
   await page.bringToFront();
@@ -314,15 +336,17 @@ try {
     ].join('-');
   });
   await drive('search');
-  await expect.poll(() => keywordReads).toBe(4);
+  await expect.poll(() => keywordReads).toBe(6);
   await expect
     .poll(async () => await drive('snapshot'))
     .toMatchObject({ results: 2, dates: expect.arrayContaining([today]) });
+  assert.deepEqual(await tabIds(), beforeSearchTabs);
+  assert.equal(searchCreatedPages, 0);
   assert.deepEqual(externalRequests, []);
   assert.deepEqual(errors, []);
 
   process.stdout.write(
-    'Chromium MV3 UI smoke passed: production mount/theme; real native-panel runtime/providers with synthetic transport; synthetic cancellation/reconnect; compact previews; keyboard/focus; 240–400px; no external requests or CSP errors.\n',
+    'Chromium MV3 UI smoke passed: production mount/theme; real native-panel runtime/providers with synthetic transport; zero new tabs across native/visible/time-only date searches; synthetic cancellation/reconnect; compact previews; keyboard/focus; 240–400px; no external requests or CSP errors.\n',
   );
 } finally {
   await context?.close();

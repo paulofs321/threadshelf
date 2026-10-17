@@ -403,17 +403,9 @@ describe('self-contained Google document reads', () => {
   });
 });
 
-describe('date-only Google document reads', () => {
-  const dateInput = (): GoogleDocumentRead => ({
-    ...input(),
-    operation: { kind: 'date', conversationId: 'fictional-thread-1' },
-  });
-
-  function conversation() {
-    vi.stubGlobal(
-      'location',
-      new URL('https://www.google.com/search?udm=50&mtid=fictional-thread-1'),
-    );
+describe('dates already rendered in the native search source', () => {
+  function conversation(id = 'fictional-thread-1') {
+    vi.stubGlobal('location', new URL(`https://www.google.com/search?udm=50&mtid=${id}`));
   }
 
   function label(text: string, visible = true) {
@@ -431,59 +423,74 @@ describe('date-only Google document reads', () => {
     return value;
   }
 
-  it('reads only the first visible date label, with an observation time and verified identity', async () => {
+  it.each(['search', 'list'] as const)(
+    'includes only the first visible source-bound date alongside %s',
+    async (kind) => {
+      conversation();
+      label('12 October 2026', false);
+      label('  ');
+      label('  13 October 2026  ');
+      label('19:28');
+      const result = requireValid(GoogleReadResultSchema, await readGoogleDocument(input(kind)));
+      expect(result).toMatchObject({
+        status: 'success',
+        dateLabel: {
+          conversationId: 'fictional-thread-1',
+          text: '13 October 2026',
+          observedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+        },
+        response: { status: 200 },
+      });
+      expect(result).not.toHaveProperty('rendered');
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(registry.__threadshelfGoogleReadControllers).toBeUndefined();
+    },
+  );
+  it.each(['missing', 'blank', 'hidden', 'oversized', 'no-thread', 'long-thread'])(
+    'keeps successful native reads without waiting for optional dates: %s',
+    async (reason) => {
+      vi.useFakeTimers();
+
+      if (reason !== 'no-thread')
+        conversation(reason === 'long-thread' ? 'x'.repeat(257) : undefined);
+
+      if (reason !== 'missing')
+        label(
+          reason === 'blank' ? '  ' : reason === 'oversized' ? 'x'.repeat(81) : '19:28',
+          reason !== 'hidden',
+        );
+
+      const result = await readGoogleDocument(input());
+      expect(result).toMatchObject({ status: 'success', response: { status: 200 } });
+      expect(result).not.toHaveProperty('dateLabel');
+      expect(vi.getTimerCount()).toBe(0);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    },
+  );
+  it('returns time-only labels unchanged for the timezone-aware today policy', async () => {
     conversation();
-    label('12 October 2026', false);
-    label('13 October 2026');
     label('19:28');
-    const result = requireValid(GoogleReadResultSchema, await readGoogleDocument(dateInput()));
-    expect(result).toMatchObject({
+    expect(await readGoogleDocument(input())).toMatchObject({
       status: 'success',
-      dateLabel: {
-        text: '13 October 2026',
-        observedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
-      },
+      dateLabel: { conversationId: 'fictional-thread-1', text: '19:28' },
     });
-    expect(result).not.toHaveProperty('rendered');
-    expect(result).not.toHaveProperty('response');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(registry.__threadshelfGoogleReadControllers).toBeUndefined();
   });
-  it('waits for asynchronously rendered dates without reading conversation text', async () => {
-    vi.useFakeTimers();
+  it('rejects a source conversation change after its visible date was captured', async () => {
     conversation();
-    label('  ');
-    const pending = readGoogleDocument(dateInput());
-    await vi.waitFor(() => expect(vi.getTimerCount()).toBe(2));
-    label('  19:28  ');
-    await vi.advanceTimersByTimeAsync(100);
-    expect(await pending).toMatchObject({ status: 'success', dateLabel: { text: '19:28' } });
-    expect(vi.getTimerCount()).toBe(0);
+    label('13 October 2026');
+    fetchMock
+      .mockImplementationOnce(async () => identity())
+      .mockImplementationOnce(async () => json())
+      .mockImplementationOnce(async () => {
+        conversation('changed');
+
+        return identity();
+      });
+    expect(await readGoogleDocument(input())).toEqual({ status: 'scope-changed' });
   });
-  it.each(['cancel', 'timeout'] as const)('cleans date wait timers on %s', async (action) => {
-    vi.useFakeTimers();
+  it('does not attach dates to inspection', async () => {
     conversation();
-    const pending = readGoogleDocument(dateInput());
-    await vi.waitFor(() => expect(vi.getTimerCount()).toBe(2));
-
-    if (action === 'cancel') abortGoogleDocumentRead('fictional-operation');
-    else await vi.advanceTimersByTimeAsync(8000);
-
-    expect(await pending).toEqual({ status: action === 'cancel' ? 'cancelled' : 'timeout' });
-    expect(vi.getTimerCount()).toBe(0);
-    expect(registry.__threadshelfGoogleReadControllers).toBeUndefined();
-  });
-  it('rejects oversized date labels and wrong or changed conversation contexts', async () => {
-    expect(await readGoogleDocument(dateInput())).toEqual({ status: 'scope-changed' });
-    conversation();
-    const value = label('x'.repeat(81));
-    expect(await readGoogleDocument(dateInput())).toEqual({ status: 'schema-changed' });
-    value.textContent = '13 October 2026';
-    fetchMock.mockImplementationOnce(async () => {
-      vi.stubGlobal('location', new URL('https://www.google.com/search?udm=50&mtid=changed'));
-
-      return identity();
-    });
-    expect(await readGoogleDocument(dateInput())).toEqual({ status: 'scope-changed' });
+    label('13 October 2026');
+    expect(await readGoogleDocument(input('inspect'))).not.toHaveProperty('dateLabel');
   });
 });
