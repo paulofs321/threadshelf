@@ -7,8 +7,10 @@ import {
   AccessRequestSchema,
   clientTimeoutMs,
   maximumRequestsPerPort,
+  HeartbeatReplySchema,
 } from './protocol';
 import type { AccessEvent, AccessOperation, AccessReply, AccessRequest } from './protocol';
+import { SearchReplySchema } from './search-protocol';
 
 interface Listener<T> {
   addListener(callback: T): void;
@@ -186,6 +188,11 @@ export class AccessClient {
 
   private readonly receive = (input: unknown): void => {
     if (this.closed) return;
+
+    if (validate(HeartbeatReplySchema, input).ok) return;
+
+    // The search client validates contextual scope/link/date policies independently.
+    if (validate(SearchReplySchema, input).ok) return;
 
     const result = validate(AccessMessageSchema, input);
 

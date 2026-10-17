@@ -1,0 +1,55 @@
+import { browser } from 'wxt/browser';
+
+// Compiled only into the temporary synthetic smoke extension. Permissions are pregranted there;
+// component tests separately prove the production Connect gesture requests the exact origins.
+browser.permissions.request = async () => true;
+browser.runtime.onMessage.addListener((input: unknown, _sender, sendResponse) => {
+  if (
+    !input ||
+    typeof input !== 'object' ||
+    !('kind' in input) ||
+    input.kind !== 'synthetic-panel-driver' ||
+    !('command' in input)
+  )
+    return;
+
+  const button = (text: string) =>
+    [...document.querySelectorAll('button')].find(
+      (item) => item.getAttribute('aria-label') === text || item.textContent === text,
+    );
+
+  if (input.command === 'show-connections') button('Connect')?.click();
+
+  if (input.command === 'continue') button('Continue to search')?.click();
+
+  if (input.command === 'connect-chat') button('Connect ChatGPT')?.click();
+
+  if (input.command === 'connect-google') button('Connect Google Search AI Mode')?.click();
+
+  if (input.command === 'search') {
+    const query = document.querySelector<HTMLInputElement>('#query');
+
+    if (query) {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
+        query,
+        'fictional orchard',
+      );
+      query.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    document.querySelector<HTMLButtonElement>('button[aria-label="Search"]')?.click();
+  }
+
+  sendResponse({
+    ready: document.querySelector('h1')?.textContent === 'ThreadShelf',
+    statuses: [...document.querySelectorAll('[role="status"]')].map((item) => item.textContent),
+    results: document.querySelectorAll('[role="article"]').length,
+    dates: [...document.querySelectorAll<HTMLTimeElement>('[role="article"] time')].map(
+      (item) => item.dateTime,
+    ),
+    notes: [...document.querySelectorAll('[role="note"]')].map((item) => item.textContent),
+    checkedProviders: [...document.querySelectorAll<HTMLInputElement>('input[type=checkbox]')]
+      .filter((item) => item.checked)
+      .map((item) => item.parentElement?.textContent),
+  });
+});

@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { browser } from 'wxt/browser';
 import type { ProviderId } from '../../contracts/primitives';
 import type { SessionScope } from '../../contracts/session';
+import type { SearchPort } from '../../contracts';
 import { AccessClient } from '../../platform/client';
 import { panelPortName } from '../../platform/protocol';
 import { currentPanelWindow } from '../../platform/panel-window';
 import type { AccessEvent, AccessReply } from '../../platform/protocol';
 import { providerPermission } from '../../platform/policy';
-import { SetupScreen } from '../../ui/SetupScreen';
+import { SearchScreen } from '../../ui/SearchScreen';
+import { PanelSearchClient } from '../../platform/search-client';
+import { providerLinkVerifiers } from '../../platform/link-verifiers';
 
 interface ProviderState {
   status: AccessReply['status'] | 'idle' | 'connecting';
@@ -21,6 +24,8 @@ const initialState: Record<ProviderId, ProviderState> = {
 
 export function AccessPanel() {
   const [states, setStates] = useState(initialState);
+  const [search, setSearch] = useState<SearchPort | null>(null);
+  const searchClient = useRef<PanelSearchClient | null>(null);
   const client = useRef<AccessClient | null>(null);
   const active = useRef(new Map<ProviderId, AbortController>());
   const mounted = useRef(false);
@@ -39,6 +44,11 @@ export function AccessPanel() {
       if (client.current && !client.current.isClosed) return client.current;
 
       const connection = browser.runtime.connect({ name: panelPortName(windowId) });
+      searchClient.current?.close();
+      searchClient.current = new PanelSearchClient(connection, providerLinkVerifiers, () =>
+        client.current?.close(),
+      );
+      setSearch(searchClient.current);
       client.current = new AccessClient(connection, () => crypto.randomUUID());
       client.current.subscribe((event: AccessEvent) => {
         // Interruption is published inside the port callback; consume Chrome's error there.
@@ -63,6 +73,12 @@ export function AccessPanel() {
   }
 
   useEffect(() => {
+    searchClient.current?.keepAlive(
+      Object.values(states).some((state) => state.scope !== undefined),
+    );
+  }, [states, search]);
+
+  useEffect(() => {
     mounted.current = true;
     const operations = active.current;
 
@@ -73,6 +89,8 @@ export function AccessPanel() {
 
       operations.clear();
       client.current?.close();
+      searchClient.current?.close();
+      searchClient.current = null;
       client.current = null;
     };
   }, []);
@@ -153,7 +171,14 @@ export function AccessPanel() {
   }
 
   return (
-    <SetupScreen
+    <SearchScreen
+      search={search}
+      scopes={(['chatgpt', 'google-ai-mode'] as const).flatMap((provider) =>
+        states[provider].scope ? [states[provider].scope] : [],
+      )}
+      verifiers={providerLinkVerifiers}
+      freshId={() => crypto.randomUUID()}
+      timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone}
       providers={(['chatgpt', 'google-ai-mode'] as const).map((provider) => ({
         provider,
         status: states[provider].status,

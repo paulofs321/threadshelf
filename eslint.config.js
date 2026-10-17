@@ -114,4 +114,31 @@ export default defineConfig([
       'no-restricted-globals': ['error', 'chrome', 'browser', 'window', 'document', 'fetch'],
     },
   },
+  {
+    files: ['src/ui/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                'wxt',
+                'wxt/*',
+                'chrome',
+                'webextension-polyfill',
+                '@wxt-dev/*',
+                '**/platform/**',
+                '**/providers/**',
+                '**/entrypoints/**',
+              ],
+              message:
+                'Shared UI receives capability ports; browser APIs and provider transports belong to composition.',
+            },
+          ],
+        },
+      ],
+      'no-restricted-globals': ['error', 'chrome', 'browser', 'fetch'],
+    },
+  },
 ]);

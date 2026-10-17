@@ -1,5 +1,5 @@
 import * as v from 'valibot';
-import { boundedArray, boundedText } from '../../contracts/primitives';
+import { boundedArray, boundedText, TimestampSchema } from '../../contracts/primitives';
 import type { OperationContext } from '../../contracts/ports';
 import type { Candidate } from '../../contracts/conversation';
 import { GoogleHttpResponseSchema } from './wire';
@@ -18,6 +18,13 @@ export const GoogleReadResultSchema = v.variant('status', [
     identityBefore: identity,
     identityAfter: identity,
     response: v.exactOptional(GoogleHttpResponseSchema),
+    dateLabel: v.exactOptional(
+      v.strictObject({
+        conversationId: boundedText(256),
+        text: boundedText(80),
+        observedAt: TimestampSchema,
+      }),
+    ),
     rendered: v.exactOptional(v.pipe(boundedArray(boundedText(2000), 4), v.minLength(1))),
   }),
   v.strictObject({

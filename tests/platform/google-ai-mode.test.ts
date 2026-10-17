@@ -14,7 +14,7 @@ import {
   googleAiModeRequest,
   verifiedGoogleAiModeScope,
 } from '../fixtures/google-ai-mode/requests';
-import { googleJson, googleMatch } from '../fixtures/google-ai-mode/wire';
+import { googleJson, googleMatch, googleThread } from '../fixtures/google-ai-mode/wire';
 import { deferred } from './helpers';
 
 interface ScriptOptions {
@@ -149,6 +149,24 @@ afterEach(() => {
 });
 const read = () => port.read({ kind: 'search', query: 'authentication' }, identity, context());
 describe('Chrome Google selected-document transport', () => {
+  it('continues a pinned inactive source read across tab/window focus changes', async () => {
+    chrome.tabs.query.mockResolvedValue([{ ...tab, active: false }]);
+    const held = deferred<unknown[]>();
+    chrome.scripting.executeScript.mockImplementation(async (options) =>
+      options.func === readGoogleDocument ? held.promise : script(options),
+    );
+    const pending = read();
+    await vi.waitFor(() =>
+      expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
+        expect.objectContaining({ func: readGoogleDocument }),
+      ),
+    );
+    chrome.tabs.onActivated.emit({});
+    chrome.windows.onFocusChanged.emit(4);
+    held.resolve([{ frameId: 0, documentId: 'fiction-source', result: success }]);
+    expect(await pending).toEqual(success);
+  });
+
   it('composes the real adapter, pins Chrome document/frame metadata, and normalizes the response', async () => {
     const provider = createGoogleAiModeProvider(binding);
     const result = await provider.search(request, context());
@@ -184,6 +202,7 @@ describe('Chrome Google selected-document transport', () => {
   });
   it.each([
     { kind: 'messages', conversationId: 'fictional-thread-1' },
+    { kind: 'date', conversationId: 'fictional-thread-1' },
     { kind: 'search', query: '' },
     { kind: 'list', url: 'https://evil.invalid' },
   ])('rejects a generic message read or extra arguments: %j', async (operation) => {
@@ -230,7 +249,6 @@ describe('Chrome Google selected-document transport', () => {
       [{ ...tab, id: 9 }],
       [{ ...tab, windowId: 4 }],
       [{ ...tab, incognito: true }],
-      [{ ...tab, active: false }],
       [{ ...tab, status: 'loading' }],
       [{ ...tab, pendingUrl: tab.url }],
       [{ ...tab, url: tab.url + '&q=changed' }],
@@ -425,63 +443,53 @@ describe('Chrome Google selected-document transport', () => {
     });
     expect(chrome.tabs.query).not.toHaveBeenCalled();
   });
-  it.each([
-    'update',
-    'remove',
-    'replace',
-    'activate',
-    'focus',
-    'permission',
-    'scripting',
-    'cancel',
-  ] as const)('aborts the isolated read and discards a late result after %s', async (event) => {
-    const data = deferred<unknown[]>();
-    const original = script;
-    chrome.scripting.executeScript.mockImplementation(async (o) =>
-      o.func === readGoogleDocument ? data.promise : original(o),
-    );
-    const controller = new AbortController();
-    const pending = port.read({ kind: 'list' }, identity, { signal: controller.signal });
-    await vi.waitFor(() =>
+  it.each(['update', 'remove', 'replace', 'permission', 'scripting', 'cancel'] as const)(
+    'aborts the isolated read and discards a late result after %s',
+    async (event) => {
+      const data = deferred<unknown[]>();
+      const original = script;
+      chrome.scripting.executeScript.mockImplementation(async (o) =>
+        o.func === readGoogleDocument ? data.promise : original(o),
+      );
+      const controller = new AbortController();
+      const pending = port.read({ kind: 'list' }, identity, { signal: controller.signal });
+      await vi.waitFor(() =>
+        expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
+          expect.objectContaining({ func: readGoogleDocument }),
+        ),
+      );
+
+      if (event === 'update') chrome.tabs.onUpdated.emit(7, { status: 'loading' });
+
+      if (event === 'remove') chrome.tabs.onRemoved.emit(7, {});
+
+      if (event === 'replace') chrome.tabs.onReplaced.emit(9, 7);
+
+      if (event === 'permission')
+        chrome.permissions.onRemoved.emit({ origins: ['https://www.google.com/*'] });
+
+      if (event === 'scripting') chrome.permissions.onRemoved.emit({ permissions: ['scripting'] });
+
+      if (event === 'cancel') controller.abort();
+
+      data.resolve([{ frameId: 0, documentId: 'fiction-source', result: success }]);
+      expect(await pending).toEqual({
+        status:
+          event === 'permission' || event === 'scripting'
+            ? 'permission-needed'
+            : event === 'cancel'
+              ? 'cancelled'
+              : 'scope-changed',
+      });
       expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
-        expect.objectContaining({ func: readGoogleDocument }),
-      ),
-    );
-
-    if (event === 'update') chrome.tabs.onUpdated.emit(7, { status: 'loading' });
-
-    if (event === 'remove') chrome.tabs.onRemoved.emit(7, {});
-
-    if (event === 'replace') chrome.tabs.onReplaced.emit(9, 7);
-
-    if (event === 'activate') chrome.tabs.onActivated.emit({});
-
-    if (event === 'focus') chrome.windows.onFocusChanged.emit(3);
-
-    if (event === 'permission')
-      chrome.permissions.onRemoved.emit({ origins: ['https://www.google.com/*'] });
-
-    if (event === 'scripting') chrome.permissions.onRemoved.emit({ permissions: ['scripting'] });
-
-    if (event === 'cancel') controller.abort();
-
-    data.resolve([{ frameId: 0, documentId: 'fiction-source', result: success }]);
-    expect(await pending).toEqual({
-      status:
-        event === 'permission' || event === 'scripting'
-          ? 'permission-needed'
-          : event === 'cancel'
-            ? 'cancelled'
-            : 'scope-changed',
-    });
-    expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
-      expect.objectContaining({
-        func: abortGoogleDocumentRead,
-        world: 'ISOLATED',
-        target: { tabId: 7, documentIds: ['fiction-source'] },
-      }),
-    );
-  });
+        expect.objectContaining({
+          func: abortGoogleDocumentRead,
+          world: 'ISOLATED',
+          target: { tabId: 7, documentIds: ['fiction-source'] },
+        }),
+      );
+    },
+  );
   it.each([
     {},
     { permissions: [], origins: [] },
@@ -558,3 +566,121 @@ describe('Chrome Google selected-document transport', () => {
     expect(chrome.tabs.get).not.toHaveBeenCalled();
   });
 });
+
+describe('already rendered Google conversations', () => {
+  it('reuses a matching conversation without navigating, creating or closing a user tab', async () => {
+    const existingUrl =
+      'https://www.google.com/search?udm=50&mtid=fictional-thread-1&source=synthetic';
+    chrome.tabs.query.mockResolvedValue([
+      { ...tab },
+      {
+        ...tab,
+        id: 8,
+        active: false,
+        url: existingUrl,
+      },
+    ]);
+    chrome.tabs.get.mockResolvedValue({ ...tab, id: 8, url: existingUrl });
+    expect((await port.openEvidence(candidate(), identity, context())).status).toBe('success');
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+    expect(chrome.tabs.remove).not.toHaveBeenCalled();
+  });
+  it.each([
+    { incognito: true },
+    { windowId: 9 },
+    { status: 'loading' },
+    { pendingUrl: 'https://www.google.com/' },
+    { url: undefined },
+    { url: 'invalid' },
+    { url: 'https://user:secret@www.google.com/search?udm=50&mtid=fictional-thread-1' },
+    { url: 'https://www.google.com/other?udm=50&mtid=fictional-thread-1' },
+    { url: 'https://www.google.com/search?udm=50&mtid=fictional-thread-1&authuser=1' },
+    { url: 'https://www.google.com/search?udm=14&mtid=fictional-thread-1' },
+    { url: 'https://other.invalid/search?udm=50&mtid=fictional-thread-1' },
+  ])('does not reuse unsupported or changing pages: %j', async (patch) => {
+    chrome.tabs.query.mockResolvedValue([
+      { ...tab },
+      {
+        ...tab,
+        id: 9,
+        url: candidate().originalUrl,
+        ...patch,
+      },
+    ]);
+    expect((await port.openEvidence(candidate(), identity, context())).status).toBe('success');
+    expect(chrome.tabs.create).toHaveBeenCalledOnce();
+    expect(chrome.tabs.remove).toHaveBeenCalledExactlyOnceWith(8);
+  });
+  it('preserves an existing user tab even when it changes during an evidence read', async () => {
+    chrome.tabs.query.mockResolvedValue([
+      { ...tab },
+      { ...tab, id: 8, url: candidate().originalUrl },
+    ]);
+    chrome.tabs.get.mockResolvedValue({ ...tab, id: 8, url: 'https://www.google.com/other' });
+    expect((await port.openEvidence(candidate(), identity, context())).status).toBe(
+      'scope-changed',
+    );
+    expect(chrome.tabs.remove).not.toHaveBeenCalled();
+  });
+});
+
+it('does not create a conversation tab when cancellation arrives during existing-tab lookup', async () => {
+  const held = deferred<unknown[]>();
+  chrome.tabs.query.mockResolvedValueOnce([tab]).mockReturnValueOnce(held.promise);
+  const controller = new AbortController();
+  const pending = port.openEvidence(candidate(), identity, { signal: controller.signal });
+  await vi.waitFor(() => expect(chrome.tabs.query).toHaveBeenCalledTimes(2));
+  controller.abort();
+  expect(await pending).toEqual({ status: 'cancelled' });
+  held.resolve([tab]);
+  await held.promise;
+  await Promise.resolve();
+  expect(chrome.tabs.create).not.toHaveBeenCalled();
+});
+
+it.each(['search', 'list'] as const)(
+  '%s returns native record dates without creating, navigating or closing any tab',
+  async (kind) => {
+    chrome.tabs.create.mockRejectedValue(new Error('Search must never create a tab'));
+    const provider = createGoogleAiModeProvider(binding);
+
+    // ListThreads has a different envelope; both carry the same native thread record.
+    if (kind === 'list')
+      chrome.scripting.executeScript.mockImplementation(async (options) => {
+        const results = await script(options);
+
+        if (options.func === readGoogleDocument && options.args[0].operation.kind === 'list') {
+          const result = results[0] as { result: { response: { body: string } } };
+          result.result.response.body = googleJson([[googleThread()]]);
+        }
+
+        return results;
+      });
+
+    for (let i = 0; i < 2; i++) {
+      const result = await provider[kind](request, context());
+      expect(result).toMatchObject({
+        status: 'success',
+        candidates: [
+          {
+            conversationId: 'fictional-thread-1',
+            date: {
+              at: new Date(1_791_936_000_123).toISOString(),
+              meaning: 'provider-record',
+              source: 'provider-metadata',
+            },
+          },
+        ],
+      });
+    }
+
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+    expect(chrome.tabs.remove).not.toHaveBeenCalled();
+    expect(chrome.tabs.get).not.toHaveBeenCalled();
+    expect(
+      chrome.scripting.executeScript.mock.calls
+        .filter(([o]) => o.func === readGoogleDocument)
+        .map(([o]) => o.args[0].operation.kind),
+    ).toEqual([kind, kind]);
+  },
+);

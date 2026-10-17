@@ -7,6 +7,8 @@ import {
   readGoogleDocument,
 } from '../../../src/providers/google-ai-mode/document-read';
 import type { GoogleDocumentRead } from '../../../src/providers/google-ai-mode/document-read';
+import { requireValid } from '../../../src/contracts';
+import { GoogleReadResultSchema } from '../../../src/providers/google-ai-mode/transport';
 import { googleJson, googleMatch } from '../../fixtures/google-ai-mode/wire';
 
 const html = (email = 'orchard@example.invalid', displayName = 'Fiction') =>
@@ -36,7 +38,7 @@ beforeEach(() => {
   fetchMock
     .mockReset()
     .mockImplementation(async (raw) =>
-      new URL(String(raw)).pathname === '/search' ? identity() : json(),
+      new URL(String(raw)).pathname === '/' ? identity() : json(),
     );
 });
 afterEach(() => {
@@ -62,8 +64,8 @@ describe('self-contained Google document reads', () => {
       expect(JSON.stringify(result)).not.toContain('orchard@example.invalid');
       expect(fetchMock).toHaveBeenCalledTimes(kind === 'inspect' ? 2 : 3);
       const urls = fetchMock.mock.calls.map(([url]) => new URL(String(url)));
-      expect(urls[0]?.href).toBe('https://www.google.com/search?udm=50');
-      expect(urls.at(-1)?.href).toBe('https://www.google.com/search?udm=50');
+      expect(urls[0]?.href).toBe('https://www.google.com/');
+      expect(urls.at(-1)?.href).toBe('https://www.google.com/');
 
       if (kind !== 'inspect')
         expect(JSON.parse(urls[1]?.searchParams.get('reqpld') ?? '')).toEqual(
@@ -82,6 +84,33 @@ describe('self-contained Google document reads', () => {
       expect(registry.__threadshelfGoogleReadControllers).toBeUndefined();
     },
   );
+
+  it('searches when fresh AI Mode HTML omits identity, using only the fixed homepage for account checks', async () => {
+    fetchMock.mockImplementation(async (raw) => {
+      const url = new URL(String(raw));
+
+      if (url.pathname === '/') return identity();
+
+      if (url.pathname === '/search')
+        return new Response('<p>Fictional client-rendered shell.</p>', {
+          headers: { 'content-type': 'text/html' },
+        });
+
+      return json();
+    });
+    expect(await readGoogleDocument(input())).toMatchObject({
+      status: 'success',
+      response: { status: 200 },
+    });
+    expect(fetchMock.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
+      '/',
+      '/httpservice/web/AimThreadsService/SearchThreads',
+      '/',
+    ]);
+    expect(JSON.stringify(await readGoogleDocument(input('inspect')))).not.toContain(
+      'orchard@example.invalid',
+    );
+  });
 
   it.each([
     'https://evil.invalid/search?udm=50',
@@ -122,7 +151,7 @@ describe('self-contained Google document reads', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each([401, 403, 429, 503])(
+  it.each([302, 401, 403, 429, 503])(
     'maps HTTP %s during identity verification before touching history',
     async (status) => {
       fetchMock.mockResolvedValueOnce(new Response('', { status }));
@@ -152,7 +181,7 @@ describe('self-contained Google document reads', () => {
     const displayName = 'orchard@example.invalid';
     document.body.innerHTML = html('first@example.invalid', displayName);
     fetchMock.mockImplementation(async (raw) =>
-      new URL(String(raw)).pathname === '/search'
+      new URL(String(raw)).pathname === '/'
         ? identity('first@example.invalid', displayName)
         : json(),
     );
@@ -161,7 +190,7 @@ describe('self-contained Google document reads', () => {
 
     document.body.innerHTML = html('second@example.invalid', displayName);
     fetchMock.mockImplementation(async (raw) =>
-      new URL(String(raw)).pathname === '/search'
+      new URL(String(raw)).pathname === '/'
         ? identity('second@example.invalid', displayName)
         : json(),
     );
@@ -172,6 +201,69 @@ describe('self-contained Google document reads', () => {
     expect(second).toMatchObject({ status: 'success' });
     expect(first).not.toEqual(second);
   });
+
+  it.each(['rendered', 'fresh', 'both'] as const)(
+    'accepts an account-menu annotation in the %s label without changing the verified identity',
+    async (annotated) => {
+      const plain = requireValid(
+        GoogleReadResultSchema,
+        await readGoogleDocument(input('inspect')),
+      );
+      const annotatedHtml = html('ORCHARD@example.invalid', 'display@example.invalid').replace(
+        ')">',
+        '), Opens account menu">',
+      );
+
+      if (annotated !== 'fresh') document.body.innerHTML = annotatedHtml;
+
+      fetchMock
+        .mockClear()
+        .mockImplementation(async (raw) =>
+          new URL(String(raw)).pathname === '/'
+            ? annotated === 'rendered'
+              ? identity()
+              : new Response(annotatedHtml, { headers: { 'content-type': 'text/html' } })
+            : json(),
+        );
+      const result = await readGoogleDocument(input());
+
+      expect(result).toMatchObject(plain);
+      expect(result).toMatchObject({ status: 'success', response: { status: 200 } });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(JSON.stringify(result)).not.toContain('example.invalid');
+      expect(registry.__threadshelfGoogleReadControllers).toBeUndefined();
+    },
+  );
+
+  it('still rejects account changes when rendered labels have an annotation', async () => {
+    document.body.innerHTML = html().replace(')">', '), Opens account menu">');
+    fetchMock.mockResolvedValueOnce(identity('other@example.invalid'));
+    expect(await readGoogleDocument(input())).toEqual({ status: 'scope-changed' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock
+      .mockReset()
+      .mockResolvedValueOnce(identity())
+      .mockResolvedValueOnce(json())
+      .mockResolvedValueOnce(identity('other@example.invalid'));
+    expect(await readGoogleDocument(input())).toEqual({ status: 'scope-changed' });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    'Google Account: Fiction (orchard@example.invalid), other@example.invalid',
+    'Google Account: Fiction (orchard@example.invalid), (Account menu)',
+    'Google Account: Fiction (orchard@example.invalid),\nAccount menu',
+    'Google Account: Fiction (orchard@example.invalid) Account menu',
+    'Google Account: Fiction orchard@example.invalid, Account menu',
+    'Google Account: (display@example.invalid) actual@example.invalid',
+  ])(
+    'rejects ambiguous or unsupported annotated identity %s before reading history',
+    async (label) => {
+      document.querySelector('a')?.setAttribute('aria-label', label);
+      expect(await readGoogleDocument(input())).toEqual({ status: 'unavailable' });
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects a changed account before a read, after a read, or against an established partition', async () => {
     const other = () =>
@@ -308,5 +400,97 @@ describe('self-contained Google document reads', () => {
       },
     );
     expect(result).toMatchObject({ status: 'success' });
+  });
+});
+
+describe('dates already rendered in the native search source', () => {
+  function conversation(id = 'fictional-thread-1') {
+    vi.stubGlobal('location', new URL(`https://www.google.com/search?udm=50&mtid=${id}`));
+  }
+
+  function label(text: string, visible = true) {
+    const group = document.createElement('div');
+    group.className = 'UYpEO';
+    const value = document.createElement('div');
+    value.className = 'kwdzO';
+    value.textContent = text;
+    group.append(value);
+    document.body.append(group);
+    vi.spyOn(value, 'getBoundingClientRect').mockReturnValue({
+      width: visible ? 100 : 0,
+    } as DOMRect);
+
+    return value;
+  }
+
+  it.each(['search', 'list'] as const)(
+    'includes only the first visible source-bound date alongside %s',
+    async (kind) => {
+      conversation();
+      label('12 October 2026', false);
+      label('  ');
+      label('  13 October 2026  ');
+      label('19:28');
+      const result = requireValid(GoogleReadResultSchema, await readGoogleDocument(input(kind)));
+      expect(result).toMatchObject({
+        status: 'success',
+        dateLabel: {
+          conversationId: 'fictional-thread-1',
+          text: '13 October 2026',
+          observedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+        },
+        response: { status: 200 },
+      });
+      expect(result).not.toHaveProperty('rendered');
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(registry.__threadshelfGoogleReadControllers).toBeUndefined();
+    },
+  );
+  it.each(['missing', 'blank', 'hidden', 'oversized', 'no-thread', 'long-thread'])(
+    'keeps successful native reads without waiting for optional dates: %s',
+    async (reason) => {
+      vi.useFakeTimers();
+
+      if (reason !== 'no-thread')
+        conversation(reason === 'long-thread' ? 'x'.repeat(257) : undefined);
+
+      if (reason !== 'missing')
+        label(
+          reason === 'blank' ? '  ' : reason === 'oversized' ? 'x'.repeat(81) : '19:28',
+          reason !== 'hidden',
+        );
+
+      const result = await readGoogleDocument(input());
+      expect(result).toMatchObject({ status: 'success', response: { status: 200 } });
+      expect(result).not.toHaveProperty('dateLabel');
+      expect(vi.getTimerCount()).toBe(0);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    },
+  );
+  it('returns time-only labels unchanged for the timezone-aware today policy', async () => {
+    conversation();
+    label('19:28');
+    expect(await readGoogleDocument(input())).toMatchObject({
+      status: 'success',
+      dateLabel: { conversationId: 'fictional-thread-1', text: '19:28' },
+    });
+  });
+  it('rejects a source conversation change after its visible date was captured', async () => {
+    conversation();
+    label('13 October 2026');
+    fetchMock
+      .mockImplementationOnce(async () => identity())
+      .mockImplementationOnce(async () => json())
+      .mockImplementationOnce(async () => {
+        conversation('changed');
+
+        return identity();
+      });
+    expect(await readGoogleDocument(input())).toEqual({ status: 'scope-changed' });
+  });
+  it('does not attach dates to inspection', async () => {
+    conversation();
+    label('13 October 2026');
+    expect(await readGoogleDocument(input('inspect'))).not.toHaveProperty('dateLabel');
   });
 });

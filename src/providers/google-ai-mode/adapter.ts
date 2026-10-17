@@ -11,6 +11,7 @@ import { validate } from '../../contracts/validation';
 import { CandidateSchema, EvidenceSchema } from '../../contracts/conversation';
 import type { Candidate } from '../../contracts/conversation';
 import { limits } from '../../contracts/primitives';
+import { parseGoogleDateLabel } from './dates';
 import { googleAiModeAvailability } from './availability';
 import { GoogleReadResultSchema } from './transport';
 import type { GoogleAiModeReadPort, GoogleReadOperation } from './transport';
@@ -34,6 +35,7 @@ export class GoogleAiModeProvider implements ProviderPort {
   private identity: string | undefined;
   private readonly candidates = new Map<string, Candidate>();
   private readonly pending = new Set<AbortController>();
+  private retrievalEpoch = 0;
   private candidateRequestKey: string | undefined;
 
   constructor(
@@ -52,7 +54,8 @@ export class GoogleAiModeProvider implements ProviderPort {
       if (
         result.status === 'success' &&
         result.response === undefined &&
-        result.rendered === undefined
+        result.rendered === undefined &&
+        result.dateLabel === undefined
       )
         return { status: 'ready', scope: { ...this.selectedScope } };
 
@@ -97,6 +100,7 @@ export class GoogleAiModeProvider implements ProviderPort {
 
     if (status !== 'unavailable' || !this.readPort) return this.failure(request, status);
 
+    const epoch = ++this.retrievalEpoch;
     this.candidates.clear();
     this.candidateRequestKey = undefined;
     const result = await this.read(
@@ -128,6 +132,26 @@ export class GoogleAiModeProvider implements ProviderPort {
         request,
         this.options.freshId ?? (() => crypto.randomUUID()),
       );
+
+      if (result.dateLabel) {
+        const candidate = parsed.candidates.find(
+          (candidate) => candidate.conversationId === result.dateLabel?.conversationId,
+        );
+        const date = parseGoogleDateLabel(result.dateLabel, request.query.timeZone);
+
+        if (candidate && date) candidate.date = date;
+      }
+
+      if (context.signal.aborted) return this.failure(request, 'cancelled');
+
+      if (epoch !== this.retrievalEpoch || this.invalidated)
+        return this.failure(request, 'scope-changed');
+
+      if (parsed.candidates.every((candidate) => candidate.date !== undefined))
+        parsed.coverage.reasons = parsed.coverage.reasons.filter(
+          (reason) => reason !== 'unknown-dates',
+        );
+
       const outcome = requireValid(
         providerOutcomeSchemaFor(request, { 'google-ai-mode': verifyGoogleOriginalLink }),
         { requestId: request.requestId, scope: request.scope, status: 'success', ...parsed },
@@ -171,7 +195,7 @@ export class GoogleAiModeProvider implements ProviderPort {
 
     if (result.status !== 'success') return this.failure(request, result.status);
 
-    if (!result.rendered || result.response !== undefined)
+    if (!result.rendered || result.response !== undefined || result.dateLabel !== undefined)
       return this.failure(request, 'schema-changed');
 
     const enriched = requireValid(CandidateSchema, candidate);
@@ -196,7 +220,7 @@ export class GoogleAiModeProvider implements ProviderPort {
           reasons: [
             'unknown-reach',
             'missing-evidence',
-            ...(request.query.dateRange ? ['unknown-dates'] : []),
+            ...(request.query.dateRange && !candidate.date ? ['unknown-dates'] : []),
           ],
         },
       },
@@ -243,9 +267,10 @@ export class GoogleAiModeProvider implements ProviderPort {
     }, 10_000);
 
     try {
+      const open = this.readPort?.openEvidence;
       const pending =
-        candidate && this.readPort?.openEvidence && this.identity
-          ? this.readPort.openEvidence(requireValid(CandidateSchema, candidate), this.identity, {
+        candidate && open && this.identity
+          ? open.call(this.readPort, requireValid(CandidateSchema, candidate), this.identity, {
               signal: controller.signal,
             })
           : this.readPort?.read(operation, this.identity, { signal: controller.signal });

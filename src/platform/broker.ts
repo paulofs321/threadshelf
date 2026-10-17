@@ -16,7 +16,13 @@ export interface ProbeTarget {
 export interface SelectedTabAccessPort {
   ownerWindow(): Promise<number | null>;
   hasPermission(provider: ProviderId): Promise<boolean>;
-  selectedTab(windowId: number): Promise<unknown>;
+  selectedTab(
+    windowId: number,
+    provider: ProviderId,
+    signal: AbortSignal,
+    pinnedId?: number,
+  ): Promise<unknown>;
+  release?(provider: ProviderId): void;
   inspectDocument(provider: ProviderId, target: ProbeTarget, signal: AbortSignal): Promise<unknown>;
 }
 
@@ -143,6 +149,7 @@ export class AccessBroker {
     pendingStatus: FailureStatus = status,
   ): void {
     const hadSelection = this.selected.delete(provider);
+    this.port.release?.(provider);
     const operations = [...this.pending.values()].filter(
       (item) => item.request.provider === provider,
     );
@@ -165,9 +172,7 @@ export class AccessBroker {
       if (
         this.selected.get(provider)?.tab.id === tabId ||
         [...this.pending.values()].some(
-          (item) =>
-            item.request.provider === provider &&
-            (item.tabId === undefined || item.tabId === tabId),
+          (item) => item.request.provider === provider && item.tabId === tabId,
         )
       )
         this.invalidate(provider, 'scope-changed');
@@ -186,6 +191,9 @@ export class AccessBroker {
 
     this.pending.clear();
     this.selected.clear();
+
+    for (const provider of ['chatgpt', 'google-ai-mode'] as const) this.port.release?.(provider);
+
     this.seen.clear();
     this.closeTransport();
   }
@@ -212,6 +220,9 @@ export class AccessBroker {
     this.pending.delete(item.request.requestId);
     clearTimeout(item.timer);
     item.controller.abort();
+
+    this.port.release?.(item.request.provider);
+
     this.send({ kind: 'reply', requestId: item.request.requestId, status });
   }
 
@@ -227,7 +238,10 @@ export class AccessBroker {
 
     if (!this.current(item)) return;
 
-    const tabResult = validate(SelectedTabSchema, await this.port.selectedTab(windowId));
+    const tabResult = validate(
+      SelectedTabSchema,
+      await this.port.selectedTab(windowId, provider, item.controller.signal, previous?.tab.id),
+    );
 
     if (!this.current(item)) return;
 
@@ -268,7 +282,10 @@ export class AccessBroker {
 
     if (!validateProbe(provider, confirmation, documentId)) return this.fail(item, 'scope-changed');
 
-    const after = validate(SelectedTabSchema, await this.port.selectedTab(windowId));
+    const after = validate(
+      SelectedTabSchema,
+      await this.port.selectedTab(windowId, provider, item.controller.signal, tab.id),
+    );
 
     if (!this.current(item)) return;
 

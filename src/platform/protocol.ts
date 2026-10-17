@@ -11,6 +11,9 @@ export function panelPortName(windowId: number): string {
 export const operationTimeoutMs = 10_000;
 export const clientTimeoutMs = 12_000;
 export const maximumRequestsPerPort = 256;
+export const heartbeatIntervalMs = 20_000;
+export const HeartbeatCommandSchema = v.strictObject({ operation: v.literal('keepalive') });
+export const HeartbeatReplySchema = v.strictObject({ kind: v.literal('alive') });
 
 const requestEntries = { requestId: RequestIdSchema, provider: ProviderIdSchema };
 export const AccessRequestSchema = v.variant('operation', [

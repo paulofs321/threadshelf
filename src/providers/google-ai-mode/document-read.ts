@@ -58,11 +58,15 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
   }
 
   function account(document: Document): string | undefined {
-    return document
-      .querySelector('a[href^="https://accounts.google.com/SignOutOptions"]')
-      ?.getAttribute('aria-label')
-      ?.match(/\(([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\)\s*$/i)?.[1]
-      ?.toLowerCase();
+    return (
+      document
+        .querySelector('a[href^="https://accounts.google.com/SignOutOptions"]')
+        ?.getAttribute('aria-label')
+        // The rendered account control can append a comma-separated accessibility annotation.
+        // Keep the address parenthesized and final; annotation text cannot contain another account.
+        ?.match(/\(([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\)(?:,[^\S\r\n]+[^@()\r\n]+)?\s*$/i)?.[1]
+        ?.toLowerCase()
+    );
   }
 
   async function body(response: Response): Promise<string> {
@@ -115,7 +119,9 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
 
     if (!renderedAccount) fail('unavailable');
 
-    const response = await get(origin + '/search?udm=50');
+    // AI Mode HTML can be a successful response without an account header. The fixed homepage
+    // supplies the observed default-account control; compare it afresh around every operation.
+    const response = await get(origin + '/');
 
     if (response.status === 401) fail('login-expired');
 
@@ -151,6 +157,7 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
 
     let response;
     let rendered;
+    let dateLabel;
 
     if (input.operation.kind === 'search' || input.operation.kind === 'list') {
       const kind = input.operation.kind;
@@ -173,6 +180,15 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
         retryAfter: result.headers.get('retry-after'),
         body: await body(result),
       };
+
+      // Reuse only a date already visible in this source document. Search never opens a thread.
+      const conversationId = new URLSearchParams(location.search).get('mtid');
+      const label = [...document.querySelectorAll<HTMLElement>('.UYpEO > .kwdzO')]
+        .find((element) => element.getBoundingClientRect().width > 0 && element.textContent?.trim())
+        ?.textContent?.trim();
+
+      if (conversationId && conversationId.length <= 256 && label && label.length <= 80)
+        dateLabel = { conversationId, text: label, observedAt: new Date().toISOString() };
     } else if (input.operation.kind === 'messages') {
       // Only the observed rendered last-turn block is supported; no complete-message API is inferred.
       const blocks = [...document.querySelectorAll<HTMLElement>('[data-last-turn]')];
@@ -195,6 +211,8 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
 
     if (
       before !== after ||
+      (dateLabel !== undefined &&
+        new URLSearchParams(location.search).get('mtid') !== dateLabel.conversationId) ||
       (input.operation.kind === 'messages' &&
         new URLSearchParams(location.search).get('mtid') !== input.operation.conversationId)
     )
@@ -207,6 +225,7 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
       identityBefore: before,
       identityAfter: after,
       ...(response === undefined ? {} : { response }),
+      ...(dateLabel === undefined ? {} : { dateLabel }),
       ...(rendered === undefined ? {} : { rendered }),
     };
   } catch (error) {

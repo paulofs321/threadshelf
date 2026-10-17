@@ -225,7 +225,6 @@ describe('concrete Chrome ChatGPT transport', () => {
       [{ ...tab, id: 8 }],
       [{ ...tab, windowId: 4 }],
       [{ ...tab, incognito: true }],
-      [{ ...tab, active: false }],
       [{ ...tab, status: 'loading' }],
       [{ ...tab, pendingUrl: tab.url }],
       [{ ...tab, url: 'https://chatgpt.com/c/other' }],
@@ -284,65 +283,57 @@ describe('concrete Chrome ChatGPT transport', () => {
       status: 'permission-needed',
     });
   });
-  it.each([
-    'cancel',
-    'timeout',
-    'updated',
-    'removed',
-    'replaced',
-    'activated',
-    'focus',
-    'permission',
-  ])('interrupts hung injection on %s and discards its late reply', async (kind) => {
-    vi.useFakeTimers();
-    const { port } = setup();
-    const held = deferred<unknown>();
-    chrome.scripting.executeScript.mockImplementation(async (i) =>
-      i.func === inspectSelectedDocument
-        ? [probe]
-        : i.func === abortChatGptDocumentRead
-          ? []
-          : held.promise,
-    );
-    const c = new AbortController();
-    const pending = port.read(operation, undefined, { signal: c.signal });
-    await flush();
+  it.each(['cancel', 'timeout', 'updated', 'removed', 'replaced', 'permission'])(
+    'interrupts hung injection on %s and discards its late reply',
+    async (kind) => {
+      vi.useFakeTimers();
+      const { port } = setup();
+      const held = deferred<unknown>();
+      chrome.scripting.executeScript.mockImplementation(async (i) =>
+        i.func === inspectSelectedDocument
+          ? [probe]
+          : i.func === abortChatGptDocumentRead
+            ? []
+            : held.promise,
+      );
+      const c = new AbortController();
+      const pending = port.read(operation, undefined, { signal: c.signal });
+      await flush();
 
-    if (kind === 'cancel') c.abort();
+      if (kind === 'cancel') c.abort();
 
-    if (kind === 'timeout') await vi.advanceTimersByTimeAsync(9500);
+      if (kind === 'timeout') await vi.advanceTimersByTimeAsync(9500);
 
-    if (kind === 'updated') chrome.tabs.onUpdated.emit(7, { status: 'loading' });
+      if (kind === 'updated') chrome.tabs.onUpdated.emit(7, { status: 'loading' });
 
-    if (kind === 'removed') chrome.tabs.onRemoved.emit(7);
+      if (kind === 'removed') chrome.tabs.onRemoved.emit(7);
 
-    if (kind === 'replaced') chrome.tabs.onReplaced.emit(99, 7);
+      if (kind === 'replaced') chrome.tabs.onReplaced.emit(99, 7);
 
-    if (kind === 'activated') chrome.tabs.onActivated.emit();
+      if (kind === 'permission')
+        chrome.permissions.onRemoved.emit({ origins: ['https://chatgpt.com/*'] });
 
-    if (kind === 'focus') chrome.windows.onFocusChanged.emit();
-
-    if (kind === 'permission')
-      chrome.permissions.onRemoved.emit({ origins: ['https://chatgpt.com/*'] });
-
-    expect(await pending).toEqual({
-      status:
-        kind === 'cancel'
-          ? 'cancelled'
-          : kind === 'timeout'
-            ? 'timeout'
-            : kind === 'permission'
-              ? 'permission-needed'
-              : 'scope-changed',
-    });
-    expect(
-      chrome.scripting.executeScript.mock.calls.some(([i]) => i.func === abortChatGptDocumentRead),
-    ).toBe(true);
-    held.resolve([{ frameId: 0, documentId: probe.documentId, result: readResult() }]);
-    await flush();
-    expect(vi.getTimerCount()).toBe(0);
-  });
-  it('does not interrupt on unrelated permission or tab metadata events', async () => {
+      expect(await pending).toEqual({
+        status:
+          kind === 'cancel'
+            ? 'cancelled'
+            : kind === 'timeout'
+              ? 'timeout'
+              : kind === 'permission'
+                ? 'permission-needed'
+                : 'scope-changed',
+      });
+      expect(
+        chrome.scripting.executeScript.mock.calls.some(
+          ([i]) => i.func === abortChatGptDocumentRead,
+        ),
+      ).toBe(true);
+      held.resolve([{ frameId: 0, documentId: probe.documentId, result: readResult() }]);
+      await flush();
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+  it('keeps inactive provider reads alive across activation, focus and unrelated events', async () => {
     const { port } = setup();
     const held = deferred<unknown>();
     chrome.scripting.executeScript.mockImplementation(async (i) =>
@@ -350,6 +341,9 @@ describe('concrete Chrome ChatGPT transport', () => {
     );
     const pending = port.read(operation, undefined, context());
     await flush();
+    chrome.tabs.query.mockResolvedValue([{ ...tab, active: false }]);
+    chrome.tabs.onActivated.emit();
+    chrome.windows.onFocusChanged.emit();
     chrome.permissions.onRemoved.emit({ origins: ['https://www.google.com/*'] });
     chrome.permissions.onRemoved.emit({});
     chrome.tabs.onUpdated.emit(99, { status: 'loading' });

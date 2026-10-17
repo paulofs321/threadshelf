@@ -158,3 +158,49 @@ describe('original URL boundaries', () => {
     ).toBe(false);
   });
 });
+
+describe('calendar-day precision contracts', () => {
+  const date = {
+    at: '2026-10-12T22:00:00.000Z',
+    meaning: 'message-sent',
+    source: 'rendered-message',
+    calendarDay: { date: '2026-10-13', timeZone: 'Europe/Zurich', basis: 'provider-date' },
+  };
+  it.each(['provider-date', 'time-only-today'])(
+    'retains explicit day precision and %s provenance',
+    (basis) => {
+      const input = { ...date, calendarDay: { ...date.calendarDay, basis } };
+      expect(requireValid(CandidateSchema, { ...googleCandidate, date: input }).date).toEqual(
+        input,
+      );
+    },
+  );
+  it.each([
+    { ...date, at: '2026-10-13T00:00:00.000Z' },
+    { ...date, source: 'provider-metadata' },
+    { ...date, calendarDay: undefined },
+    { ...date, calendarDay: { ...date.calendarDay, date: '2026-02-30' } },
+    { ...date, calendarDay: { ...date.calendarDay, timeZone: 'Invalid/Zone' } },
+    { ...date, calendarDay: { ...date.calendarDay, basis: 'guessed' } },
+    { ...date, calendarDay: { ...date.calendarDay, extra: true } },
+    {
+      ...date,
+      calendarDay: { date: '2011-12-30', timeZone: 'Pacific/Apia', basis: 'provider-date' },
+    },
+  ])('rejects inconsistent, skipped, malformed or fabricated day metadata %#', (invalid) => {
+    expect(validate(CandidateSchema, { ...googleCandidate, date: invalid }).ok).toBe(false);
+  });
+});
+
+it('preserves provider record dates with metadata provenance and rejects invented rendered provenance', () => {
+  const date = {
+    at: '2026-10-13T10:00:00.123Z',
+    meaning: 'provider-record',
+    source: 'provider-metadata',
+  };
+  expect(requireValid(CandidateSchema, { ...googleCandidate, date }).date).toEqual(date);
+  expect(
+    validate(CandidateSchema, { ...googleCandidate, date: { ...date, source: 'rendered-message' } })
+      .ok,
+  ).toBe(false);
+});

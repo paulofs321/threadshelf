@@ -5,9 +5,15 @@ message enrichment through an existing logged-in browser session. It supports th
 context verified on 15 October 2026. Workspaces, pagination, and complete-history coverage are not
 established and are not inferred.
 
-The adapter is an in-process capability for future search orchestration. The current side panel
-still provides site selection; it does not invoke conversation search. No API key, hosted service,
+The adapter is an in-process capability composed by the keyword runtime bridge. The side panel
+now invokes its keyword search through a current selected-document binding. No API key, hosted service,
 model call, persistence, or additional extension permission is introduced.
+
+The panel can connect from another site. It reuses one suitable ChatGPT tab or an active ChatGPT
+page; if none is available or multiple matches are inactive, it opens `https://chatgpt.com/` in a
+new inactive tab. Existing user tabs are preserved. Subsequent checks remain pinned to the selected
+document and never silently replace a lost source. This selects a browser context; authentication
+and account identity are still checked around reads.
 
 ## Composition and trust boundaries
 

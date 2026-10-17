@@ -4,8 +4,11 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccessPanel } from '../../src/entrypoints/sidepanel/AccessPanel';
 import type { AccessOperation, AccessRequest, FailureStatus } from '../../src/platform/protocol';
-import { clientTimeoutMs } from '../../src/platform/protocol';
+import { clientTimeoutMs, heartbeatIntervalMs } from '../../src/platform/protocol';
 import { deferred, event } from '../platform/helpers';
+import { CandidateSchema, SearchRequestSchema, requireValid } from '../../src/contracts';
+import type { SearchCommand } from '../../src/platform/search-protocol';
+import { chatCandidate } from '../fixtures/contracts';
 
 const chrome = vi.hoisted(() => ({
   permissions: { request: vi.fn() },
@@ -16,7 +19,7 @@ vi.mock('wxt/browser', () => ({ browser: chrome }));
 
 function connection() {
   return {
-    postMessage: vi.fn<(input: AccessRequest) => void>(),
+    postMessage: vi.fn<(input: AccessRequest | SearchCommand) => void>(),
     disconnect: vi.fn(),
     onMessage: event<[unknown]>(),
     onDisconnect: event<[]>(),
@@ -40,7 +43,12 @@ function connectButton(region = chat()) {
 function lastRequest(port = ports[0]): AccessOperation {
   const request = port?.postMessage.mock.calls.at(-1)?.[0];
 
-  if (!request || request.operation === 'cancel')
+  if (
+    !request ||
+    request.operation === 'cancel' ||
+    request.operation === 'keyword-search' ||
+    request.operation === 'cancel-search'
+  )
     throw new Error('Expected synthetic access operation.');
 
   return request;
@@ -94,6 +102,91 @@ afterEach(() => {
 });
 
 describe('side-panel permission and operation flow with real AccessClient', () => {
+  it('retains both provider connections and worker keepalive across connection/search page navigation', async () => {
+    vi.useFakeTimers();
+    render(<AccessPanel />);
+    await select(chat());
+    await select(google(), 1, 'fiction-google-partition');
+    expect(screen.queryByRole('button', { name: 'Connect ChatGPT' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to search' }));
+    expect(screen.getByRole('searchbox')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    expect(within(chat()).getByRole('status').textContent).toBe('ChatGPT is already connected.');
+    expect(within(google()).getByRole('status').textContent).toBe(
+      'Google Search AI Mode is already connected.',
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(heartbeatIntervalMs);
+    });
+    expect(ports[0]?.postMessage).toHaveBeenLastCalledWith({ operation: 'keepalive' });
+    expect(chrome.permissions.request).toHaveBeenCalledTimes(2);
+    expect(chrome.runtime.connect).toHaveBeenCalledOnce();
+  });
+  it.each(['valid', 'unsafe'] as const)(
+    'composes real search/access clients, handles a %s reply, and clears stale results on invalidation',
+    async (kind) => {
+      render(<AccessPanel />);
+      await select();
+      fireEvent.click(screen.getByRole('button', { name: 'Continue to search' }));
+      fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'fictional library' } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+      });
+      const command = ports[0]?.postMessage.mock.lastCall?.[0];
+
+      if (command?.operation !== 'keyword-search') throw new Error('Expected search command');
+
+      const request = requireValid(SearchRequestSchema, command.request);
+      const scope = request.scopes[0];
+      const candidate = requireValid(CandidateSchema, {
+        ...chatCandidate,
+        scope,
+        conversationId: '11111111-1111-1111-1111-111111111111',
+        originalUrl:
+          kind === 'valid'
+            ? 'https://chatgpt.com/c/11111111-1111-1111-1111-111111111111'
+            : 'https://evil.invalid/thread',
+      });
+      await act(async () => {
+        ports[0]?.onMessage.emit({
+          kind: 'search-result',
+          outcome: {
+            requestId: request.requestId,
+            state: 'success',
+            results: [candidate.id],
+            outcomes: [
+              {
+                requestId: request.requestId,
+                scope,
+                status: 'success',
+                candidates: [candidate],
+                coverage: { extent: 'complete', reasons: [] },
+              },
+            ],
+            coverage: { extent: 'complete', reasons: [] },
+          },
+        });
+      });
+
+      if (kind === 'unsafe') {
+        expect(ports[0]?.disconnect).toHaveBeenCalledOnce();
+        expect(document.getElementById('chatgpt-status')?.textContent).toContain('interrupted');
+        expect(screen.queryByRole('article')).toBeNull();
+      } else {
+        expect(screen.getByRole('article')).toBeTruthy();
+        expect(ports[0]?.disconnect).not.toHaveBeenCalled();
+        await act(async () => {
+          ports[0]?.onMessage.emit({
+            kind: 'invalidated',
+            provider: 'chatgpt',
+            generation: 2,
+            status: 'permission-needed',
+          });
+        });
+        expect(screen.queryByRole('article')).toBeNull();
+      }
+    },
+  );
   it('starts idle, exposes labeled native buttons/statuses, and requests no access on mount even in StrictMode', () => {
     render(
       <StrictMode>
@@ -102,7 +195,9 @@ describe('side-panel permission and operation flow with real AccessClient', () =
     );
     expect(screen.getByRole('heading', { level: 1, name: 'ThreadShelf' })).toBeTruthy();
     expect(screen.getAllByRole('status')).toHaveLength(2);
-    expect(within(chat()).getByRole('status').textContent).toBe('No site selected.');
+    expect(screen.getByRole('heading', { name: 'Welcome to ThreadShelf' })).toBeTruthy();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(within(chat()).getByRole('status').textContent).toBe('Not connected.');
     expect(chrome.permissions.request).not.toHaveBeenCalled();
     expect(chrome.runtime.connect).not.toHaveBeenCalled();
     connectButton().focus();
@@ -149,9 +244,7 @@ describe('side-panel permission and operation flow with real AccessClient', () =
     expect(chrome.runtime.connect).not.toHaveBeenCalled();
     expect((connectButton() as HTMLButtonElement).disabled).toBe(false);
     await select();
-    expect(within(chat()).getByRole('status').textContent).toContain(
-      'Account access is unverified',
-    );
+    expect(within(chat()).getByRole('status').textContent).toContain('is already connected.');
   });
   it.each(['request rejected', 'request threw', 'port creation threw'] as const)(
     'shows unavailable for %s without exposing browser error details',
@@ -205,12 +298,13 @@ describe('side-panel permission and operation flow with real AccessClient', () =
     expect(within(chat()).getByRole('status').textContent).toContain('cancelled');
     expect(chrome.runtime.connect).not.toHaveBeenCalled();
   });
-  it('renders selected as unverified, checks the current scope, and clears without silently revoking permission', async () => {
+  it('shows already connected, rechecks the current scope, and disconnects without revoking permission', async () => {
     render(<AccessPanel />);
     await select();
-    expect(within(chat()).getByRole('status').textContent).toContain('search is unavailable');
+    expect(within(chat()).getByRole('status').textContent).toContain('is already connected.');
+    fireEvent.click(within(chat()).getByText('Connection options'));
     await act(async () => {
-      fireEvent.click(within(chat()).getByRole('button', { name: 'Check selected site' }));
+      fireEvent.click(within(chat()).getByRole('button', { name: 'Recheck connection' }));
     });
     expect(lastRequest()).toMatchObject({
       operation: 'inspect-context',
@@ -219,8 +313,9 @@ describe('side-panel permission and operation flow with real AccessClient', () =
     await act(async () => {
       replySelected(ports[0], 2, 'fiction-fresh-partition');
     });
+    fireEvent.click(within(chat()).getByText('Connection options'));
     await act(async () => {
-      fireEvent.click(within(chat()).getByRole('button', { name: 'Clear selection' }));
+      fireEvent.click(within(chat()).getByRole('button', { name: 'Disconnect' }));
     });
     const request = lastRequest();
     expect(request).toMatchObject({
@@ -234,8 +329,8 @@ describe('side-panel permission and operation flow with real AccessClient', () =
         status: 'disconnected',
       });
     });
-    expect(within(chat()).getByRole('status').textContent).toBe('Selection cleared.');
-    expect(within(chat()).queryByRole('button', { name: 'Check selected site' })).toBeNull();
+    expect(within(chat()).getByRole('status').textContent).toBe('Disconnected.');
+    expect(within(chat()).queryByRole('button', { name: 'Recheck connection' })).toBeNull();
     expect(chrome.permissions.request).toHaveBeenCalledOnce();
   });
   it.each([
@@ -255,7 +350,7 @@ describe('side-panel permission and operation flow with real AccessClient', () =
         ports[0]?.onMessage.emit({ kind: 'reply', requestId: request.requestId, status });
       });
       expect(within(chat()).queryByRole('button', { name: 'Cancel' })).toBeNull();
-      expect(within(chat()).queryByRole('button', { name: 'Check selected site' })).toBeNull();
+      expect(within(chat()).queryByRole('button', { name: 'Recheck connection' })).toBeNull();
       expect((connectButton() as HTMLButtonElement).disabled).toBe(false);
       expect(within(chat()).getByRole('status').textContent).not.toContain('Checking');
     },
@@ -286,7 +381,7 @@ describe('side-panel permission and operation flow with real AccessClient', () =
       });
     });
     expect(within(chat()).getByRole('status').textContent).toContain('cancelled');
-    expect(within(chat()).queryByRole('button', { name: 'Check selected site' })).toBeNull();
+    expect(within(chat()).queryByRole('button', { name: 'Recheck connection' })).toBeNull();
   });
   it('keeps provider selections independent and invalidates only the reported provider', async () => {
     render(<AccessPanel />);
@@ -301,8 +396,9 @@ describe('side-panel permission and operation flow with real AccessClient', () =
         generation: 2,
       });
     });
-    expect(within(chat()).queryByRole('button', { name: 'Check selected site' })).toBeNull();
-    expect(within(google()).getByRole('button', { name: 'Check selected site' })).toBeTruthy();
+    expect(within(chat()).queryByRole('button', { name: 'Recheck connection' })).toBeNull();
+    expect(within(google()).getByRole('status').textContent).toContain('is already connected.');
+    expect(within(google()).queryByRole('button', { name: /^Connect/ })).toBeNull();
   });
   it('clears both provider selections on worker disconnect and opens a fresh port only on explicit reconnect', async () => {
     render(<AccessPanel />);
@@ -314,7 +410,7 @@ describe('side-panel permission and operation flow with real AccessClient', () =
 
     for (const region of [chat(), google()]) {
       expect(within(region).getByRole('status').textContent).toContain('interrupted');
-      expect(within(region).queryByRole('button', { name: 'Check selected site' })).toBeNull();
+      expect(within(region).queryByRole('button', { name: 'Recheck connection' })).toBeNull();
     }
 
     expect(chrome.runtime.connect).toHaveBeenCalledOnce();
@@ -339,6 +435,11 @@ describe('side-panel permission and operation flow with real AccessClient', () =
       });
     });
     expect(within(chat()).getByRole('status').textContent).toContain('timed out');
+    // Flush DOM selection events and Radix mount frames, retaining any leaked request timers.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersToNextFrame();
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
   it('unmount aborts pending operations, disconnects the port, and removes client listeners/timers', async () => {
@@ -349,6 +450,11 @@ describe('side-panel permission and operation flow with real AccessClient', () =
     expect(ports[0]?.disconnect).toHaveBeenCalledOnce();
     expect(ports[0]?.onMessage.size()).toBe(0);
     expect(ports[0]?.onDisconnect.size()).toBe(0);
+    // Flush DOM selection events and Radix mount frames, retaining any leaked request timers.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersToNextFrame();
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
   it('unmount during a Chrome permission prompt prevents all later access', async () => {
@@ -408,6 +514,11 @@ describe('side-panel permission and operation flow with real AccessClient', () =
       expect(within(chat()).getByRole('status').textContent).toContain('interrupted');
       expect(chrome.runtime.connect).not.toHaveBeenCalled();
       expect(document.body.textContent).not.toContain('fiction-private-window-error');
+      // Flush DOM selection events and Radix mount frames, retaining any leaked request timers.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersToNextFrame();
+      });
       expect(vi.getTimerCount()).toBe(0);
     },
   );
@@ -429,6 +540,11 @@ describe('side-panel permission and operation flow with real AccessClient', () =
         owner.resolve({ id: 3, incognito: false });
       });
       expect(chrome.runtime.connect).not.toHaveBeenCalled();
+      // Flush DOM selection events and Radix mount frames, retaining any leaked request timers.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersToNextFrame();
+      });
       expect(vi.getTimerCount()).toBe(0);
 
       if (stop === 'cancel')

@@ -1,15 +1,16 @@
 # ThreadShelf
 
-ThreadShelf is a planned Chrome side panel for searching conversations already saved in your
+ThreadShelf is a Chrome side panel for searching conversations already saved in your
 currently logged-in **ChatGPT** and **Google Search AI Mode** accounts. Google Search AI Mode is a
 separate integration from the Gemini app at `gemini.google.com`.
 
 The goal is to find sessions by keyword or description without manually saving or exporting each
 conversation. Examples include “Where did I compare deployment options for my portfolio?” and
-“Which sessions did I discuss authentication last month?” Results will show their provider, title,
-available date, matching excerpt, original conversation link, and evidence for description matches.
-The shared keyword engine implements provider/date filters, cancellation and explicit failure/partial outcomes.
-The implementation UI will use shadcn/ui components shared with the fictional demo.
+“Which sessions did I discuss authentication last month?” Keyword results show their provider, title,
+available date, exact excerpts and validated original links. The shadcn/ui panel supports provider/date
+filters, per-provider result tabs, compact expandable previews, cancellation, retry/reconnect and
+explicit empty, partial and failed outcomes. Description
+search is disabled and labeled pending; the fictional demo remains planned.
 
 ## Current status
 
@@ -21,10 +22,10 @@ the sending panel, correlates requests, and clears access on navigation, revocat
 timeout, or worker interruption. Unknown identity receives a fresh ephemeral scope on every check.
 
 Selecting a site checks browser context only. Both provider adapters now support authenticated
-reads through trusted selected-document bindings; the panel still provides setup controls rather
-than conversation search. The [keyword search engine](docs/keyword-search.md) now coordinates injected
-providers with validated filters, scoped deduplication, bounded work and truthful aggregate outcomes.
-The full shadcn/ui search UI and its browser composition remain separate work.
+reads through trusted selected-document bindings. The panel now connects the
+[keyword search engine](docs/keyword-search.md) to both adapters through a validated runtime bridge.
+Shared views receive capability ports and have no Chrome/provider imports. See the
+[side panel reference](docs/sidepanel.md) for controls, states and current limitations.
 
 The ChatGPT adapter implements personal-account keyword/list/API-message reads, exact evidence,
 original links, UTC updated dates and identity checks around reads. Actual unpacked-extension
@@ -33,12 +34,15 @@ and a bounded 50-conversation list. Workspaces, pagination and complete-history 
 unsupported or unverified. See the [ChatGPT adapter](docs/chatgpt-adapter.md) for details.
 
 Google Search AI Mode implements default-account search/list reads, exact snippets, verified original
-links, bounded rendered-thread evidence, HTTP failures and fresh identity checks. On October 15,
-2026, native and actual unpacked-extension reads returned three snippet-only matches, a genuine
+links, native record and visible message dates, bounded rendered-thread evidence, HTTP failures and
+fresh identity checks. On October 15, 2026, native and actual unpacked-extension reads returned three snippet-only matches, a genuine
 empty search, a capped partial list and a rendered excerpt from an owned background tab that closed
-afterward. Nondefault accounts, timestamp meanings, continuation beyond 300 listed records and
-complete-message retrieval remain unresolved. Unknown dates are omitted; complete-history coverage
-is never claimed. Live checks are separate from synthetic tests. See the
+afterward. Google uses the native record timestamp as an available **Provider date**, without claiming
+creation/update semantics. An already-visible matching message date takes priority; time-only labels
+use the local day when read. Keyword search creates no tabs or per-conversation date reads. Missing
+or malformed dates remain unknown. Nondefault accounts, timestamp creation/update meanings,
+continuation and complete-message/history coverage remain unresolved. Unknown dates are omitted;
+complete-history coverage is never claimed. Live checks are separate from synthetic tests. See the
 [Google Search AI Mode adapter](docs/google-ai-mode-adapter.md) for the technical reference.
 
 Without a selected-document binding, either adapter remains unavailable. Model inference,
@@ -69,6 +73,7 @@ npm run build
 | `npm run typecheck`     | Prepare and check TypeScript without emitting files   |
 | `npm test`              | Run synthetic TypeScript tests once                   |
 | `npm run test:coverage` | Run all tests and enforce runtime source coverage     |
+| `npm run test:browser`  | Run isolated Chromium UI/CSP smoke after building     |
 | `npm run test:watch`    | Watch and rerun synthetic tests                       |
 | `npm run lint`          | Run ESLint with zero warnings allowed                 |
 | `npm run format`        | Format public/source project files                    |
@@ -78,11 +83,20 @@ npm run build
 
 For manual inspection, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**,
 and select `.output/chrome-mv3/`. Click the ThreadShelf toolbar action or select it in Chrome's side
-panel menu. Open the provider in the selected tab of that window, then click **Connect** in the panel.
+panel menu. The welcome page provides connection buttons for each provider. The conversation
+header’s **Connect** button returns to that page; connected providers show “already connected.”
+**Search settings** contains provider/date filters. Connect either provider from any tab. ThreadShelf
+reuses a suitable provider page in this window or opens its fixed landing page in a background tab
+when needed, including when several provider tabs are open but inactive.
 Chrome requests optional `scripting` and either `https://chatgpt.com/*` or `https://www.google.com/*`.
+After connecting, enter keywords and search the checked provider. The date interval uses local
+calendar boundaries; **Before** is exclusive. Each provider stays connected while you browse other
+tabs. Closing/navigating its source page or losing account/site access can require reconnecting.
 Only `sidePanel` is required at installation. Google locale hosts and the Gemini app are unsupported.
-**Clear selection** releases the in-memory context; revoke granted site access in Chrome's extension
-settings. Incognito is disabled. Adapter transport verification is separate from panel UI acceptance. See
+**Connection options → Disconnect** releases the in-memory context; revoke granted site access in
+Chrome’s extension settings. After rebuilding/updating the unpacked extension, click **Reload** in `chrome://extensions`
+and reopen the panel so its UI and worker use the same build. Incognito is disabled. Actual-account
+acceptance is separate from synthetic native-panel transport checks. See
 [developer notes](docs/development.md) for permissions, protocol, and remaining verification.
 See the [technical foundation](docs/foundation.md) for the implemented architecture and
 [regression test matrix](docs/testing.md) for comprehensive failure coverage and its limits.

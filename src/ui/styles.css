@@ -1,70 +1,99 @@
+@import 'tailwindcss' source(none);
+@source './**/*.{ts,tsx}';
+@source '../entrypoints/sidepanel/**/*.{ts,tsx}';
+
+/* Shared shadcn/ui tokens adapted to the ThreadShelf Figma reference. All styles and system fonts are bundled. */
 :root {
-  font-family: system-ui, sans-serif;
-  color: #20252a;
-  background: #f8fafb;
   color-scheme: light;
+  font-family: system-ui, sans-serif;
+  --background: #ffffff;
+  --foreground: #252b28;
+  --card: hsl(0 0% 100%);
+  --card-foreground: #252b28;
+  --primary: #2c5045;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f7f5;
+  --secondary-foreground: #2c5045;
+  --muted: #f6f7f6;
+  --muted-foreground: #69716c;
+  --accent: #edf4f0;
+  --accent-foreground: #2c5045;
+  --destructive: hsl(0 72% 40%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: #e1e5e2;
+  --input: #b7bfba;
+  --ring: #2c5045;
+  --radius: 0.75rem;
 }
 
-body {
-  margin: 0;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
 }
 
-main {
-  max-width: 32rem;
-  padding: 1.5rem;
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+  }
+  button,
+  input,
+  select {
+    font: inherit;
+  }
+  button,
+  a,
+  input,
+  select {
+    touch-action: manipulation;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+  p,
+  h1,
+  h2,
+  h3,
+  a,
+  blockquote {
+    overflow-wrap: anywhere;
+  }
+  input[type='date'] {
+    min-width: 0;
+  }
 }
 
-h1 {
-  margin: 0.25rem 0 1rem;
-  font-size: 1.75rem;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
-p {
-  line-height: 1.6;
-}
-
-.eyebrow {
-  color: #4b5563;
-  font-size: 0.8rem;
-}
-
-.status {
-  padding: 0.75rem;
-  border: 1px solid #ccd5db;
-  border-radius: 0.5rem;
-  background: #fff;
-}
-
-section {
-  margin-top: 1.5rem;
-}
-
-h2 {
-  font-size: 1.1rem;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-button {
-  font: inherit;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid #8b9ba7;
-  border-radius: 0.35rem;
-  background: #fff;
-  color: inherit;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-button:focus-visible {
-  outline: 3px solid #2563eb;
-  outline-offset: 3px;
+input[type='search']::-webkit-search-cancel-button {
+  appearance: none;
 }

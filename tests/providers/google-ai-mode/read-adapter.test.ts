@@ -341,7 +341,7 @@ describe('Google native read adapter', () => {
     const result = await provider.messages(request, 'fictional-thread-1', context());
     expect(result).toMatchObject({
       status: 'success',
-      coverage: { reasons: ['unknown-reach', 'missing-evidence', 'unknown-dates'] },
+      coverage: { reasons: ['unknown-reach', 'missing-evidence'] },
     });
   });
 

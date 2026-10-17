@@ -101,5 +101,96 @@ Live checks did not force logout/account switching, HTTP failures or permission 
 paths have synthetic coverage. Google nondefault accounts, timestamp meanings, continuation beyond
 300 and complete-message access remain unresolved. ChatGPT workspaces, tab-free behavior, pagination
 and full-history reach remain unsupported or unverified. The actual Google panel Connect path selected
-the site after the context fix; panel search controls, multi-window interaction and full accessibility
-acceptance remain future work. Fixtures contain no live payloads.
+the site after the context fix. Panel search controls now have component and native Chromium
+synthetic coverage; authenticated multi-window interaction and full accessibility acceptance remain
+separate. Fixtures contain no live payloads.
+
+## Search panel regressions
+
+Shared UI tests use real keyword orchestration with synthetic ports and cover query/provider/date
+forwarding, DST boundaries, unknown dates, every provider failure, successful empty versus partial
+zero matches, preserved partial matches, retry cooldowns and fresh IDs, cancellation and replacement,
+unmount/scope invalidation, stale/unsafe/out-of-scope output, plain-text hostile evidence, metadata
+fallbacks, validated navigation, keyboard submission and focus recovery. Runtime tests exercise real
+access/search clients, broker binding, provider factories/adapters and mocked isolated-world reads.
+A focused adversarial test caught credential-bearing links accepted by a permissive injected policy;
+result cards now require both the shared safe-URL schema and the provider verifier.
+
+Connection status focus recovery causes jsdom to schedule its own zero-delay `selectionchange`
+event, and Radix tabs schedule mount animation frames. Fake-clock cleanup assertions flush only
+those DOM events and the next animation frame before requiring zero remaining timers; request deadlines and cooldown timers remain tested separately.
+
+For the isolated Chromium smoke command and its precise limits, see
+[developer notes](development.md#shared-shadcnui-panel). It verifies the built production mount/theme
+and shared synthetic UI under MV3 CSP at 240–400px, plus a real native docked panel with real runtime
+clients/broker/adapters/isolated readers and intercepted synthetic HTTP responses. Both providers
+remain connected and search again after tab switches. Optional capabilities are pregranted in the
+temporary manifest; permission-dialog gestures remain separate component tests. DNS is blocked and
+fixture pages are prepared before navigation. No existing browser profile or live account is used.
+Screen-reader acceptance and final authenticated panel interaction remain separate checks.
+
+Provider-connection regressions cover independent inactive source bindings, default AI Mode route
+selection, fixed landing-page creation with multiple inactive matches, automatic background tab
+creation when no source exists, creation/loading cancellation, late tab creation cleanup, preserving user tabs, rechecking pinned IDs/documents,
+continued reads across tab/window activation, targeted revocation, local keepalive without provider
+reads, malformed heartbeat rejection and interval teardown. Existing cancellation, identity-change,
+login, permission and stale-response tests remain enforced; their old focus-invalidation expectations
+were updated to the requested persistent-connection behavior.
+
+Source-tab tests cover per-provider counts/links, filtered failure badges/reconnect, excluded versus
+successfully empty providers, arrow/Home/End focus and ARIA relationships, sorting known/unknown
+dates, scope clearing across inactive panels, and switching views without network work. Search
+settings, query clearing/cancellation, refresh with fresh IDs, and compact expandable Unicode-safe
+evidence have keyboard/component regressions and Chromium smoke checks.
+
+The Google account reader accepts the observed comma-separated accessibility annotation after a
+parenthesized address, while rejecting misleading annotations and retaining rendered/fresh identity
+equality checks. Synthetic tests cover each side's label variation, display-name addresses and
+account changes. A separate live read-only check through the actual installed Chrome extension
+returned three Google matches with an inactive source and verified source preservation/reader
+cleanup. Its diagnostic owning-window capability bypassed the side-panel sender handshake.
+No private payloads or credentials were retained; temporary diagnostics and their tab were removed.
+
+Connection-page regressions cover the first-open welcome screen, per-provider already-connected
+states without duplicate Connect actions, pending cancellation, expanded management actions, and
+return navigation preserving query/filters/source tab/sort/results. Tests verify an in-flight search
+continues across pages without stealing connection-page focus, scope loss clears hidden results,
+and both real runtime clients retain their connection/keepalive without new permission requests.
+Chromium checks both pages at 240–400px and repeats native-panel searches after page/tab switches.
+
+## Google conversation dates
+
+Synthetic tests cover native seconds/nanoseconds validation, canonical UTC normalization, optional
+missing/malformed dates, generic provider-record meaning and metadata provenance; full English
+message dates, leap days, unsupported labels, time-only today across timezones, DST and skipped days;
+source-thread-bound first-visible labels, native-date fallback, date filtering and card tooltips.
+Search/list integration tests use the real Chrome provider factory with `tabs.create` throwing and
+assert repeated dated results without creating, navigating or closing tabs. Explicit evidence still
+has independent existing-tab reuse, context/account checks and owned-tab cleanup tests.
+
+The isolated native-panel Chromium fixture searches an unopened thread dated from native metadata,
+then an existing source thread with a full visible date, then a clock-only label normalized to the
+browser's current local day. It asserts unchanged tab IDs and zero new pages across all three reads.
+These are handwritten fixtures without live accounts. A separate read-only native-page check
+returned seven dated candidates on each of two searches with unchanged tabs and source; that main-world
+probe verifies live metadata compatibility, separately from isolated-world extension integration.
+Neither check establishes timestamp creation/update semantics or complete-history coverage.
+
+A connection regression reproduces ChatGPT Connect from another site with two inactive ChatGPT
+pages. It verifies a fresh fixed inactive source, pinned reuse without duplicate tabs, cleanup of
+only the owned source, refusal to replace a missing pinned source and retention of an existing
+Google connection. Native Chrome verification of this scenario selected the new inactive document
+and preserved both existing ChatGPT tabs; its owned source and diagnostic tab were removed. That
+probe verifies browser selection, separately from authentication/search and native panel gestures.
+
+Google identity regressions make the AI Mode fetch return HTTP 200 without account markup while the
+fixed homepage supplies the verified account control. Unit and native-panel browser tests require
+successful keyword results in that case. Existing mismatch/missing-identity, HTTP/redirect,
+permission and cancellation guards remain covered. Date extraction now shares the bounded native
+read and its account/document guards; the former temporary date tabs and metadata phase are removed.
+
+PR recovery regressions exercise exhausted shared search/access transports, interrupted pending
+searches, heartbeat/listener cleanup and fresh-client recovery. UI tests require fresh scopes after
+login expiry, permission loss or scope changes, including query edits, healthy-provider filtering and
+reconnecting only the unaffected provider. Owned-tab tests defer lookup/removal during immediate
+reconnect, coalesce repeated releases, preserve cancellation/closure and isolate providers.

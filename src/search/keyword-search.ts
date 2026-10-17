@@ -35,7 +35,7 @@ const PolicySchema = v.strictObject({
 });
 export type SearchPolicy = v.InferOutput<typeof PolicySchema>;
 export interface KeywordSearchOptions {
-  readonly providers: readonly ProviderPort[];
+  readonly providers: readonly Pick<ProviderPort, 'provider' | 'search'>[];
   readonly linkVerifiers: LinkVerifiers;
   readonly policy?: Partial<SearchPolicy>;
 }
@@ -72,7 +72,7 @@ function stop(task: Task, status: FailureStatus): void {
 
 /** One instance per search surface. No UI, browser transport, cache or automatic retries. */
 export class KeywordSearch implements SearchPort {
-  private readonly providers = new Map<ProviderId, ProviderPort>();
+  private readonly providers = new Map<ProviderId, Pick<ProviderPort, 'provider' | 'search'>>();
   private readonly verifiers: LinkVerifiers;
   private readonly policy: SearchPolicy;
   private readonly scopes = new Map<ProviderId, ScopeRecord>();

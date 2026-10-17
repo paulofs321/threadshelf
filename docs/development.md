@@ -5,7 +5,7 @@
 | Path                            | Role                                                                       |
 | ------------------------------- | -------------------------------------------------------------------------- |
 | `src/entrypoints/`              | WXT background and side panel entrypoints                                  |
-| `src/ui/`                       | Injected React setup/status and connection controls                        |
+| `src/ui/`                       | Shared shadcn/ui keyword search, results and connection controls           |
 | `src/contracts/`                | Normalized runtime schemas, validation helpers and ports                   |
 | `src/platform/`                 | Selected-tab broker, context validation and access lifecycle               |
 | `src/providers/chatgpt/`        | Verified personal-account ChatGPT reads, normalization and identity checks |
@@ -67,6 +67,46 @@ Contract lint rules reject browser/adapter imports, browser globals, `any`, and 
 See the official [ESLint configuration](https://eslint.org/docs/latest/use/configure/configuration-files)
 and [Babel ESLint parser](https://babeljs.io/docs/babel-eslint-parser) documentation.
 
+## Shared shadcn/ui panel
+
+`components.json` uses the existing WXT `@/*` source alias and the `new-york` shadcn style.
+Copied button/input/card/badge/alert/tabs primitives live under `src/ui/components`; unused card/alert
+subcomponents were omitted. The upstream MIT notice ships in `public/third-party/shadcn-ui.txt`.
+Button text wraps for narrow panels. `src/ui/styles.css` contains shared
+CSS variable tokens adapted to the supplied Figma reference (white surfaces, muted green accents),
+and imports Tailwind 4 through `@tailwindcss/vite` in WXT’s Vite hook. Radix-backed source tabs expose
+All sources/ChatGPT/Google AI Mode without repeating provider requests. Connections live on a
+separate welcome page reached through the conversation header’s Connect button; connected
+providers show a confirmation instead of another Connect action. Search state and provider clients
+stay mounted across page navigation, with focus recovery and no extra permission requests. Advanced
+search settings collapse behind the header button. Compact previews expand exact evidence, and
+date sorting keeps unknown dates last. The footer repeats a real search rather than reporting unavailable sync/history totals.
+Explicit CSS source roots scan only UI and panel source. No replacement Vite app/tsconfig, hosted
+fonts, remote code or new extension permissions are required. ESLint prevents browser/provider
+imports and fetches in shared UI. Native labels, select, checkboxes and date inputs retain their
+browser keyboard behavior. See the official [existing Vite setup](https://ui.shadcn.com/docs/installation/vite),
+[components configuration](https://ui.shadcn.com/docs/components-json), and
+[Tailwind Vite integration](https://tailwindcss.com/docs/installation/using-vite).
+
+Run the separate browser smoke after a production build:
+
+```sh
+PLAYWRIGHT_BROWSERS_PATH=./node_modules/.cache/ms-playwright npx playwright install chromium
+npm run build
+npm run test:browser
+```
+
+It copies the production extension into a temporary directory, adds a separate synthetic UI harness,
+and loads it in an isolated Chromium profile. Production UI mounting and theme are checked alongside
+synthetic cancellation/reconnect, safe links, keyboard/focus, 240–400px widths and absence of external
+requests or CSP errors. It also opens the real native side panel and exercises both real provider
+adapters/readers through keyword requests against intercepted synthetic HTTP responses, including
+a repeat search after switching tabs. A temporary manifest pregrants the exact optional hosts and
+scripting; its test-only driver bypasses the permission dialog. Gesture/denial behavior is tested
+separately in components. DNS is blackholed, and fixture pages are prepared before navigation.
+The profile/extension copy are deleted even on failure. Fixtures/drivers never enter production
+output. Live accounts and screen-reader acceptance remain separate; CI’s checks are unchanged.
+
 ## Shared contracts
 
 Valibot's modular schemas provide runtime validation and inferred TypeScript types. Shared code
@@ -81,6 +121,7 @@ member validation. Limits measure UTF-16 code units for strings. See the officia
 | -------------------------------- | ------------------------------------------------------------------------------------ |
 | `primitives.ts`, `validation.ts` | Branded opaque IDs, bounds, safe failure results, canonical UTC dates and HTTPS URLs |
 | `session.ts`                     | Verified/ephemeral scopes, generation comparison and session outcomes                |
+| `calendar.ts`                    | Calendar validation, timezone formatting and DST-aware local day boundaries          |
 | `conversation.ts`                | Candidates, exact evidence/provenance, date meanings and scoped conversation keys    |
 | `query.ts`                       | Query/provider selection, half-open date intervals and request/scope consistency     |
 | `outcome.ts`                     | Distinct provider failures/successes, coverage and aggregate reference validation    |
@@ -110,10 +151,13 @@ scopes cannot form persistent cache keys. Cache schemas do not enable persistenc
 memory-only operation remains the default direction.
 
 Missing titles/dates/links stay absent. Available dates carry a meaning (`conversation-created`,
-`conversation-updated`, or `message-sent`) and provenance. A conversation creation/update timestamp
-does not establish when a topic was discussed. Date constraints use normalized UTC `[start, end)`
+`conversation-updated`, `message-sent`, or `provider-record`) and provenance. A conversation
+creation/update timestamp does not establish when a topic was discussed. Date constraints use normalized UTC `[start, end)`
 intervals with a browser timezone on the query. Unknown dates cannot satisfy constraints and must be
-disclosed as excluded in aggregate coverage. Relative-date interpretation is not implemented yet.
+disclosed as excluded in aggregate coverage. Optional `calendarDay` preserves date-only precision,
+timezone and provider-date/time-only-today basis; its `at` must match the local day boundary. Google
+time-only labels use the local date when read by explicit policy; general relative-label interpretation
+is not implemented.
 
 Provider success may contain an empty candidate list. Failures contain no candidates or fabricated
 coverage. Aggregate results reference unchanged candidates in independent successful outcomes; all
@@ -172,9 +216,13 @@ regular profile before and after document checks; closing it disconnects the bro
 The manifest requires Chrome 116 or later for `runtime.getContexts`. That API independently finds
 the live regular-profile side panel, but global panels report `windowId: -1`, which carries no window
 binding. If it supplies a nonnegative window ID, that value must agree with the binding. Missing or
-unexpected context metadata fails closed. The broker queries only the active tab of the bound
-window and checks its exact provider origin, completed load, and regular profile. Provider operation
-messages cannot supply a window, tab, URL, header, body, or executable argument.
+unexpected context metadata fails closed. `ProviderTabs` resolves an independent provider source
+in the bound window: an unambiguous supported existing page, an active matching page when several
+exist, or a newly created inactive fixed landing page. Several inactive matches trigger a fresh
+landing page. Rechecks remain pinned to the selected tab ID, exact URL, completed load, regular
+profile and Chrome document ID; they fail closed if that source disappears. Provider sources can
+remain inactive. Provider operation messages cannot supply a window, tab, URL, header, body, or
+executable argument.
 
 | Operation         | Allowed payload and result                                                                     |
 | ----------------- | ---------------------------------------------------------------------------------------------- |
@@ -183,8 +231,13 @@ messages cannot supply a window, tab, URL, header, body, or executable argument.
 | `disconnect`      | Request ID/provider/current scope; clears the in-memory selection                              |
 | `cancel`          | Existing request ID; aborts/discards pending work in that port                                 |
 
-Search/list/evidence operations are absent from this setup-only runtime protocol. The ChatGPT
-adapter instead uses the trusted in-process document binding described below. A `selected` reply always carries `session: 'unverified'`; it is neither a
+The same trusted connection also accepts `keyword-search` with a bounded normalized keyword
+request, and `cancel-search` with its request ID. The worker composes the keyword engine with
+current broker document bindings and the real provider factories. There is no URL/header/list/evidence
+operation in this runtime bridge. Search replies undergo structural and request/scope/link/date
+validation in the panel. Access and search each cap unique request IDs at 256 per connection. Search
+has a separate 27-second panel deadline covering the engine’s 25-second deadline.
+A `selected` reply always carries `session: 'unverified'`; it is neither a
 `SessionOutcome` with authenticated readiness nor a successful provider search. Failures report
 permission-needed, unavailable, scope-changed, timeout, cancelled, interrupted, or busy, without
 private exception text or fabricated results. Panel reply validation checks provider/request IDs
@@ -209,15 +262,22 @@ port. Requests expire after 10 seconds in the worker and 12 seconds independentl
 There are no retries. Cancellation cannot undo an already dispatched Chrome injection, but it
 aborts the operation signal, prevents further checks, and discards later output.
 
-Navigation/loading, URL changes, removed/replaced tabs, active-tab changes, window focus changes,
-permission removal, and port loss invalidate selections and pending work. Focus/activation events
-invalidate both providers. Removing a site's permission invalidates only that provider; removing
+Navigation/loading or URL changes on a bound source, removed/replaced source tabs, permission
+removal and port loss invalidate affected selections and pending work. Tab/window focus changes
+preserve independent provider bindings. Unrelated navigation during a pending tab lookup is ignored;
+the resolved provider document is checked and pinned before it can supply data. Removing a site's permission invalidates only that provider; removing
 the shared `scripting` permission invalidates both. Invalidation reaches the panel before
 terminal worker replies. Panel-owned timers cover a suspended/unresponsive worker; reconnect is
 explicit through the Connect action. Incognito is disabled. Listeners for disconnected ports,
-timers, abort subscriptions, and scopes are released.
+timers, abort subscriptions, and scopes are released. A strict empty `keepalive`/`alive` exchange
+every 20 seconds keeps the worker active while the panel has connected scopes, without provider
+reads or consuming request IDs. It stops when connections/panel close; unexpected worker loss still
+fails closed. Only unchanged inactive connection-owned tabs are removed during cleanup.
 Invalidation events carry generations; delayed cancellation/navigation events cannot clear a newer
 selection or cause its fresh reply to be discarded.
+The search client's 256-request budget closes both the search capability and shared access transport
+when exhausted, so explicit reconnect creates fresh clients. Provider-tab cleanup is tracked per
+provider; a new selection waits for prior owned-tab removal, with lifecycle checks before lookup.
 
 Every document check creates a new opaque ephemeral partition/generation, including checks in the
 same document. There is no private-data cache or persistence. This access foundation does not itself
@@ -235,8 +295,9 @@ It validates keyword requests, applies provider and available-date filters, coal
 conversations and retains independent failures and coverage. Cancellation, query replacement,
 scope retirement, deadlines, call/result budgets and rate-limit cooldowns bound work. See the
 [engine reference](keyword-search.md) for policy defaults, timezone helpers and lifecycle ownership.
-The development panel does not yet compose this engine. Tests use fictional ports and real
-adapters with synthetic transports; live panel search acceptance remains separate.
+The shadcn/ui panel composes this engine through the validated runtime search bridge. Tests use
+fictional ports and real adapters with synthetic transports; authenticated docked-panel acceptance
+remains separate. See the [side panel reference](sidepanel.md).
 
 ## ChatGPT adapter
 
@@ -244,7 +305,7 @@ adapters with synthetic transports; live panel search acceptance remains separat
 enrichment through a trusted `ChatGptReadPort`. The no-port constructor stays unavailable.
 `createChatGptProvider(binding)` supplies the concrete Chrome host for a live
 `AccessBroker.bindSelectedDocument(scope)` capability. This is an in-process factory, not a new
-runtime URL/header/code operation, and it is not yet composed into the side panel.
+runtime URL/header/code operation. The panel search composition now uses this factory.
 
 The host pins the selected regular tab and Chrome document ID, checks permission/owning context
 before and after work, and invalidates interrupted reads. The isolated reader compares fresh server
@@ -258,7 +319,7 @@ Synthetic fixtures are handwritten. Actual extension proof is recorded separatel
 ready session, five native-matching keyword results, four exact API excerpts, a successful empty
 query, and a partial 50-row list. Original-link reopen and same-account/source-preservation checks
 passed. Rendered message equivalence and live forced logout/workspace/error scenarios were not
-established. Search orchestration and panel UI remain separate tasks.
+established. The panel now invokes keyword search; list/message enrichment remains outside its UI.
 
 ## Google Search AI Mode adapter
 
@@ -269,8 +330,9 @@ boundaries, native request forms, normalization, rendered evidence, failure mapp
 `GoogleAiModeReadPort`. A missing port keeps the original unavailable behavior. `search(request,
 context)` and `list(request, context)` validate the normalized request and selected scope, then
 validate the port result and provider response. `inspectSession` reports ready only after a valid
-identity inspection. The platform now supplies a concrete Chrome host. Search orchestration and panel search controls
-remain outside this adapter; the development panel still selects access only.
+identity inspection. The platform supplies a concrete Chrome host. The runtime bridge composes this
+adapter with
+the keyword engine for panel searches; list/rendered-message enrichment remains outside the UI.
 
 `wire.ts` owns the observed GET forms, XSSI JSON parsing, positional records, link policy and HTTP
 failure mapping. Native verification on October 15, 2026 established keyword matches whose
@@ -288,15 +350,23 @@ remain enforced. Original links use only the observed four metadata pairs on the
 unknown, mismatched or unsafe link parameters are rejected. A native temporary-tab check verified
 that the metadata-only link reopens the saved thread under the same account.
 
-The two timestamp pairs lack verified creation/update meanings. They are omitted from normalized
-dates, and a date constraint adds `unknown-dates` coverage. The adapter never invents a timezone,
-midnight instant, creation date or last-update semantic from positional numbers or relative labels.
+Search/list normalize the first native record timestamp pair as `provider-record` with
+`provider-metadata` provenance. The exact creation/update meaning is unverified; the card describes
+it as a provider date. Strict seconds/nanoseconds validation leaves malformed optional dates unknown.
+A visible question date already in the pinned source document overrides native metadata only for
+that source thread. Full English dates retain their day; valid 24-hour clock-only labels use the
+observation’s local day in the query/browser timezone. `calendarDay` records day precision and the
+explicit today fallback, with message-sent/rendered-message provenance. Search/list create no tabs,
+perform no per-candidate date reads and do not wait for conversation rendering. Account/scope/
+permission/context changes still fail closed.
+The [adapter reference](google-ai-mode-adapter.md#conversation-dates) describes parsing and provenance.
 
 `document-read.ts` is self-contained code serialized into Chrome’s isolated world. It performs
 only fixed same-origin GET operations with browser-managed authentication, manual redirects, an
 8-second deadline, a 3 MB streaming response cap, bounded document concurrency and explicit abort
-cleanup. Before and after a data read, it fetches a fresh AI Mode landing page and compares its
-account control with the selected document. Only a local partition-salted SHA-256 fingerprint can
+cleanup. Before and after a data read, it fetches the fixed Google homepage (`https://www.google.com/`)
+and compares its account control with the selected document. Only a local partition-salted SHA-256
+fingerprint can
 leave the identity check; account email/labels are not returned or logged. A changed/missing identity
 prevents success. Nondefault account selectors are currently unavailable rather than silently read
 through the default account. This reader passed native and actual unpacked-extension isolated-world checks using the existing
@@ -319,9 +389,11 @@ old evidence access.
 the same request, then uses the host's optional `openEvidence` capability. It cannot accept arbitrary
 URLs or fabricate full messages. The reader supports only bounded exact text from the observed
 rendered last-turn block. Native reopening showed two saved answers, but no complete-message API was
-observed. Evidence coverage remains unknown with `missing-evidence`. The concrete host owns the temporary tab, validates its URL and Chrome document ID, rechecks the
-source context/account, and closes the tab in `finally`, including late creation after cancellation.
-It creates passive tabs so the selected source tab remains active.
+observed. Evidence coverage remains unknown with `missing-evidence`. The concrete host reuses a
+complete matching conversation when available, or opens an owned temporary tab. It validates the URL
+and Chrome document ID, rechecks the source context/account and preserves reused user tabs. Only
+owned tabs are closed in `finally`, including late creation after cancellation.
+It creates passive tabs without activating or replacing the pinned source document.
 
 `src/platform/google-ai-mode.ts` exports `createGoogleAiModeProvider(binding)` and
 `ChromeGoogleAiModeReadPort`. Trusted composition obtains an in-process capability from
@@ -331,7 +403,7 @@ never serialized into a page or runtime message. Source reads revalidate the own
 optional permission, selected regular tab, exact URL, current scope and pinned top-level document.
 Each data injection validates Chrome’s returned frame/document metadata separately from its payload.
 
-The host observes navigation, removal/replacement, activation/focus and permission removal during
+The host observes bound-source navigation, removal/replacement and permission removal during
 operations. It aborts the isolated reader, discards late output, settles unresponsive Chrome calls
 within 9.5 seconds and removes operation listeners/timers. Rendered evidence additionally checks
 the original source identity before opening and after reading the temporary thread. The adapter’s
@@ -355,8 +427,9 @@ inspection. Listing disclosed `partial`/`result-limit`; search retained `unknown
 The actual toolbar panel initially interrupted its connection because sender document metadata was
 absent. A temporary service-worker diagnostic confirmed Chrome supplied only extension ID/URL/origin.
 After the conservative context-resolution fix and reload, the panel’s Connect action selected the
-site. Its setup-only message still says account/search access is unverified: it does not invoke the
-new provider adapter. This selection check is distinct from the isolated provider-read evidence.
+site. At that time its setup-only message reported account/search access as unverified and did not
+invoke the provider adapter. The current keyword panel now invokes it through the runtime bridge.
+This selection check is distinct from the isolated provider-read evidence.
 
 The concrete host then reopened one retrieved original link in an owned background tab, returned
 one exact 2,000-character rendered excerpt, closed the tab and preserved the source URL. This is
@@ -367,9 +440,13 @@ Native development automation is not a runtime dependency or an installation req
 
 Synthetic tests separately cover HTTP failures, account changes, cancellation, invalid Chrome
 metadata and cleanup. Live tests observed successful HTTP 200 reads; they did not force logout,
-429 responses or account switches. Full panel search, multi-window interaction, comprehensive
-accessibility, ChatGPT authentication, locale hosts and nondefault Google accounts still need their
-own implementation/acceptance. No extension-origin fetch or main-world bridge is used.
+429 responses or account switches. Authenticated docked-panel search and native multi-window
+interaction still need live acceptance.
+Shared UI has synthetic component and isolated Chromium checks for narrow layout, keyboard/focus,
+cancellation/reconnect, bundled tokens and MV3 CSP. The native side panel additionally passed real
+client/broker/adapter/isolated-reader keyword searches with synthetic HTTP responses after tab switches. This does not establish
+screen-reader compatibility, provider authentication, locale hosts or nondefault Google accounts.
+No extension-origin fetch or main-world bridge is used.
 
 ## Data and artifacts
 
