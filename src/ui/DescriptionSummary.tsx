@@ -2,7 +2,7 @@ import { rankingReferencesCandidates } from '../contracts';
 import type { Candidate, DescriptionReport, ModelRanking } from '../contracts';
 
 const noticeText: Record<DescriptionReport['notices'][number], string> = {
-  'limited-vocabulary': 'Topic vocabulary is limited; matches can be missed.',
+  'literal-keywords': 'Fallback matches literal words; related meanings can be missed.',
   'ambiguous-date':
     'The date wording is ambiguous or unsupported. Use the date controls to constrain results.',
   'explicit-date-precedence': 'The explicit date filter takes precedence over the description.',
@@ -30,7 +30,7 @@ export function DescriptionSummary({
     >
       <p>
         {report.strategy === 'keyword-topic-fallback'
-          ? 'Keyword/topic fallback matching'
+          ? 'Literal keyword fallback'
           : 'Model-assisted matching with verified evidence'}
       </p>
       <p>Search terms: {report.terms.join(', ')}</p>

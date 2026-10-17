@@ -200,7 +200,7 @@ reconnect, coalesce repeated releases, preserve cancellation/closure and isolate
 `npm test -- tests/description tests/ui/description.test.tsx` exercises a fictional login-security,
 portfolio-deployment, database-performance and last-month corpus, including native keyword retrieval,
 expected first matches and exact supporting evidence. These cases evaluate the limited deterministic
-vocabulary, without claiming general semantic recall or live-provider/model quality.
+literal fallback, without claiming general semantic recall or live-provider/model quality.
 
 Regressions cover explicit provider/date precedence, browser timezone month boundaries, unknown and
 ambiguous dates, scoped cross-query deduplication, conflicting metadata, candidate/excerpt/query/result
@@ -215,3 +215,23 @@ and stale-result clearing. Real panel/client composition proves only normalized 
 cross the bridge. The isolated native-panel Chromium smoke repeats description retrieval over both
 real adapters with synthetic HTTP, requiring evidence explanations and unchanged tabs. It does not
 use personal accounts or prove live description recall or model availability.
+
+## On-device description AI and cross-query references
+
+`npm test -- tests/description/on-device tests/ui/local-ai-settings.test.tsx` covers availability,
+explicit download/enable, monotonic progress, cancellation/deadlines, obsolete availability/creation,
+fresh cloned sessions, context/output budgets, strict output validation and cleanup on account change.
+Synthetic interpretation/ranking tests include unrelated topics without fixed category dictionaries.
+They prove the ports and grounding behavior, not Gemini Nano semantic quality or latency.
+
+Real ChatGPT adapter regression fixtures reorder conversations across keyword responses, reuse row
+IDs and supply different exact snippets for the same thread. Before the collection fix this produces
+`schema-changed`; after it, links/text remain bound to the correct scoped conversation and aggregate
+candidate/evidence references remain distinct. Native-panel smoke also makes separate ChatGPT keyword
+responses reuse row zero for different conversations, requiring both matches without provider failure.
+
+The Chromium smoke records real local API availability before injecting a synthetic model. In the
+verified test configuration the API exists but reports unavailable; actual inference/quality is not
+verified. A synthetic model then exercises opt-in, interpretation and evidence ranking through the
+native panel and provider runtime with intercepted HTTP. Profiles/copies are temporary; no personal
+account data, model download or hosted upload enters automated tests.

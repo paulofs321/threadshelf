@@ -71,7 +71,7 @@ describe('shared description presentation', () => {
     const user = userEvent.setup();
     const { retrieval } = panel();
     await submit();
-    expect(screen.getByText('Keyword/topic fallback matching')).toBeTruthy();
+    expect(screen.getByText('Literal keyword fallback')).toBeTruthy();
     expect(screen.getByText(/Available date: Sep 1, 2026/)).toBeTruthy();
     expect(screen.getByRole('combobox', { name: 'Sort results' })).toHaveProperty(
       'value',
@@ -81,7 +81,7 @@ describe('shared description presentation', () => {
     await user.click(screen.getByText('Why this matched'));
     expect(screen.getByText('Selected evidence from this conversation:')).toBeTruthy();
     expect(screen.getByRole('link').getAttribute('href')).toContain('/threads/security');
-    expect(retrieval.search.mock.calls).toHaveLength(3);
+    expect(retrieval.search.mock.calls).toHaveLength(1);
     expect(retrieval.search.mock.calls.every(([input]) => input.query.mode === 'keyword')).toBe(
       true,
     );
@@ -180,9 +180,9 @@ describe('shared description presentation', () => {
     });
     await act(async () => pending.resolve({}));
     expect(screen.queryByRole('article')).toBeNull();
-    expect(screen.queryByText('Keyword/topic fallback matching')).toBeNull();
+    expect(screen.queryByText('Literal keyword fallback')).toBeNull();
     await submit('authentication');
-    expect(screen.queryByText('Keyword/topic fallback matching')).toBeNull();
+    expect(screen.queryByText('Literal keyword fallback')).toBeNull();
   });
   it('cancels description retrieval with accessible status and no evidence leakage', async () => {
     const pending = deferred();
@@ -232,7 +232,7 @@ describe('shared description presentation', () => {
         'ambiguous-date',
         'explicit-date-precedence',
         'model-unavailable',
-        'limited-vocabulary',
+        'literal-keywords',
       ],
       ranking: { requestId: request().requestId, selections: [] },
     };
@@ -250,7 +250,7 @@ describe('shared description presentation', () => {
       </ResultTabs>,
     );
     const articles = () => within(screen.getByRole('tabpanel')).getAllByRole('article');
-    expect(articles()[0]?.textContent).toContain('Lighthouse');
+    expect(articles()[0]?.textContent).toContain('Old authentication notebook');
     await user.selectOptions(screen.getByRole('combobox', { name: 'Sort results' }), 'recent');
     await user.click(screen.getByRole('tab', { name: /Google AI Mode/ }));
     expect(articles()).toHaveLength(2);

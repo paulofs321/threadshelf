@@ -9,6 +9,7 @@ import { deferred, event } from '../platform/helpers';
 import { CandidateSchema, SearchRequestSchema, requireValid } from '../../src/contracts';
 import type { SearchCommand } from '../../src/platform/search-protocol';
 import { chatCandidate } from '../fixtures/contracts';
+import { fixture as localModelFixture } from '../description/on-device/helpers';
 
 const chrome = vi.hoisted(() => ({
   permissions: { request: vi.fn() },
@@ -99,6 +100,7 @@ afterEach(() => {
   cleanup();
   ports.splice(0);
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe('side-panel permission and operation flow with real AccessClient', () => {
@@ -598,7 +600,7 @@ it('composes description retrieval locally over real validated keyword messages 
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
   });
-  expect(screen.getByText('Keyword/topic fallback matching')).toBeTruthy();
+  expect(screen.getByText('Literal keyword fallback')).toBeTruthy();
   expect(screen.getByRole('article')).toBeTruthy();
   const commands = port.postMessage.mock.calls.flatMap(([command]) =>
     command.operation === 'keyword-search' ? [command] : [],
@@ -614,5 +616,76 @@ it('composes description retrieval locally over real validated keyword messages 
       status: 'scope-changed',
     }),
   );
+  expect(screen.queryByRole('article')).toBeNull();
+});
+
+it('enables optional local inference only after a user action and clears sessions on disable', async () => {
+  const f = localModelFixture();
+  vi.stubGlobal('LanguageModel', f.factory);
+  render(<AccessPanel />);
+  await select();
+  const port = ports[0];
+
+  if (!port) throw new Error('Fixture port');
+
+  port.postMessage.mockImplementation((command) => {
+    if (command.operation !== 'keyword-search') return;
+
+    const scope = command.request.scopes[0];
+    const item = requireValid(CandidateSchema, {
+      ...chatCandidate,
+      scope,
+      conversationId: '11111111-1111-1111-1111-111111111111',
+      originalUrl: 'https://chatgpt.com/c/11111111-1111-1111-1111-111111111111',
+    });
+    port.onMessage.emit({
+      kind: 'search-result',
+      outcome: {
+        requestId: command.request.requestId,
+        state: 'success',
+        results: [item.id],
+        outcomes: [
+          {
+            requestId: command.request.requestId,
+            scope,
+            status: 'success',
+            candidates: [item],
+            coverage: { extent: 'complete', reasons: [] },
+          },
+        ],
+        coverage: { extent: 'complete', reasons: [] },
+      },
+    });
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Continue to search' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Search settings' }));
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Check AI support' })));
+  expect(f.factory.create).not.toHaveBeenCalled();
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Enable local AI' })));
+  expect(f.factory.create).toHaveBeenCalledOnce();
+  f.session.prompt
+    .mockResolvedValueOnce(JSON.stringify({ topics: ['library'], keywords: [] }))
+    .mockResolvedValueOnce(
+      JSON.stringify({
+        selections: [
+          {
+            candidateId: chatCandidate.id,
+            score: 0.9,
+            evidenceIds: [chatCandidate.evidence[0]?.id],
+          },
+        ],
+      }),
+    );
+  fireEvent.change(screen.getByRole('combobox', { name: 'Search mode' }), {
+    target: { value: 'description' },
+  });
+  fireEvent.change(screen.getByRole('searchbox'), {
+    target: { value: 'Where did we talk about floating libraries?' },
+  });
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Search$/ })));
+  expect(screen.getByText('Model-assisted matching with verified evidence')).toBeTruthy();
+  expect(f.session.prompt).toHaveBeenCalledTimes(2);
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Disable local AI' })));
+  expect(f.base.destroy).toHaveBeenCalledOnce();
   expect(screen.queryByRole('article')).toBeNull();
 });

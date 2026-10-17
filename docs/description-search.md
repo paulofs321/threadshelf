@@ -1,18 +1,20 @@
 # Grounded description search
 
 Select **Description** in Search settings and describe the conversation you want to find. This build
-uses **keyword/topic fallback matching**, with a small English vocabulary for authentication/security,
-deployment/hosting and database/performance, plus literal terms for other topics. It does not run an
-AI model or promise semantic search quality. Native provider search and snippet limits still apply.
+supports optional **on-device AI** to interpret descriptions about arbitrary topics and rank retrieved
+evidence. Enable it in **Search settings → AI description search** on a compatible Chrome/device.
+When it is off, unavailable or fails, **literal keyword fallback** extracts content words from your
+description. There are no topic-specific dictionaries. Native provider search and snippet limits
+still apply. See [local AI](on-device-ai.md) for setup and evidence limits.
 
 `DescriptionSearch` implements `SearchPort` in `src/description`. The panel's `SearchModes` composition
 routes description requests through it and leaves direct keyword requests with `PanelSearchClient`.
 Only normalized keyword searches cross the existing validated worker bridge. Shared presentation has
-no browser or provider imports. No permissions, dependencies, persistent caches or uploads are added.
+no browser or provider imports. No permissions, persistent caches or uploads are added. Chrome AI type definitions are a pinned development dependency.
 
 ## Pipeline
 
-1. Interpret a validated description into bounded topics/keywords and an optional available-date
+1. Use the optional model to interpret a validated description into bounded topics/keywords; otherwise extract literal words and an optional available-date
    interval. “Last month” uses the supplied clock and browser timezone to mean the previous calendar
    month. Explicit provider selections and date controls remain authoritative. Other recognized date
    wording is labeled ambiguous/unsupported; use date controls to resolve it.
@@ -33,20 +35,20 @@ no browser or provider imports. No permissions, dependencies, persistent caches 
    references into exact text. No model-generated narrative, quote, date or link is accepted.
 
 The synthetic corpus's four cases retrieve the authored first matches and supporting evidence. It
-is a small regression corpus, not an estimate of recall across real accounts. Limited vocabulary,
+is a small regression corpus, not an estimate of recall across real accounts. Literal fallback,
 query budgets, missing snippets and provider search behavior can miss relevant conversations.
 
 ## Bounds and outcomes
 
-| Boundary                             | Default / hard maximum                                                    |
-| ------------------------------------ | ------------------------------------------------------------------------- |
-| Native query terms                   | 3 / 8, at most two selected providers per term                            |
-| Collected candidates                 | 100 per provider, shared contract bound                                   |
-| Evidence                             | 8 items per candidate; 2,000 UTF-16 units each; 64,000 units per provider |
-| Ranking context                      | 100 candidates and 64,000 evidence units total across providers           |
-| Selected results                     | 50 / 100                                                                  |
-| Optional interpreter or ranker stage | 3 seconds / 10 seconds                                                    |
-| Complete description request         | 45 seconds / 60 seconds                                                   |
+| Boundary                             | Default / hard maximum                                                       |
+| ------------------------------------ | ---------------------------------------------------------------------------- |
+| Native query terms                   | 3 / 8, at most two selected providers per term                               |
+| Collected candidates                 | 100 per provider, shared contract bound                                      |
+| Evidence                             | 8 items per candidate; 2,000 UTF-16 units each; 64,000 units per provider    |
+| Ranking context                      | 100 candidates and 64,000 evidence units total across providers              |
+| Selected results                     | 50 / 100                                                                     |
+| Optional interpreter or ranker stage | 10 seconds in the side panel / 10 seconds (generic port default: 3 seconds)  |
+| Complete description request         | 60 seconds in the side panel / 60 seconds (generic port default: 45 seconds) |
 
 Topic/keyword plans each allow eight terms of 128 UTF-16 units. The ranking context prefers lexical
 matches before remaining retrieved excerpts. Missing/omitted evidence and reached budgets are
@@ -79,8 +81,9 @@ split a surrogate pair. Duplicate references, unknown evidence, stale requests a
 or prose fail validation. Retrieved instructions remain inert evidence with no privileged tools.
 
 Invalid, throwing, unsupported or timed-out stages use deterministic fallback with an explicit notice.
-Successful optional stages are labeled model-assisted. The production composition injects no model;
-on-device runtime support, model downloads and quality evaluation remain future work. Hosted
-processing is disabled and never used as a fallback.
-
-See [testing](testing.md) for synthetic checks and their integration limits.
+Successful optional stages are labeled model-assisted. The panel injects the on-device model only
+after explicit enablement. Each stage clones an instruction-only session, checks context limits and
+destroys the clone after use; queries/evidence are not carried into another request. Disable, account
+change, cancellation and panel closure destroy obsolete model state. Hosted processing remains
+disabled. See [local AI verification](on-device-ai.md) and [testing](testing.md) for actual versus
+synthetic evidence.

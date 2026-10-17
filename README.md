@@ -46,8 +46,9 @@ continuation and complete-message/history coverage remain unresolved. Unknown da
 complete-history coverage is never claimed. Live checks are separate from synthetic tests. See the
 [Google Search AI Mode adapter](docs/google-ai-mode-adapter.md) for the technical reference.
 
-Without a selected-document binding, either adapter remains unavailable. Model inference,
-persistent storage, demo and release packaging remain unimplemented. GitHub Actions runs locked
+Without a selected-document binding, either adapter remains unavailable. Optional local AI is
+available through the side-panel document when Chrome supports it. Persistent storage, demo and
+release packaging remain unimplemented. GitHub Actions runs locked
 installation, tests, lint, type/format checks and the Chrome build on pull requests and pushes to
 `main`. Internal provider website interfaces are undocumented and may change.
 
@@ -108,11 +109,12 @@ Provider adapters will use permitted browser contexts and existing logged-in ses
 will not collect passwords, export browser credentials, or require “Allow JavaScript from Apple
 Events.” Private sessions and messages must stay out of logs, fixtures, Git, demos, and packages.
 
-Description search currently uses deterministic keyword/topic fallback with a limited vocabulary.
-“Last month” means the previous calendar month in the browser timezone; explicit date controls
-take precedence. Ambiguous dates are disclosed. Interpreter/ranker ports validate candidate and exact
-evidence references. Optional on-device inference remains planned; no model runs in this build.
-Hosted processing would require an opt-in explanation of which excerpts leave the browser and separate infrastructure; it is not enabled.
+Description search supports optional on-device AI interpretation and evidence ranking for arbitrary
+topics. Enable it under **Search settings → AI description search**; Chrome may need a model download.
+The fallback extracts literal keywords without topic dictionaries. Explicit filters remain authoritative;
+“last month” uses the browser timezone. Model references and exact evidence are validated before display.
+See [local AI setup and limits](docs/on-device-ai.md) for device support and verification status.
+Hosted processing is disabled; private excerpts are never silently uploaded.
 
 The future static demo will use fictional conversations and share suitable UI/search code without
 provider access or private storage. Extension ZIP packaging and GitHub Pages readiness remain

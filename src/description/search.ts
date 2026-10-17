@@ -16,6 +16,7 @@ import type {
   Coverage,
   DescriptionReport,
   InterpreterPort,
+  ModelPort,
   LinkVerifiers,
   OperationContext,
   ProviderId,
@@ -46,6 +47,7 @@ export interface DescriptionSearchOptions {
   now(): string;
   freshId(): string;
   interpreter?: InterpreterPort;
+  model?: () => ModelPort | undefined;
   ranker?: RankerPort;
   policy?: Partial<v.InferOutput<typeof PolicySchema>>;
 }
@@ -170,7 +172,8 @@ export class DescriptionSearch implements SearchPort {
       },
     };
 
-    const interpreter = this.options.interpreter;
+    const model = this.options.model?.();
+    const interpreter = this.options.interpreter ?? model;
 
     if (interpreter) {
       const raw = await this.bounded(interpreter, run, (context) =>
@@ -298,7 +301,7 @@ export class DescriptionSearch implements SearchPort {
 
     let ranking = rankKeywords(effective, candidates, plan);
 
-    const ranker = this.options.ranker;
+    const ranker = this.options.ranker ?? model;
 
     if (ranker && candidates.length > 0) {
       const raw = await this.bounded(ranker, run, (context) =>
@@ -321,7 +324,7 @@ export class DescriptionSearch implements SearchPort {
     const report: DescriptionReport = {
       strategy: assisted ? 'model-assisted' : 'keyword-topic-fallback',
       terms,
-      notices: [...new Set(notices)],
+      notices: [...new Set(notices.filter((notice) => !assisted || notice !== 'literal-keywords'))],
       ranking,
       ...(effective.query.dateRange ? { dateRange: effective.query.dateRange } : {}),
     };

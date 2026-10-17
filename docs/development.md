@@ -464,4 +464,5 @@ decisions. Local builds can be inspected with Developer mode as described in the
 
 Description search runs in the panel document over the existing normalized keyword transport.
 See the [description pipeline](description-search.md) for its ports, budgets, grounding and fallback
-policy. No model implementation, hosted request, dependency or permission is added.
+policy. Optional document-owned Chrome Prompt API integration is described in [local AI](on-device-ai.md).
+Only pinned development type definitions are added; no hosted request or new permission is used.

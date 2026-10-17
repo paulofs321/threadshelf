@@ -209,6 +209,7 @@ try {
   const chatFixtures = await fixtureModule('chatgpt');
   const googleFixtures = await fixtureModule('google-ai-mode');
   let keywordReads = 0;
+  let chatSearchReads = 0;
   let googleResultThread = googleFixtures.googleThread('fictional-unopened-thread');
   googleResultThread[5] = [Date.parse('2026-10-13T12:00:00.000Z') / 1000, 0];
   await context.unroute(/^https?:/);
@@ -220,11 +221,17 @@ try {
 
     if (url.origin === 'https://chatgpt.com' && url.pathname === '/backend-api/global/search') {
       keywordReads++;
+      chatSearchReads++;
+      const body = chatFixtures.searchBody();
 
-      return route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify(chatFixtures.searchBody()),
-      });
+      // Distinct conversations reuse chatgpt:0 in separate native responses. Description
+      // collection must allocate independent references instead of failing the provider.
+      if (chatSearchReads === 5) {
+        body.items[0].payload.conversation_id = chatFixtures.otherConversationId;
+        body.items[0].snippet = 'A second fictional orchard excerpt.';
+      }
+
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
     }
 
     if (url.origin === 'https://www.google.com' && url.pathname === '/')
@@ -348,9 +355,33 @@ try {
   await expect
     .poll(async () => await drive('snapshot'))
     .toMatchObject({
-      results: 2,
-      explanations: 2,
-      notes: expect.arrayContaining([expect.stringContaining('Keyword/topic fallback matching')]),
+      results: 3,
+      explanations: 3,
+      notes: expect.arrayContaining([expect.stringContaining('Literal keyword fallback')]),
+    });
+  assert.deepEqual(await tabIds(), beforeSearchTabs);
+  assert.equal(searchCreatedPages, 0);
+  await drive('check-ai');
+  await expect.poll(async () => (await drive('snapshot')).aiStatus).not.toContain('Checking');
+  const nativeAi = await drive('snapshot');
+  process.stdout.write(
+    `Native-panel local AI capability (before synthetic injection): ${JSON.stringify({ api: nativeAi.aiApi, status: nativeAi.aiStatus })}\n`,
+  );
+  await drive('synthetic-ai');
+  await expect
+    .poll(async () => (await drive('snapshot')).aiStatus)
+    .toContain('Local AI is available');
+  await drive('enable-ai');
+  await expect.poll(async () => (await drive('snapshot')).aiStatus).toContain('Local AI enabled');
+  await drive('search');
+  await expect
+    .poll(async () => await drive('snapshot'))
+    .toMatchObject({
+      results: 1,
+      explanations: 1,
+      notes: expect.arrayContaining([
+        expect.stringContaining('Model-assisted matching with verified evidence'),
+      ]),
     });
   assert.deepEqual(await tabIds(), beforeSearchTabs);
   assert.equal(searchCreatedPages, 0);
@@ -358,7 +389,7 @@ try {
   assert.deepEqual(errors, []);
 
   process.stdout.write(
-    'Chromium MV3 UI smoke passed: production mount/theme; real native-panel runtime/providers with synthetic transport; zero new tabs across native/visible/time-only date and grounded description searches; synthetic cancellation/reconnect; compact previews; keyboard/focus; 240–400px; no external requests or CSP errors.\n',
+    'Chromium MV3 UI smoke passed: production mount/theme; real native-panel runtime/providers with synthetic transport; zero new tabs across native/visible/time-only date and grounded description searches; synthetic on-device interpretation/ranking; synthetic cancellation/reconnect; compact previews; keyboard/focus; 240–400px; no external requests or CSP errors.\n',
   );
 } finally {
   await context?.close();

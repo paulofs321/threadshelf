@@ -117,7 +117,7 @@ export const DescriptionReportSchema = v.strictObject({
   notices: v.pipe(
     boundedArray(
       v.picklist([
-        'limited-vocabulary',
+        'literal-keywords',
         'ambiguous-date',
         'explicit-date-precedence',
         'model-unavailable',
