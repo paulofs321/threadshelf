@@ -51,34 +51,27 @@ describe('cross-query collection budgets and scoped deduplication', () => {
 
     expect(JSON.stringify([a, b])).toBe(before);
   });
-  it.each(['title', 'date', 'id', 'evidence'] as const)(
-    'fails closed on conflicting %s',
-    (field) => {
-      const repeat = structuredClone(original);
+  it.each(['title', 'date'] as const)('fails closed on conflicting %s', (field) => {
+    const repeat = structuredClone(original);
 
-      if (field === 'title') {
-        repeat.title = 'Different';
-        repeat.evidence = repeat.evidence.filter((item) => item.source !== 'title');
-      }
+    if (field === 'title') {
+      repeat.title = 'Different';
+      repeat.evidence = repeat.evidence.filter((item) => item.source !== 'title');
+    }
 
-      if (field === 'id') repeat.conversationId = 'other' as typeof repeat.conversationId;
+    const first = structuredClone(original);
 
-      if (field === 'evidence' && repeat.evidence[1]) repeat.evidence[1].text = 'Different';
+    if (field === 'date') {
+      first.date = {
+        at: '2026-01-01T00:00:00.000Z',
+        meaning: 'conversation-updated',
+        source: 'provider-metadata',
+      };
+      repeat.date = { ...first.date, at: '2026-02-01T00:00:00.000Z' };
+    }
 
-      const first = structuredClone(original);
-
-      if (field === 'date') {
-        first.date = {
-          at: '2026-01-01T00:00:00.000Z',
-          meaning: 'conversation-updated',
-          source: 'provider-metadata',
-        };
-        repeat.date = { ...first.date, at: '2026-02-01T00:00:00.000Z' };
-      }
-
-      expect(combine(success([first]), success([repeat])).status).toBe('schema-changed');
-    },
-  );
+    expect(combine(success([first]), success([repeat])).status).toBe('schema-changed');
+  });
   it('fills absent metadata and propagates partial/unknown coverage', () => {
     const blank = structuredClone(original);
     delete blank.title;
@@ -206,3 +199,56 @@ it('appends distinct scoped conversations within budgets', () => {
   if (result.status === 'success')
     expect(result.candidates.map((item) => item.id)).toEqual(['first', 'second']);
 });
+
+it('isolates valid snippet variants that reuse response-local evidence IDs', () => {
+  const repeat = structuredClone(original);
+
+  if (repeat.evidence[1]) repeat.evidence[1].text = 'Different verified snippet';
+
+  const result = combine(success([original]), success([repeat]));
+  expect(result.status).toBe('success');
+
+  if (result.status === 'success') {
+    expect(result.candidates[0]?.evidence.map((item) => item.text)).toContain(
+      'Different verified snippet',
+    );
+    expect(result.candidates[0]?.evidence).toHaveLength(3);
+  }
+});
+
+it('allocates aggregate IDs without aliasing even when generated namespaces are present', () => {
+  const first = structuredClone(original);
+  first.id = 'description:chatgpt:2' as typeof first.id;
+  const second = candidate('second', 'One', 'Two');
+  const incoming = candidate('new', 'Three', 'Four');
+  incoming.id = second.id;
+  const result = combine(success([first, second]), success([incoming]));
+
+  if (result.status === 'success') {
+    expect(result.candidates).toHaveLength(3);
+    expect(result.candidates[2]?.id).toBe('description:chatgpt:3');
+  }
+});
+
+it.each([2000, undefined])(
+  'retains rate-limit metadata and earlier evidence: %s',
+  (retryAfterMs) => {
+    const previous = success([original]);
+    const before = JSON.stringify(previous);
+    const result = combine(previous, {
+      requestId: query.requestId,
+      scope: chatScope,
+      status: 'rate-limited',
+      ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+    });
+    expect(result.status).toBe('success');
+
+    if (result.status === 'success') {
+      expect(result.candidates).toEqual([original]);
+      expect(result.coverage).toEqual({ extent: 'partial', reasons: ['provider-failure'] });
+      expect(result.rateLimit).toEqual(retryAfterMs === undefined ? {} : { retryAfterMs });
+    }
+
+    expect(JSON.stringify(previous)).toBe(before);
+  },
+);

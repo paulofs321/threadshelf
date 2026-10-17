@@ -7,18 +7,27 @@ import type { SearchScreenProps } from '../../src/ui/SearchScreen';
 import { DescriptionSummary, EvidenceExplanation } from '../../src/ui/DescriptionSummary';
 import { ResultTabs } from '../../src/ui/ResultTabs';
 import { SearchModes } from '../../src/description';
-import type { DescriptionReport, SearchPort, SearchRequest } from '../../src/contracts';
+import type {
+  DescriptionReport,
+  ProviderOutcome,
+  SearchPort,
+  SearchRequest,
+} from '../../src/contracts';
 import {
   request,
   chatScope,
   googleScope,
   linkVerifiers,
   candidate,
+  corpus,
 } from '../fixtures/description/corpus';
 import { setup, context, ranking } from '../description/helpers';
 import { deferred } from '../fixtures/search/providers';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function panel(override: Partial<SearchScreenProps> = {}) {
   const fixture = setup();
@@ -90,6 +99,48 @@ describe('shared description presentation', () => {
     await submit('authentication recently');
     expect(screen.getByText(/date wording is ambiguous/)).toBeTruthy();
   });
+  it.each([2000, undefined])(
+    'retains earlier matches and enforces a later rate limit with retry hint %s',
+    async (retryAfterMs) => {
+      vi.useFakeTimers();
+      const { engine, native, google } = setup();
+      google.search
+        .mockImplementationOnce(async (input): Promise<ProviderOutcome> => ({
+          requestId: input.requestId,
+          scope: input.scope,
+          status: 'success',
+          candidates: [corpus[3]],
+          coverage: { extent: 'complete', reasons: [] },
+        }))
+        .mockImplementation(async (input): Promise<ProviderOutcome> => ({
+          requestId: input.requestId,
+          scope: input.scope,
+          status: 'rate-limited',
+          ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+        }));
+      panel({ search: new SearchModes(native, engine) });
+      await submit('authentication');
+      expect(screen.getByText('Old authentication notebook')).toBeTruthy();
+      expect(screen.getByText(/Rate limited. Earlier matches are retained/)).toBeTruthy();
+      const refresh = screen.getByRole('button', { name: 'Refresh search' });
+      const search = screen.getByRole('button', { name: /^Search$/ });
+      expect(refresh.hasAttribute('disabled')).toBe(true);
+      expect(search.hasAttribute('disabled')).toBe(true);
+      fireEvent.click(refresh);
+      fireEvent.click(search);
+      fireEvent.submit(screen.getByRole('search'));
+      expect(google.search).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync((retryAfterMs ?? 1000) - 1);
+      });
+      expect(refresh.hasAttribute('disabled')).toBe(true);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(refresh.hasAttribute('disabled')).toBe(false);
+      expect(search.hasAttribute('disabled')).toBe(false);
+    },
+  );
   it('edits and mode switches abort pending work and clear late description results', async () => {
     const pending = deferred();
     const interpreter = { interpret: vi.fn(() => pending.promise) };

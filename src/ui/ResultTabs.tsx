@@ -138,6 +138,21 @@ export function ResultTabs({
                   </Alert>
                 ),
             )}
+            {outcomes.map(
+              (item) =>
+                item.status === 'success' &&
+                item.rateLimit && (
+                  <Alert key={item.scope.provider} role="note">
+                    <p className="font-semibold">{providerLabels[item.scope.provider]}</p>
+                    <p>
+                      Rate limited. Earlier matches are retained. Wait before retrying.
+                      {item.rateLimit.retryAfterMs !== undefined
+                        ? ` Retry after ${Math.ceil(item.rateLimit.retryAfterMs / 1000)} seconds.`
+                        : ''}
+                    </p>
+                  </Alert>
+                ),
+            )}
             {matches.map((candidate) => (
               <ResultCard
                 key={candidate.id}

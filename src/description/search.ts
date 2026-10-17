@@ -60,7 +60,7 @@ export class DescriptionSearch implements SearchPort {
   private active: Run | undefined;
   private readonly retired = new Map<ProviderId, SessionScope>();
   private readonly policy: v.InferOutput<typeof PolicySchema>;
-  private readonly occupied = new Set<object>();
+  private readonly occupied = new Map<object, Promise<unknown>>();
 
   constructor(private readonly options: DescriptionSearchOptions) {
     this.policy = requireValid(PolicySchema, {
@@ -340,7 +340,12 @@ export class DescriptionSearch implements SearchPort {
     operation: (context: OperationContext) => Promise<unknown>,
     timeoutMs = this.policy.modelTimeoutMs,
   ): Promise<{ value?: unknown; timeout?: boolean }> {
-    if (run.status || this.occupied.has(owner)) return {};
+    if (run.status) return {};
+
+    const previous = this.occupied.get(owner);
+
+    // Models may fall back while busy; native retrieval must serialize replacements.
+    if (previous && owner !== this.options.retrieval) return {};
 
     const controller = new AbortController();
     let timeout = false;
@@ -353,14 +358,26 @@ export class DescriptionSearch implements SearchPort {
       timeout = true;
       controller.abort();
     }, timeoutMs);
-    this.occupied.add(owner);
-    const pending = Promise.resolve().then(() =>
-      controller.signal.aborted ? undefined : operation({ signal: controller.signal }),
-    );
-    const release = () => this.occupied.delete(owner);
-    void pending.then(release, release);
 
     try {
+      if (previous)
+        await Promise.race([
+          previous.then(
+            () => undefined,
+            () => undefined,
+          ),
+          interrupted,
+        ]);
+
+      if (controller.signal.aborted) return { timeout };
+
+      const pending = Promise.resolve().then(() =>
+        controller.signal.aborted ? undefined : operation({ signal: controller.signal }),
+      );
+      this.occupied.set(owner, pending);
+      const release = () => this.occupied.delete(owner);
+      void pending.then(release, release);
+
       return { value: await Promise.race([pending, interrupted]), timeout };
     } catch {
       return {};

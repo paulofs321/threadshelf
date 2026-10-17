@@ -101,7 +101,11 @@ export function SearchScreen(props: SearchScreenProps) {
   const retryMs = Math.max(
     0,
     ...(outcome?.outcomes.map((item) =>
-      item.status === 'rate-limited' ? (item.retryAfterMs ?? 1000) : 0,
+      item.status === 'rate-limited'
+        ? (item.retryAfterMs ?? 1000)
+        : item.status === 'success' && item.rateLimit
+          ? (item.rateLimit.retryAfterMs ?? 1000)
+          : 0,
     ) ?? []),
   );
 
@@ -151,7 +155,7 @@ export function SearchScreen(props: SearchScreenProps) {
   }
 
   async function submit() {
-    if (reconnectRequired) return;
+    if (reconnectRequired || cooldown) return;
 
     let request;
 

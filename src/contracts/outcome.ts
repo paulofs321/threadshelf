@@ -42,16 +42,23 @@ export const CoverageSchema = v.pipe(
 );
 
 const outcomeEntries = { requestId: RequestIdSchema, scope: SessionScopeSchema };
+const retryAfterMs = v.exactOptional(v.pipe(CountSchema, v.maxValue(limits.retryAfterMs)));
 const SuccessSchema = v.pipe(
   v.strictObject({
     ...outcomeEntries,
     status: v.literal('success'),
     candidates: CandidateListSchema,
     coverage: CoverageSchema,
+    // Earlier reads can remain useful when a later description term is rate limited.
+    rateLimit: v.exactOptional(v.strictObject({ retryAfterMs })),
   }),
   v.check(
     (outcome) => outcome.candidates.every((candidate) => sameScope(candidate.scope, outcome.scope)),
     'Candidates must belong to the outcome scope and generation.',
+  ),
+  v.check(
+    (outcome) => !outcome.rateLimit || outcome.coverage.reasons.includes('provider-failure'),
+    'Retained rate-limited reads must disclose incomplete coverage.',
   ),
 );
 
@@ -73,7 +80,7 @@ export const ProviderOutcomeSchema = v.variant('status', [
   v.strictObject({
     ...outcomeEntries,
     status: v.literal('rate-limited'),
-    retryAfterMs: v.exactOptional(v.pipe(CountSchema, v.maxValue(limits.retryAfterMs))),
+    retryAfterMs,
   }),
 ]);
 

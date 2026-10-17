@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SearchOutcome, SearchPort } from '../../src/contracts';
-import { request, chatScope, now } from '../fixtures/description/corpus';
+import { request, chatScope, now, linkVerifiers } from '../fixtures/description/corpus';
+import { aggregateSearch } from '../../src/search/aggregate';
 import { deferred } from '../fixtures/search/providers';
 import { setup, context } from './helpers';
 
@@ -76,6 +77,110 @@ describe('description lifecycle', () => {
     pending.resolve({} as SearchOutcome);
     await Promise.resolve();
   });
+  it.each(['resolved', 'rejected'] as const)(
+    'waits for an abort-aware replaced retrieval to settle: %s',
+    async (settlement) => {
+      const { native } = setup();
+      const retrieval = {
+        search: vi
+          .fn<SearchPort['search']>()
+          .mockImplementation((input, ctx) => native.search(input, ctx)),
+        invalidate: vi.fn(),
+      };
+      retrieval.search.mockImplementationOnce(
+        (input, ctx) =>
+          new Promise((resolve, reject) => {
+            ctx.signal.addEventListener('abort', () => {
+              queueMicrotask(() => {
+                if (settlement === 'rejected') reject(new Error('Synthetic abort'));
+                else
+                  resolve(
+                    aggregateSearch(
+                      input,
+                      input.scopes.map((scope) => ({
+                        requestId: input.requestId,
+                        scope,
+                        status: 'cancelled',
+                      })),
+                      linkVerifiers,
+                      100,
+                      [],
+                    ),
+                  );
+              });
+            });
+          }),
+      );
+      const { engine } = setup({ retrieval });
+      const old = engine.search(request(), context());
+      await vi.waitFor(() => expect(retrieval.search).toHaveBeenCalledOnce());
+      const current = engine.search(request(), context());
+      expect((await old).state).toBe('cancelled');
+      const result = await current;
+      expect(result.state).toBe('success');
+      expect(result.results).toContain('security');
+      expect(retrieval.search).toHaveBeenCalledTimes(4);
+    },
+  );
+  it('bounds replacement waiting without overlapping an uncooperative retrieval', async () => {
+    vi.useFakeTimers();
+    const pending = deferred<SearchOutcome>();
+    const retrieval = { search: vi.fn(() => pending.promise), invalidate: vi.fn() };
+    const { engine } = setup({ retrieval, policy: { requestTimeoutMs: 10 } });
+    const old = engine.search(request(), context());
+    await vi.advanceTimersByTimeAsync(0);
+    const current = engine.search(request(), context());
+    expect((await old).state).toBe('cancelled');
+    await vi.advanceTimersByTimeAsync(10);
+    const result = await current;
+    expect(result.outcomes.every((item) => item.status === 'timeout')).toBe(true);
+    expect(retrieval.search).toHaveBeenCalledOnce();
+    pending.resolve({} as SearchOutcome);
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  it.each(['cancel', 'invalidate', 'replace'] as const)(
+    'does not dispatch an obsolete waiter after %s',
+    async (action) => {
+      vi.useFakeTimers();
+      const pending = deferred<SearchOutcome>();
+      const { native } = setup();
+      const retrieval = {
+        search: vi
+          .fn<SearchPort['search']>()
+          .mockImplementation((input, ctx) => native.search(input, ctx)),
+        invalidate: vi.fn(),
+      };
+      retrieval.search.mockImplementationOnce(() => pending.promise);
+      const { engine } = setup({ retrieval });
+      const old = engine.search(request(), context());
+      await vi.advanceTimersByTimeAsync(0);
+      const controller = new AbortController();
+      const waiting = engine.search(request(), { signal: controller.signal });
+      expect((await old).state).toBe('cancelled');
+      await vi.advanceTimersByTimeAsync(5);
+      expect(retrieval.search).toHaveBeenCalledOnce();
+      let current: Promise<SearchOutcome> | undefined;
+
+      if (action === 'cancel') controller.abort();
+      else if (action === 'invalidate') engine.invalidate(chatScope);
+      else current = engine.search(request(), context());
+
+      const obsolete = await waiting;
+      expect(obsolete.results).toEqual([]);
+      expect(
+        obsolete.outcomes.every(
+          (item) => item.status === (action === 'invalidate' ? 'scope-changed' : 'cancelled'),
+        ),
+      ).toBe(true);
+      pending.resolve({} as SearchOutcome);
+      await vi.advanceTimersByTimeAsync(0);
+
+      if (current) {
+        expect((await current).results).toContain('security');
+        expect(retrieval.search).toHaveBeenCalledTimes(4);
+      } else expect(retrieval.search).toHaveBeenCalledOnce();
+    },
+  );
   it('invalidates ranking and retired generations while permitting newer scopes', async () => {
     const pending = deferred();
     const ranker = { rank: vi.fn(() => pending.promise) };
