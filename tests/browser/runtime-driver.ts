@@ -92,6 +92,9 @@ browser.runtime.onMessage.addListener((input: unknown, _sender, sendResponse) =>
     aiStatus: document.querySelector('[aria-label="Local AI"] [role="status"]')?.textContent,
     statuses: [...document.querySelectorAll('[role="status"]')].map((item) => item.textContent),
     results: document.querySelectorAll('[role="article"]').length,
+    resultLinks: [...document.querySelectorAll<HTMLAnchorElement>('[role="article"] a')].map(
+      (item) => item.href,
+    ),
     dates: [...document.querySelectorAll<HTMLTimeElement>('[role="article"] time')].map(
       (item) => item.dateTime,
     ),

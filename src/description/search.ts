@@ -275,7 +275,7 @@ export class DescriptionSearch implements SearchPort {
     );
     const eligible = inventory.filter((item) => matchesDateRange(item, effective.query.dateRange));
     // Lexical matches lead the bounded context; remaining retrieved excerpts can be reranked.
-    const preliminary = rankKeywords(effective, eligible, plan);
+    const preliminary = rankKeywords(effective, eligible);
     const scores = new Map(preliminary.selections.map((item) => [item.candidateId, item.score]));
     const pool = eligible
       .filter((item) => item.evidence.length > 0)
@@ -299,7 +299,9 @@ export class DescriptionSearch implements SearchPort {
 
     if (inventory.some((item) => item.evidence.length === 0)) reasons.push('missing-evidence');
 
-    let ranking = rankKeywords(effective, candidates, plan);
+    // Expanded retrieval terms are alternatives, never a replacement for the original intent.
+    let ranking = rankKeywords(effective, candidates);
+    let modelRanked = false;
 
     const ranker = this.options.ranker ?? model;
 
@@ -313,6 +315,7 @@ export class DescriptionSearch implements SearchPort {
         ranking = parsed.value;
         ranking.selections.sort((a, b) => b.score - a.score);
         assisted = true;
+        modelRanked = true;
       } else notices.push(raw.timeout ? 'model-timeout' : 'invalid-model-output');
     }
 
@@ -324,7 +327,9 @@ export class DescriptionSearch implements SearchPort {
     const report: DescriptionReport = {
       strategy: assisted ? 'model-assisted' : 'keyword-topic-fallback',
       terms,
-      notices: [...new Set(notices.filter((notice) => !assisted || notice !== 'literal-keywords'))],
+      notices: [
+        ...new Set(notices.filter((notice) => !modelRanked || notice !== 'literal-keywords')),
+      ],
       ranking,
       ...(effective.query.dateRange ? { dateRange: effective.query.dateRange } : {}),
     };

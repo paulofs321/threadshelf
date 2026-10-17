@@ -355,8 +355,11 @@ try {
   await expect
     .poll(async () => await drive('snapshot'))
     .toMatchObject({
-      results: 3,
-      explanations: 3,
+      // Only the second ChatGPT conversation contains both words together. Other native
+      // candidates match one word, and must remain excluded from description results.
+      results: 1,
+      resultLinks: [`https://chatgpt.com/c/${chatFixtures.otherConversationId}`],
+      explanations: 1,
       notes: expect.arrayContaining([expect.stringContaining('Literal keyword fallback')]),
     });
   assert.deepEqual(await tabIds(), beforeSearchTabs);

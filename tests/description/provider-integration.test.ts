@@ -56,11 +56,18 @@ it('collects real ChatGPT response-local IDs across reordered keyword results an
     linkVerifiers: verifiers,
     now: () => '2026-10-17T10:00:00.000Z',
     freshId: () => `fiction-multi-${++serial}`,
+    interpreter: {
+      interpret: async (input) => ({
+        requestId: input.requestId,
+        topics: ['orchard', 'cultivation', 'pruning'],
+        keywords: [],
+      }),
+    },
   });
   const input = requireValid(SearchRequestSchema, {
     requestId: 'fiction-multi-description',
     query: {
-      text: 'orchard cultivation pruning',
+      text: 'orchard',
       mode: 'description',
       providers: ['chatgpt'],
       timeZone: 'Europe/Zurich',

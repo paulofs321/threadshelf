@@ -48,7 +48,7 @@ export const corpus = [
   candidate(
     'security',
     'Lighthouse login security',
-    'Compare OAuth authentication, password rotation and session security.',
+    'Compare login security using OAuth authentication, password rotation and session security.',
     chatScope,
     '2026-09-12T10:00:00.000Z',
   ),
@@ -62,7 +62,7 @@ export const corpus = [
   candidate(
     'database',
     'Observatory database performance',
-    'SQL database indexing fixes slow queries; compare PostgreSQL query plans.',
+    'Database performance and slow SQL queries improve with indexing; compare PostgreSQL query plans.',
     chatScope,
     '2026-08-02T10:00:00.000Z',
   ),

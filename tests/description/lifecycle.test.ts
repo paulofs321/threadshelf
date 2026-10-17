@@ -119,7 +119,7 @@ describe('description lifecycle', () => {
       const result = await current;
       expect(result.state).toBe('success');
       expect(result.results).toContain('security');
-      expect(retrieval.search).toHaveBeenCalledTimes(4);
+      expect(retrieval.search).toHaveBeenCalledTimes(3);
     },
   );
   it('bounds replacement waiting without overlapping an uncooperative retrieval', async () => {
@@ -177,7 +177,7 @@ describe('description lifecycle', () => {
 
       if (current) {
         expect((await current).results).toContain('security');
-        expect(retrieval.search).toHaveBeenCalledTimes(4);
+        expect(retrieval.search).toHaveBeenCalledTimes(3);
       } else expect(retrieval.search).toHaveBeenCalledOnce();
     },
   );

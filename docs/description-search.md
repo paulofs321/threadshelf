@@ -3,9 +3,16 @@
 Select **Description** in Search settings and describe the conversation you want to find. This build
 supports optional **on-device AI** to interpret descriptions about arbitrary topics and rank retrieved
 evidence. Enable it in **Search settings → AI description search** on a compatible Chrome/device.
-When it is off, unavailable or fails, **literal keyword fallback** extracts content words from your
-description. There are no topic-specific dictionaries. Native provider search and snippet limits
-still apply. See [local AI](on-device-ai.md) for setup and evidence limits.
+When it is off, unavailable or fails, **literal keyword fallback** requires the original description's
+content words together in one evidence passage. There are no topic-specific dictionaries. Native
+provider search and snippet limits still apply. See [local AI](on-device-ai.md) for setup and evidence limits.
+
+Descriptions express a complete intent. Required subjects, relationships, qualifiers and exclusions
+must hold together; independently mentioning some or all search words is insufficient. This applies
+to arbitrary subjects, including locations, food restrictions and remembered TV plots. AI receives the
+original description again when ranking, and is instructed to omit incomplete or uncertain matches.
+Explicit alternatives remain alternatives. Search-term expansion only retrieves candidates; it does
+not replace these matching requirements.
 
 `DescriptionSearch` implements `SearchPort` in `src/description`. The panel's `SearchModes` composition
 routes description requests through it and leaves direct keyword requests with `PanelSearchClient`.
@@ -27,9 +34,12 @@ no browser or provider imports. No permissions, persistent caches or uploads are
    budgets so excluded candidates cannot crowd out eligible matches from later terms.
    Response-local candidate/evidence IDs are reassigned when reused across searches; snippet variants
    retain their exact text. Conflicting
-   metadata or malformed IDs within one response fail closed. Rank whole-word title/excerpt matches
-   deterministically, weighting excerpt evidence more strongly than title evidence, with stable ties.
-   Unrelated text does not match just by substring.
+   metadata or malformed IDs within one response fail closed. Literal fallback requires every original
+   content word in one passage, with only grammatical words between them and no adjacent explicit
+   negation of a positive request. It never joins separate titles, snippets, messages or sentences to
+   manufacture a match. Match whole words, preserve exact spans and stable ties, and weight excerpt
+   evidence more strongly than title evidence. AI can select supported paraphrases without these
+   literal-word requirements.
 4. Return candidate IDs with scores and owned evidence IDs/optional exact spans. Links, dates, titles
    and quotations come from the validated retrieved inventory. **Why this matched** resolves those
    references into exact text. No model-generated narrative, quote, date or link is accepted.
@@ -37,6 +47,10 @@ no browser or provider imports. No permissions, persistent caches or uploads are
 The synthetic corpus's four cases retrieve the authored first matches and supporting evidence. It
 is a small regression corpus, not an estimate of recall across real accounts. Literal fallback,
 query budgets, missing snippets and provider search behavior can miss relevant conversations.
+Fallback deliberately favors precision: it can omit paraphrases, explicit alternatives, evidence split
+across sentences and passages with intervening content words. It does not establish semantic relevance.
+Its constraints come from the full original description, even when an AI-expanded retrieval plan was
+used before a ranking error or timeout. The literal-fallback notice remains visible in that case.
 
 ## Bounds and outcomes
 

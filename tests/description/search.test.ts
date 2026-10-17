@@ -230,7 +230,7 @@ describe('grounded description retrieval', () => {
       candidate('body', 'Pets', 'A cat sleeps'),
       candidate('body2', 'Pets', 'A cat rests'),
     ];
-    const result = rankKeywords(input, items, interpretDescription(input, now).plan);
+    const result = rankKeywords(input, items);
     expect(result.selections.map((item) => item.candidateId)).toEqual(['body', 'body2', 'title']);
     expect(validate(modelRankingSchemaFor(input, items), result).ok).toBe(true);
     expect(result.selections[0]?.spans).toEqual([{ evidenceId: 'body-excerpt', start: 2, end: 5 }]);
@@ -287,7 +287,7 @@ describe('grounded description retrieval', () => {
           scope: input.scope,
           status,
         }));
-      const result = await engine.search(request(), context());
+      const result = await engine.search(request('authentication login'), context());
       expect(result.results).toContain('old-auth');
       expect(result.coverage.reasons).toContain('provider-failure');
       expect(google.search).toHaveBeenCalledTimes(2);

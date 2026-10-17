@@ -4,6 +4,10 @@ Describe any topic you remember, for example “Which sessions did we talk about
 we discuss folding paper animals?” Optional AI interprets the meaning into related search terms,
 retrieves real provider candidates, and selects supporting evidence. There is no hard-coded topic
 category or synonym dictionary. Results still depend on what each provider's native search exposes.
+Both prompts receive the full original description. Interpretation preserves relationships and
+qualifiers in retrieval phrases; ranking is instructed to require the full intent in connected
+evidence and omit partial, unrelated or uncertain matches. Explicit alternatives and exclusions are
+preserved. These instructions apply to arbitrary subjects, rather than a fixed set of topics.
 
 Open **Search settings → AI description search**. Check support, then click **Enable local AI** or
 **Download and enable local AI**. The model download is separate from conversation search; preparation
@@ -54,6 +58,10 @@ Keep local AI optional and treat it as experimental until it can be evaluated wi
 corpus on an available device. No complete-history or general recall guarantee is made. The fallback
 is literal matching and does not claim semantic understanding. A future real evaluation should record
 first-match recall, false positives, evidence support and latency, separately from transport tests.
+Literal fallback requires all original content words together in one passage, without combining
+independent snippets or using expanded terms as replacement constraints. This favors precision and
+can miss relevant paraphrases or longer explanations. Food, TV, location-qualified descriptions and
+misleading co-occurrences have synthetic regression coverage; real-model accuracy is still unverified.
 
 ## Hosted option
 

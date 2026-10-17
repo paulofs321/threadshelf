@@ -115,7 +115,7 @@ describe('exact evidence spans and contextual outcome validation', () => {
     'outside-date',
     'unknown-date-hidden',
   ] as const)('rejects a tampered report: %s', async (change) => {
-    const query = request();
+    const query = request('authentication');
 
     if (change.startsWith('explicit'))
       query.query.dateRange = {
@@ -132,7 +132,10 @@ describe('exact evidence spans and contextual outcome validation', () => {
 
     if (change === 'request-id') report.ranking.requestId = 'obsolete' as typeof query.requestId;
 
-    if (change === 'result-order') value.results.reverse();
+    if (change === 'result-order') {
+      expect(value.results.length).toBeGreaterThan(1);
+      value.results.reverse();
+    }
 
     if (change === 'unknown-evidence')
       report.ranking.selections[0]?.evidenceIds.push(

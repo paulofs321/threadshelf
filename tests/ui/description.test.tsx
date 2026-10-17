@@ -67,6 +67,23 @@ async function submit(text = 'authentication last month') {
 }
 
 describe('shared description presentation', () => {
+  it('shows only the complete description match from broad native results', async () => {
+    const items = [
+      candidate('complete', 'Space series', 'A TV show about space travel.'),
+      candidate('one', 'Cooking series', 'A TV show about cooking.'),
+      candidate('two', 'Science notes', 'Space travel research.'),
+      candidate('separate', 'Mixed notes', 'A TV show about cooking. Space travel research.'),
+    ];
+    const { native, engine } = setup({}, items);
+    panel({ search: new SearchModes(native, engine) });
+    await submit('What TV show was I looking for about space travel before?');
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(screen.getByText('Space series')).toBeTruthy();
+    expect(screen.queryByText('Cooking series')).toBeNull();
+    expect(screen.queryByText('Mixed notes')).toBeNull();
+    fireEvent.click(screen.getByText('Why this matched'));
+    expect(screen.getByText('TV show about space travel', { exact: true })).toBeTruthy();
+  });
   it('searches in description mode, labels the fallback, date inference and exact evidence', async () => {
     const user = userEvent.setup();
     const { retrieval } = panel();
@@ -119,7 +136,7 @@ describe('shared description presentation', () => {
           ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
         }));
       panel({ search: new SearchModes(native, engine) });
-      await submit('authentication');
+      await submit('authentication login');
       expect(screen.getByText('Old authentication notebook')).toBeTruthy();
       expect(screen.getByText(/Rate limited. Earlier matches are retained/)).toBeTruthy();
       const refresh = screen.getByRole('button', { name: 'Refresh search' });
