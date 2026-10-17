@@ -155,6 +155,82 @@ describe('independent provider document ownership', () => {
       expect(chrome.tabs.remove).not.toHaveBeenCalled();
     },
   );
+  it.each(['lookup', 'remove'] as const)(
+    'waits for owned-tab %s cleanup before reconnecting the same provider',
+    async (phase) => {
+      const { manager, select } = harness();
+      const old = { ...tab, active: false };
+      const next = { ...old, id: 8 };
+      await select();
+      chrome.tabs.query.mockClear();
+      const held = deferred<void>();
+
+      if (phase === 'lookup')
+        chrome.tabs.get.mockImplementationOnce(async () => {
+          await held.promise;
+
+          return old;
+        });
+      else chrome.tabs.remove.mockReturnValueOnce(held.promise);
+
+      const releasing = manager.release('chatgpt');
+      const duplicate = manager.release('chatgpt');
+      const connecting = select();
+      await Promise.resolve();
+      expect(chrome.tabs.query).not.toHaveBeenCalled();
+      chrome.tabs.query.mockResolvedValue([]);
+      chrome.tabs.create.mockResolvedValue(next);
+      chrome.tabs.get.mockResolvedValue(next);
+      held.resolve();
+      await Promise.all([releasing, duplicate]);
+      expect(await connecting).toEqual(next);
+      expect(chrome.tabs.remove).toHaveBeenCalledExactlyOnceWith(old.id);
+      await manager.release('chatgpt');
+      expect(chrome.tabs.remove.mock.calls.map(([id]) => id)).toEqual([old.id, next.id]);
+    },
+  );
+  it.each(['abort', 'close', 'failure'] as const)(
+    'rechecks lifecycle after pending cleanup ends with %s',
+    async (stop) => {
+      const { manager, controller, select } = harness();
+      await select();
+      const held = deferred<typeof tab>();
+      chrome.tabs.get.mockReturnValueOnce(held.promise);
+      const releasing = manager.release('chatgpt');
+      chrome.tabs.query.mockClear();
+      const connecting = select();
+
+      if (stop === 'abort') controller.abort();
+
+      if (stop === 'close') manager.close();
+
+      chrome.tabs.query.mockResolvedValue([]);
+      chrome.tabs.create.mockResolvedValue({ ...tab, id: 8, active: false });
+
+      if (stop === 'failure') held.reject(new Error('fiction-cleanup-failed'));
+      else held.resolve({ ...tab, active: false });
+
+      await releasing;
+      const result = await connecting;
+
+      if (stop === 'failure') expect(result).toMatchObject({ id: 8 });
+      else expect(result).toBeNull();
+
+      expect(chrome.tabs.query).toHaveBeenCalledTimes(stop === 'failure' ? 1 : 0);
+    },
+  );
+  it('does not block another provider while one provider is releasing', async () => {
+    const { manager, controller, select } = harness();
+    await select();
+    const held = deferred<typeof tab>();
+    chrome.tabs.get.mockReturnValueOnce(held.promise);
+    const releasing = manager.release('chatgpt');
+    const google = { ...tab, id: 8, active: false, url: 'https://www.google.com/search?udm=50' };
+    chrome.tabs.create.mockResolvedValue(google);
+    expect(await manager.select(3, 'google-ai-mode', controller.signal)).toEqual(google);
+    held.resolve({ ...tab, active: false });
+    await releasing;
+  });
   it('absorbs cleanup API errors without exposing browser details', async () => {
     const { select, manager } = harness();
     await select();

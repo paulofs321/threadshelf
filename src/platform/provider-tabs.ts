@@ -12,6 +12,7 @@ const landingUrls: Record<ProviderId, string> = {
 export class ProviderTabs {
   private readonly owned = new Map<ProviderId, number>();
   private readonly selected = new Map<ProviderId, number>();
+  private readonly releasing = new Map<ProviderId, Promise<void>>();
   private closed = false;
 
   async select(
@@ -20,6 +21,11 @@ export class ProviderTabs {
     signal: AbortSignal,
     pinnedId?: number,
   ): Promise<unknown> {
+    if (this.closed || signal.aborted) return null;
+
+    // A released owned page may still exist until Chrome completes its removal. Do not rebind it.
+    await this.releasing.get(provider);
+
     if (this.closed || signal.aborted) return null;
 
     const tabs = await browser.tabs.query({ windowId, url: `${providerOrigins[provider]}/*` });
@@ -116,20 +122,29 @@ export class ProviderTabs {
 
   async release(provider: ProviderId): Promise<void> {
     this.selected.delete(provider);
+    const pending = this.releasing.get(provider);
+
+    if (pending) return pending;
+
     const id = this.owned.get(provider);
     this.owned.delete(provider);
 
     if (id === undefined) return;
 
-    try {
-      const tab = await browser.tabs.get(id);
+    const cleanup = (async () => {
+      try {
+        const tab = await browser.tabs.get(id);
 
-      // Preserve pages the user activated/navigated; never close an existing user tab.
-      if (!tab.active && tab.url === landingUrls[provider] && tab.pendingUrl === undefined)
-        await browser.tabs.remove(id);
-    } catch {
-      // The tab may already have closed or lost host access. No browser details enter logs.
-    }
+        // Preserve pages the user activated/navigated; never close an existing user tab.
+        if (!tab.active && tab.url === landingUrls[provider] && tab.pendingUrl === undefined)
+          await browser.tabs.remove(id);
+      } catch {
+        // The tab may already have closed or lost host access. No browser details enter logs.
+      }
+    })().finally(() => this.releasing.delete(provider));
+    this.releasing.set(provider, cleanup);
+
+    return cleanup;
   }
 
   close(): void {

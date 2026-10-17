@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   limits,
   requireValid,
+  sameScope,
   SearchRequestSchema,
   searchOutcomeSchemaFor,
   validate,
@@ -79,6 +80,7 @@ export function SearchScreen(props: SearchScreenProps) {
   currentKey.current = key;
   const [view, setView] = useState<View>({ key, phase: 'idle' });
   const [cooldown, setCooldown] = useState(false);
+  const [retired, setRetired] = useState<Partial<Record<ProviderId, SessionScope>>>({});
   const active = useRef<{ controller: AbortController; key: string } | null>(null);
   const queryInput = useRef<HTMLInputElement>(null);
   const searchButton = useRef<HTMLButtonElement>(null);
@@ -87,6 +89,13 @@ export function SearchScreen(props: SearchScreenProps) {
   const visible = view.key === key ? view : { key, phase: 'idle' as const };
   const outcome = visible.outcome;
   const busy = visible.phase === 'loading' || visible.phase === 'cancelling';
+  const reconnectRequired = props.scopes.some((scope) => {
+    const previous = retired[scope.provider];
+
+    return (
+      selected.includes(scope.provider) && previous !== undefined && sameScope(previous, scope)
+    );
+  });
   const retryMs = Math.max(
     0,
     ...(outcome?.outcomes.map((item) =>
@@ -105,6 +114,17 @@ export function SearchScreen(props: SearchScreenProps) {
 
   useEffect(() => {
     setSelected(props.scopes.map((scope) => scope.provider));
+    setRetired((previous) =>
+      Object.fromEntries(
+        props.scopes
+          .filter((scope) => {
+            const retiredScope = previous[scope.provider];
+
+            return retiredScope !== undefined && sameScope(retiredScope, scope);
+          })
+          .map((scope) => [scope.provider, scope]),
+      ),
+    );
 
     return () => {
       active.current?.controller.abort();
@@ -129,6 +149,8 @@ export function SearchScreen(props: SearchScreenProps) {
   }
 
   async function submit() {
+    if (reconnectRequired) return;
+
     let request;
 
     try {
@@ -172,6 +194,18 @@ export function SearchScreen(props: SearchScreenProps) {
       const result = validate(searchOutcomeSchemaFor(request, props.verifiers), raw);
 
       if (!result.ok) throw new Error('Invalid search outcome.');
+
+      if (!run.controller.signal.aborted) {
+        const terminal = result.value.outcomes.filter((item) =>
+          ['login-expired', 'permission-needed', 'scope-changed'].includes(item.status),
+        );
+
+        if (terminal.length)
+          setRetired((previous) => ({
+            ...previous,
+            ...Object.fromEntries(terminal.map((item) => [item.scope.provider, item.scope])),
+          }));
+      }
 
       setView(
         run.controller.signal.aborted
@@ -318,7 +352,8 @@ export function SearchScreen(props: SearchScreenProps) {
               variant="ghost"
               size="icon"
               aria-label="Search"
-              disabled={visible.phase === 'cancelling' || cooldown}
+              disabled={visible.phase === 'cancelling' || cooldown || reconnectRequired}
+              aria-describedby={reconnectRequired ? 'reconnect-help' : undefined}
               className="shrink-0 text-primary"
             >
               <Icon name="search" className="size-5" />
@@ -360,6 +395,11 @@ export function SearchScreen(props: SearchScreenProps) {
             Search uses the provider’s native keyword matching. Results may cover only part of your
             history.
           </p>
+          {reconnectRequired && (
+            <p id="reconnect-help" className="mt-2 text-xs text-muted-foreground">
+              Reconnect the selected providers to search them again.
+            </p>
+          )}
         </form>
         <section
           id="search-settings"
@@ -514,20 +554,21 @@ export function SearchScreen(props: SearchScreenProps) {
               Cancel search
             </Button>
           )}
-          {(visible.phase === 'error' ||
-            visible.phase === 'cancelled' ||
-            (outcome && outcome.state !== 'success')) && (
-            <Button
-              variant="outline"
-              type="button"
-              disabled={cooldown}
-              onClick={() => {
-                void submit();
-              }}
-            >
-              {cooldown ? 'Wait to retry' : 'Retry search'}
-            </Button>
-          )}
+          {!reconnectRequired &&
+            (visible.phase === 'error' ||
+              visible.phase === 'cancelled' ||
+              (outcome && outcome.state !== 'success')) && (
+              <Button
+                variant="outline"
+                type="button"
+                disabled={cooldown}
+                onClick={() => {
+                  void submit();
+                }}
+              >
+                {cooldown ? 'Wait to retry' : 'Retry search'}
+              </Button>
+            )}
         </section>
       </div>
       <footer
@@ -543,7 +584,7 @@ export function SearchScreen(props: SearchScreenProps) {
           variant="ghost"
           className="min-h-8 gap-1 px-1 py-1 text-xs"
           aria-label="Refresh search"
-          disabled={!outcome || busy || cooldown}
+          disabled={!outcome || busy || cooldown || reconnectRequired}
           onClick={() => {
             void submit();
           }}

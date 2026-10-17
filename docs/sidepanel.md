@@ -42,6 +42,8 @@ revoking permission or detecting changed account identity can require reconnecti
 closes only unchanged inactive tabs created by this connection, preserving existing user tabs and
 pages currently activated/navigated by the user. Background loading is cancellable and bounded by
 the access deadline. Multiple inactive matching account pages are not selected arbitrarily.
+Reconnect waits for that provider's owned-tab cleanup before selecting a new source; cleanup for
+one provider does not block the other.
 
 Selection validates the document; authenticated identity is checked around each search. Enter
 keywords and search the checked providers. Description mode stays disabled and marked pending.
@@ -80,6 +82,9 @@ from no matches; useful successful results survive another provider’s failure.
 Loading, cancelling, cancelled, empty, partial, expired login, unavailable/schema change, missing
 permission, rate limiting, timeout and interruption have separate messages. Retry uses a fresh ID;
 rate-limit hints temporarily disable retries and the engine independently enforces cooldowns.
+Login expiry, permission loss and scope changes require reconnecting the affected provider before
+retrying, refreshing or submitting another query with that scope. Editing the query does not clear
+that requirement. You can search healthy providers separately by changing the provider filters.
 Reconnect requests access through the same explicit connection gesture. Native permission prompts
 cannot be dismissed by the extension; cancelling prevents subsequent work until that prompt settles.
 

@@ -458,6 +458,98 @@ describe('search state, trust and lifecycle presentation', () => {
         : 0,
     );
   });
+  it.each(['login-expired', 'permission-needed', 'scope-changed'] as const)(
+    'requires a fresh scope before resubmitting after %s',
+    async (status) => {
+      const { props, chat, google, rerender } = setup();
+      google.search.mockImplementationOnce(async (request) => ({
+        requestId: request.requestId,
+        scope: request.scope,
+        status,
+      }));
+      await search();
+      expect(results().getAllByRole('article')).toHaveLength(1);
+      expect(results().queryByRole('button', { name: 'Retry search' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Refresh search' }).hasAttribute('disabled')).toBe(
+        true,
+      );
+      expect(screen.getByRole('button', { name: 'Search' }).hasAttribute('disabled')).toBe(true);
+      fireEvent.change(input(), { target: { value: 'another keyword' } });
+      await act(async () => {
+        fireEvent.submit(screen.getByRole('search'));
+      });
+      expect(google.search).toHaveBeenCalledOnce();
+      expect(chat.search).toHaveBeenCalledOnce();
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Google Search AI Mode' }));
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+      });
+      expect(chat.search).toHaveBeenCalledTimes(2);
+      expect(google.search).toHaveBeenCalledOnce();
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Google Search AI Mode' }));
+      expect(screen.getByRole('button', { name: 'Search' }).hasAttribute('disabled')).toBe(true);
+      const freshScope = { ...googleScope, generation: googleScope.generation + 1 };
+      google.search.mockImplementation(async (request) => ({
+        status: 'success',
+        requestId: request.requestId,
+        scope: request.scope,
+        candidates: [{ ...structuredClone(googleCandidate), scope: request.scope }],
+        coverage: { extent: 'complete', reasons: [] },
+      }));
+      rerender(<SearchScreen {...props} scopes={[chatScope, freshScope]} />);
+      expect(screen.getByRole('button', { name: 'Search' }).hasAttribute('disabled')).toBe(false);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+      });
+      expect(google.search).toHaveBeenCalledTimes(2);
+      expect(google.search.mock.calls[1]?.[0].scope).toEqual(freshScope);
+      expect(results().getAllByRole('article')).toHaveLength(2);
+    },
+  );
+  it('keeps a retired provider blocked when only the other provider reconnects', async () => {
+    const { props, google, rerender } = setup();
+    google.search.mockImplementationOnce(async (request) => ({
+      requestId: request.requestId,
+      scope: request.scope,
+      status: 'permission-needed',
+    }));
+    await search();
+    rerender(
+      <SearchScreen
+        {...props}
+        scopes={[{ ...chatScope, generation: chatScope.generation + 1 }, googleScope]}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Search' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('Reconnect the selected providers to search them again.')).toBeTruthy();
+    await act(async () => {
+      fireEvent.submit(screen.getByRole('search'));
+    });
+    expect(google.search).toHaveBeenCalledOnce();
+  });
+  it.each(['unavailable', 'schema-changed', 'timeout', 'cancelled', 'interrupted'] as const)(
+    'keeps retry and refresh available for recoverable %s',
+    async (status) => {
+      const port = {
+        search: vi
+          .fn<SearchPort['search']>()
+          .mockImplementation(async (request) => failure(request, status)),
+        invalidate: vi.fn(),
+      };
+      setup({ search: port });
+      await search();
+      expect(results().getByRole('button', { name: 'Retry search' }).hasAttribute('disabled')).toBe(
+        false,
+      );
+      expect(screen.getByRole('button', { name: 'Refresh search' }).hasAttribute('disabled')).toBe(
+        false,
+      );
+      await act(async () => {
+        fireEvent.click(results().getByRole('button', { name: 'Retry search' }));
+      });
+      expect(port.search).toHaveBeenCalledTimes(2);
+    },
+  );
   it('honors rate-limit retry hints with a bounded UI timer and a fresh request after retry', async () => {
     vi.useFakeTimers();
     const port = {

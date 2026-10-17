@@ -188,3 +188,9 @@ fixed homepage supplies the verified account control. Unit and native-panel brow
 successful keyword results in that case. Existing mismatch/missing-identity, HTTP/redirect,
 permission and cancellation guards remain covered. Date extraction now shares the bounded native
 read and its account/document guards; the former temporary date tabs and metadata phase are removed.
+
+PR recovery regressions exercise exhausted shared search/access transports, interrupted pending
+searches, heartbeat/listener cleanup and fresh-client recovery. UI tests require fresh scopes after
+login expiry, permission loss or scope changes, including query edits, healthy-provider filtering and
+reconnecting only the unaffected provider. Owned-tab tests defer lookup/removal during immediate
+reconnect, coalesce repeated releases, preserve cancellation/closure and isolate providers.

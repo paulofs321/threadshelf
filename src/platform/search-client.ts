@@ -48,6 +48,11 @@ export class PanelSearchClient implements SearchPort {
   search(input: SearchRequest, { signal }: { signal: AbortSignal }): Promise<SearchOutcome> {
     const request = requireValid(KeywordRequestSchema, input);
 
+    if (this.seen.size >= maximumRequestsPerPort) {
+      this.close();
+      this.closeTransport();
+    }
+
     if (this.seen.has(request.requestId) || this.seen.size >= maximumRequestsPerPort)
       throw new Error('Search connection request limit reached. Reconnect.');
 

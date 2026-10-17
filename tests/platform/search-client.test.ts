@@ -15,14 +15,14 @@ import { event } from './helpers';
 
 const resources: PanelSearchClient[] = [];
 
-function harness() {
+function harness(closeTransport?: () => void) {
   const connection = {
     postMessage: vi.fn(),
     disconnect: vi.fn(),
     onMessage: event<[unknown]>(),
     onDisconnect: event<[]>(),
   };
-  const client = new PanelSearchClient(connection, linkVerifiers);
+  const client = new PanelSearchClient(connection, linkVerifiers, closeTransport);
   resources.push(client);
   const controller = new AbortController();
   const request = searchRequest();
@@ -254,6 +254,60 @@ describe('panel-owned validated keyword transport', () => {
       expect(vi.getTimerCount()).toBe(0);
     },
   );
+  it('closes exhausted shared transport, interrupts pending work and permits a fresh connection', async () => {
+    vi.useFakeTimers();
+    let access: AccessClient;
+    const closeTransport = vi.fn(() => access.close());
+    const { connection, request, client } = harness(closeTransport);
+    access = new AccessClient(connection, () => 'fiction-access-budget');
+    const invalidations = vi.fn();
+    access.subscribe(invalidations);
+    client.keepAlive(true);
+
+    for (let index = 0; index < maximumRequestsPerPort - 1; index++) {
+      const next = searchRequest({
+        requestId: `fiction-budget-${index}` as typeof request.requestId,
+      });
+      const pending = client.search(next, { signal: new AbortController().signal });
+      connection.onMessage.emit({
+        kind: 'search-result',
+        outcome: aggregateSearch(
+          next,
+          next.scopes.map((scope) => ({ requestId: next.requestId, scope, status: 'unavailable' })),
+          linkVerifiers,
+          200,
+          [],
+        ),
+      });
+      await pending;
+    }
+
+    const pending = client.search(request, { signal: new AbortController().signal });
+    expect(() =>
+      client.search(
+        searchRequest({ requestId: 'fiction-over-budget' as typeof request.requestId }),
+        { signal: new AbortController().signal },
+      ),
+    ).toThrow(/request limit/);
+    expect(access.isClosed).toBe(true);
+    expect(closeTransport).toHaveBeenCalledOnce();
+    expect(connection.disconnect).toHaveBeenCalledOnce();
+    expect((await pending).outcomes.every((item) => item.status === 'interrupted')).toBe(true);
+    expect(invalidations.mock.calls.map(([event]) => event.provider)).toEqual([
+      'chatgpt',
+      'google-ai-mode',
+    ]);
+    expect(connection.onMessage.size()).toBe(0);
+    expect(connection.onDisconnect.size()).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    const fresh = harness();
+    const recovered = fresh.run();
+    fresh.connection.onMessage.emit({
+      kind: 'search-result',
+      outcome: await success(fresh.request),
+    });
+    expect((await recovered).state).toBe('success');
+  });
   it('bounds the number of unique requests per connection', async () => {
     const { client, request } = harness();
     const controller = new AbortController();

@@ -275,6 +275,9 @@ reads or consuming request IDs. It stops when connections/panel close; unexpecte
 fails closed. Only unchanged inactive connection-owned tabs are removed during cleanup.
 Invalidation events carry generations; delayed cancellation/navigation events cannot clear a newer
 selection or cause its fresh reply to be discarded.
+The search client's 256-request budget closes both the search capability and shared access transport
+when exhausted, so explicit reconnect creates fresh clients. Provider-tab cleanup is tracked per
+provider; a new selection waits for prior owned-tab removal, with lifecycle checks before lookup.
 
 Every document check creates a new opaque ephemeral partition/generation, including checks in the
 same document. There is no private-data cache or persistence. This access foundation does not itself
