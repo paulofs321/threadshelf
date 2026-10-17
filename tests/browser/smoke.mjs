@@ -342,11 +342,23 @@ try {
     .toMatchObject({ results: 2, dates: expect.arrayContaining([today]) });
   assert.deepEqual(await tabIds(), beforeSearchTabs);
   assert.equal(searchCreatedPages, 0);
+  await drive('description-mode');
+  await drive('search');
+  await expect.poll(() => keywordReads).toBe(10);
+  await expect
+    .poll(async () => await drive('snapshot'))
+    .toMatchObject({
+      results: 2,
+      explanations: 2,
+      notes: expect.arrayContaining([expect.stringContaining('Keyword/topic fallback matching')]),
+    });
+  assert.deepEqual(await tabIds(), beforeSearchTabs);
+  assert.equal(searchCreatedPages, 0);
   assert.deepEqual(externalRequests, []);
   assert.deepEqual(errors, []);
 
   process.stdout.write(
-    'Chromium MV3 UI smoke passed: production mount/theme; real native-panel runtime/providers with synthetic transport; zero new tabs across native/visible/time-only date searches; synthetic cancellation/reconnect; compact previews; keyboard/focus; 240–400px; no external requests or CSP errors.\n',
+    'Chromium MV3 UI smoke passed: production mount/theme; real native-panel runtime/providers with synthetic transport; zero new tabs across native/visible/time-only date and grounded description searches; synthetic cancellation/reconnect; compact previews; keyboard/focus; 240–400px; no external requests or CSP errors.\n',
   );
 } finally {
   await context?.close();

@@ -37,7 +37,11 @@ export function ResultTabs({
   onConnect(provider: ProviderId): void;
   children: ReactNode;
 }) {
-  const [sort, setSort] = useState('recent');
+  const [selectedSort, setSort] = useState<string>();
+  const sort =
+    selectedSort === 'relevance' && !outcome?.description
+      ? 'recent'
+      : (selectedSort ?? (outcome?.description ? 'relevance' : 'recent'));
   const candidates =
     outcome?.outcomes.flatMap((item) => (item.status === 'success' ? item.candidates : [])) ?? [];
   const ordered =
@@ -88,6 +92,7 @@ export function ResultTabs({
               className="max-w-28 bg-transparent py-1"
             >
               <option value="provider">Provider order</option>
+              {outcome?.description && <option value="relevance">Relevance</option>}
               <option value="recent">Most recent date</option>
             </select>
           </label>
@@ -139,6 +144,9 @@ export function ResultTabs({
                 candidate={candidate}
                 verifiers={verifiers}
                 timeZone={timeZone}
+                selection={outcome?.description?.ranking.selections.find(
+                  (item) => item.candidateId === candidate.id,
+                )}
               />
             ))}
             {!outcome && (

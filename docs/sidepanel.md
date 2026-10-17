@@ -22,8 +22,9 @@ mode, provider checkboxes and date filters, preserving their values when collaps
 **All sources**, **ChatGPT** and **Google AI Mode** tabs show counts from the current validated result
 set. Switching tabs only changes the view; it does not repeat requests or change search filters.
 Provider failures stay flagged on their tabs, with recovery actions inside the affected panel.
-Tabs support arrow/Home/End navigation and linked accessible panels. Sorting defaults to newest
-available date with undated conversations last; **Provider order** restores the engine's order.
+Tabs support arrow/Home/End navigation and linked accessible panels. Keyword sorting defaults to
+newest available date with undated conversations last; description sorting initially follows relevance.
+The sort control can change presentation without repeating provider reads.
 **Refresh** repeats the current search with a fresh request ID. Counts are search results, never an
 invented total of saved history. Message counts and provider sync metadata are not available.
 
@@ -46,7 +47,10 @@ Reconnect waits for that provider's owned-tab cleanup before selecting a new sou
 one provider does not block the other.
 
 Selection validates the document; authenticated identity is checked around each search. Enter
-keywords and search the checked providers. Description mode stays disabled and marked pending.
+keywords or select **Description** in Search settings to describe a conversation. Description
+search labels its keyword/topic fallback, terms, inferred dates and ambiguity. **Why this matched**
+quotes only the selected candidate’s exact evidence. See the [description reference](description-search.md)
+for vocabulary and retrieval limits.
 ChatGPT supports personal accounts; Google Search AI Mode supports the default account in the
 verified `www.google.com/search?udm=50` context. Login or browser challenges can still require action
 on the provider site; no credentials are collected. After updating/rebuilding, reload the unpacked

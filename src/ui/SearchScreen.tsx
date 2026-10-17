@@ -17,6 +17,7 @@ import type {
 import { availableDateDisclosure, calendarDateRange } from '../search';
 import { Icon } from './Icon';
 import { ResultTabs } from './ResultTabs';
+import { DescriptionSummary } from './DescriptionSummary';
 import { SetupScreen, providerLabels } from './SetupScreen';
 import type { SetupScreenProps } from './SetupScreen';
 import { Alert } from './components/alert';
@@ -65,6 +66,7 @@ function outcomeStatus(outcome: SearchOutcome): string {
 /** Capability-independent presentation; browser/session composition belongs to the entrypoint. */
 export function SearchScreen(props: SearchScreenProps) {
   const [text, setText] = useState('');
+  const [mode, setMode] = useState<'keyword' | 'description'>('keyword');
   const [page, setPage] = useState<'search' | 'connections'>(
     props.scopes.length === 0 ? 'connections' : 'search',
   );
@@ -160,7 +162,7 @@ export function SearchScreen(props: SearchScreenProps) {
         requestId: props.freshId(),
         query: {
           text,
-          mode: 'keyword',
+          mode,
           providers: selected,
           timeZone: props.timeZone,
           ...(start && end ? { dateRange: calendarDateRange(start, end, props.timeZone) } : {}),
@@ -174,7 +176,7 @@ export function SearchScreen(props: SearchScreenProps) {
         key,
         phase: 'error',
         error:
-          'Enter a keyword, select connected providers, and supply both dates in increasing order or leave both empty.',
+          'Enter a query, select connected providers, and supply both dates in increasing order or leave both empty.',
       });
       queryInput.current?.focus();
 
@@ -240,13 +242,15 @@ export function SearchScreen(props: SearchScreenProps) {
 
   const status =
     visible.phase === 'loading'
-      ? 'Searching selected providers…'
+      ? mode === 'description'
+        ? 'Interpreting description and searching selected providers…'
+        : 'Searching selected providers…'
       : visible.phase === 'cancelling'
         ? 'Cancelling search…'
         : visible.phase === 'cancelled'
           ? 'Search cancelled.'
           : (visible.error ??
-            (outcome ? outcomeStatus(outcome) : 'Ready to search. Enter keywords above.'));
+            (outcome ? outcomeStatus(outcome) : 'Ready to search. Enter a query above.'));
 
   return (
     <main className="mx-auto flex min-h-svh min-w-0 max-w-xl flex-col bg-background text-sm">
@@ -392,8 +396,10 @@ export function SearchScreen(props: SearchScreenProps) {
             )}
           </div>
           <p id="query-help" className="sr-only">
-            Search uses the provider’s native keyword matching. Results may cover only part of your
-            history.
+            {mode === 'description'
+              ? 'Description search uses bounded keyword/topic fallback matching.'
+              : 'Search uses the provider’s native keyword matching.'}{' '}
+            Results may cover only part of your history.
           </p>
           {reconnectRequired && (
             <p id="reconnect-help" className="mt-2 text-xs text-muted-foreground">
@@ -416,16 +422,19 @@ export function SearchScreen(props: SearchScreenProps) {
                 <select
                   id="mode"
                   className="h-9 w-full rounded-md border border-input bg-background px-3"
-                  defaultValue="keyword"
+                  value={mode}
+                  onChange={(event) => {
+                    edit();
+                    setMode(event.target.value === 'description' ? 'description' : 'keyword');
+                  }}
                   aria-describedby="mode-help"
                 >
                   <option value="keyword">Keyword</option>
-                  <option value="description" disabled>
-                    Description (pending)
-                  </option>
+                  <option value="description">Description</option>
                 </select>
                 <p id="mode-help" className="text-xs text-muted-foreground">
-                  Description search is pending implementation.
+                  Description uses keyword/topic fallback matching. Optional model support is
+                  unavailable.
                 </p>
               </div>
               <fieldset className="space-y-1">
@@ -520,6 +529,9 @@ export function SearchScreen(props: SearchScreenProps) {
             >
               {status}
             </Alert>
+            {outcome?.description && (
+              <DescriptionSummary report={outcome.description} timeZone={props.timeZone} />
+            )}
             {outcome && (
               <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                 Coverage: {outcome.coverage.extent}.{' '}

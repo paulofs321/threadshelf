@@ -9,7 +9,9 @@ imports no UI, Chrome APIs, provider transports, model or storage implementation
 explicitly selected providers, validates replies against the request and full session scope, then
 returns a validated `SearchOutcome`. The provider search operation owns fresh authentication checks;
 the engine does not add a separate inspection call, list history, enrich messages or infer pagination.
-Description mode is rejected until its separate pipeline exists.
+This engine accepts keyword mode only. The [description pipeline](description-search.md) converts
+bounded topics into keyword requests through this same capability, then deduplicates and ranks
+verified evidence in the panel document.
 
 ## Results and coverage
 

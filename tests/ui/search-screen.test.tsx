@@ -252,13 +252,13 @@ describe('shared search panel with real keyword orchestration', () => {
     await user.click(screen.getByRole('tab', { name: 'Google AI Mode' }));
     expect(results().queryAllByRole('article')).toHaveLength(0);
   });
-  it('requests nothing on mount and labels the pending mode, controls, timezone and date limits', () => {
+  it('requests nothing on mount and labels the available modes, controls, timezone and date limits', () => {
     const { chat, google } = setup();
     expect(chat.search).not.toHaveBeenCalled();
     expect(google.search).not.toHaveBeenCalled();
-    expect(
-      screen.getByRole('option', { name: 'Description (pending)' }).hasAttribute('disabled'),
-    ).toBe(true);
+    expect(screen.getByRole('option', { name: 'Description' }).hasAttribute('disabled')).toBe(
+      false,
+    );
     expect(screen.getByRole('combobox', { name: 'Search mode' })).toBeTruthy();
     expect(screen.getByLabelText('From date')).toBeTruthy();
     expect(screen.getByText(/Timezone: Europe\/Zurich/).textContent).toContain(
@@ -365,7 +365,7 @@ describe('shared search panel with real keyword orchestration', () => {
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: 'Search' }));
       });
-      expect(results().getByRole('alert').textContent).toContain('Enter a keyword');
+      expect(results().getByRole('alert').textContent).toContain('Enter a query');
       expect(input().getAttribute('aria-invalid')).toBe('true');
       expect(document.activeElement).toBe(input());
       expect(chat.search).not.toHaveBeenCalled();
