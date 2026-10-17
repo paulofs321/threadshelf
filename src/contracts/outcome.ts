@@ -18,6 +18,7 @@ import {
 import type { ProviderRequest, SearchRequest } from './query';
 import { sameScope, SessionScopeSchema } from './session';
 import { requireValid } from './validation';
+import { DescriptionReportSchema, rankingReferencesCandidates } from './model';
 
 export const CoverageReasonSchema = v.picklist([
   'unknown-reach',
@@ -41,16 +42,23 @@ export const CoverageSchema = v.pipe(
 );
 
 const outcomeEntries = { requestId: RequestIdSchema, scope: SessionScopeSchema };
+const retryAfterMs = v.exactOptional(v.pipe(CountSchema, v.maxValue(limits.retryAfterMs)));
 const SuccessSchema = v.pipe(
   v.strictObject({
     ...outcomeEntries,
     status: v.literal('success'),
     candidates: CandidateListSchema,
     coverage: CoverageSchema,
+    // Earlier reads can remain useful when a later description term is rate limited.
+    rateLimit: v.exactOptional(v.strictObject({ retryAfterMs })),
   }),
   v.check(
     (outcome) => outcome.candidates.every((candidate) => sameScope(candidate.scope, outcome.scope)),
     'Candidates must belong to the outcome scope and generation.',
+  ),
+  v.check(
+    (outcome) => !outcome.rateLimit || outcome.coverage.reasons.includes('provider-failure'),
+    'Retained rate-limited reads must disclose incomplete coverage.',
   ),
 );
 
@@ -72,7 +80,7 @@ export const ProviderOutcomeSchema = v.variant('status', [
   v.strictObject({
     ...outcomeEntries,
     status: v.literal('rate-limited'),
-    retryAfterMs: v.exactOptional(v.pipe(CountSchema, v.maxValue(limits.retryAfterMs))),
+    retryAfterMs,
   }),
 ]);
 
@@ -106,6 +114,7 @@ export const SearchOutcomeSchema = v.pipe(
     results: v.pipe(boundedArray(CandidateIdSchema, limits.candidates * 2), v.check(unique)),
     outcomes: v.pipe(boundedArray(ProviderOutcomeSchema, 2), v.minLength(1)),
     coverage: CoverageSchema,
+    description: v.exactOptional(DescriptionReportSchema),
   }),
   v.check(
     (aggregate) =>
@@ -157,6 +166,35 @@ export function searchOutcomeSchemaFor(requestInput: SearchRequest, verifiers: L
 
   return v.pipe(
     SearchOutcomeSchema,
+    v.check((aggregate) => {
+      const report = aggregate.description;
+
+      if (!report) return true;
+
+      const explicit = request.query.dateRange;
+      const effective = report.dateRange;
+      const candidates = aggregate.outcomes.flatMap((outcome) =>
+        outcome.status === 'success' ? outcome.candidates : [],
+      );
+
+      return (
+        request.query.mode === 'description' &&
+        report.ranking.requestId === request.requestId &&
+        (!explicit ||
+          (effective !== undefined &&
+            explicit.start === effective.start &&
+            explicit.end === effective.end)) &&
+        JSON.stringify(aggregate.results) ===
+          JSON.stringify(report.ranking.selections.map((item) => item.candidateId)) &&
+        rankingReferencesCandidates(report.ranking, candidates) &&
+        candidates
+          .filter((item) => aggregate.results.includes(item.id))
+          .every((item) => matchesDateRange(item, effective)) &&
+        (!effective ||
+          !candidates.some((item) => !item.date) ||
+          aggregate.coverage.reasons.includes('unknown-dates'))
+      );
+    }, 'Description results require supported evidence and authoritative filters.'),
     v.check(
       (aggregate) =>
         aggregate.requestId === request.requestId &&

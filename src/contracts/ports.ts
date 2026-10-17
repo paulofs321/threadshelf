@@ -22,14 +22,19 @@ export interface SearchPort {
   invalidate(scope: SessionScope): void;
 }
 
-export interface ModelPort {
+export interface InterpreterPort {
   interpret(request: SearchRequest, context: OperationContext): Promise<unknown>;
+}
+
+export interface RankerPort {
   rank(
     request: SearchRequest,
     candidates: readonly Candidate[],
     context: OperationContext,
   ): Promise<unknown>;
 }
+
+export interface ModelPort extends InterpreterPort, RankerPort {}
 
 // No browser storage implementation or persistence is enabled by this port.
 export interface StoragePort {

@@ -26,6 +26,15 @@ browser.runtime.onMessage.addListener((input: unknown, _sender, sendResponse) =>
 
   if (input.command === 'connect-google') button('Connect Google Search AI Mode')?.click();
 
+  if (input.command === 'description-mode') {
+    const mode = document.querySelector<HTMLSelectElement>('#mode');
+
+    if (mode) {
+      mode.value = 'description';
+      mode.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+
   if (input.command === 'search') {
     const query = document.querySelector<HTMLInputElement>('#query');
 
@@ -47,6 +56,9 @@ browser.runtime.onMessage.addListener((input: unknown, _sender, sendResponse) =>
     dates: [...document.querySelectorAll<HTMLTimeElement>('[role="article"] time')].map(
       (item) => item.dateTime,
     ),
+    explanations: [...document.querySelectorAll('summary')].filter(
+      (item) => item.textContent === 'Why this matched',
+    ).length,
     notes: [...document.querySelectorAll('[role="note"]')].map((item) => item.textContent),
     checkedProviders: [...document.querySelectorAll<HTMLInputElement>('input[type=checkbox]')]
       .filter((item) => item.checked)

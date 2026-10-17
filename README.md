@@ -9,8 +9,9 @@ conversation. Examples include “Where did I compare deployment options for my 
 “Which sessions did I discuss authentication last month?” Keyword results show their provider, title,
 available date, exact excerpts and validated original links. The shadcn/ui panel supports provider/date
 filters, per-provider result tabs, compact expandable previews, cancellation, retry/reconnect and
-explicit empty, partial and failed outcomes. Description
-search is disabled and labeled pending; the fictional demo remains planned.
+explicit empty, partial and failed outcomes. [Description search](docs/description-search.md) adds
+bounded keyword/topic retrieval, evidence ranking and exact supporting quotations. The fictional
+demo remains planned.
 
 ## Current status
 
@@ -85,12 +86,12 @@ For manual inspection, open `chrome://extensions`, enable Developer mode, choose
 and select `.output/chrome-mv3/`. Click the ThreadShelf toolbar action or select it in Chrome's side
 panel menu. The welcome page provides connection buttons for each provider. The conversation
 header’s **Connect** button returns to that page; connected providers show “already connected.”
-**Search settings** contains provider/date filters. Connect either provider from any tab. ThreadShelf
-reuses a suitable provider page in this window or opens its fixed landing page in a background tab
+**Search settings** contains the search mode and provider/date filters. Connect either provider from
+any tab. ThreadShelf reuses a suitable provider page in this window or opens its fixed landing page in a background tab
 when needed, including when several provider tabs are open but inactive.
 Chrome requests optional `scripting` and either `https://chatgpt.com/*` or `https://www.google.com/*`.
-After connecting, enter keywords and search the checked provider. The date interval uses local
-calendar boundaries; **Before** is exclusive. Each provider stays connected while you browse other
+After connecting, enter keywords or select **Description** to describe a conversation, then search
+the checked providers. The date interval uses local calendar boundaries; **Before** is exclusive. Each provider stays connected while you browse other
 tabs. Closing/navigating its source page or losing account/site access can require reconnecting.
 Only `sidePanel` is required at installation. Google locale hosts and the Gemini app are unsupported.
 **Connection options → Disconnect** releases the in-memory context; revoke granted site access in
@@ -107,10 +108,11 @@ Provider adapters will use permitted browser contexts and existing logged-in ses
 will not collect passwords, export browser credentials, or require “Allow JavaScript from Apple
 Events.” Private sessions and messages must stay out of logs, fixtures, Git, demos, and packages.
 
-Description search will interpret topics/filters, retrieve candidates, and rank evidence from titles
-and excerpts. An optional on-device model is the initial direction; supported hardware and model
-download are required. Keyword/topic fallback will be explicit. Hosted processing would require an
-opt-in explanation of which excerpts leave the browser and separate infrastructure; it is not enabled.
+Description search currently uses deterministic keyword/topic fallback with a limited vocabulary.
+“Last month” means the previous calendar month in the browser timezone; explicit date controls
+take precedence. Ambiguous dates are disclosed. Interpreter/ranker ports validate candidate and exact
+evidence references. Optional on-device inference remains planned; no model runs in this build.
+Hosted processing would require an opt-in explanation of which excerpts leave the browser and separate infrastructure; it is not enabled.
 
 The future static demo will use fictional conversations and share suitable UI/search code without
 provider access or private storage. Extension ZIP packaging and GitHub Pages readiness remain

@@ -552,3 +552,67 @@ describe('side-panel permission and operation flow with real AccessClient', () =
     },
   );
 });
+
+it('composes description retrieval locally over real validated keyword messages and clears it on invalidation', async () => {
+  render(<AccessPanel />);
+  await select();
+  const port = ports[0];
+
+  if (!port) throw new Error('Missing synthetic connection');
+
+  port.postMessage.mockImplementation((command) => {
+    if (command.operation !== 'keyword-search') return;
+
+    const scope = command.request.scopes[0];
+    const candidate = requireValid(CandidateSchema, {
+      ...chatCandidate,
+      scope,
+      conversationId: '11111111-1111-1111-1111-111111111111',
+      originalUrl: 'https://chatgpt.com/c/11111111-1111-1111-1111-111111111111',
+    });
+    port.onMessage.emit({
+      kind: 'search-result',
+      outcome: {
+        requestId: command.request.requestId,
+        state: 'success',
+        results: [candidate.id],
+        outcomes: [
+          {
+            requestId: command.request.requestId,
+            scope,
+            status: 'success',
+            candidates: [candidate],
+            coverage: { extent: 'complete', reasons: [] },
+          },
+        ],
+        coverage: { extent: 'complete', reasons: [] },
+      },
+    });
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Continue to search' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Search settings' }));
+  fireEvent.change(screen.getByRole('combobox', { name: 'Search mode' }), {
+    target: { value: 'description' },
+  });
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'floating library' } });
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+  });
+  expect(screen.getByText('Keyword/topic fallback matching')).toBeTruthy();
+  expect(screen.getByRole('article')).toBeTruthy();
+  const commands = port.postMessage.mock.calls.flatMap(([command]) =>
+    command.operation === 'keyword-search' ? [command] : [],
+  );
+  expect(commands).toHaveLength(2);
+  expect(new Set(commands.map((command) => command.request.requestId)).size).toBe(2);
+  expect(commands.every((command) => command.request.query.mode === 'keyword')).toBe(true);
+  await act(async () =>
+    port.onMessage.emit({
+      kind: 'invalidated',
+      provider: 'chatgpt',
+      generation: 2,
+      status: 'scope-changed',
+    }),
+  );
+  expect(screen.queryByRole('article')).toBeNull();
+});

@@ -194,3 +194,24 @@ searches, heartbeat/listener cleanup and fresh-client recovery. UI tests require
 login expiry, permission loss or scope changes, including query edits, healthy-provider filtering and
 reconnecting only the unaffected provider. Owned-tab tests defer lookup/removal during immediate
 reconnect, coalesce repeated releases, preserve cancellation/closure and isolate providers.
+
+## Grounded description search
+
+`npm test -- tests/description tests/ui/description.test.tsx` exercises a fictional login-security,
+portfolio-deployment, database-performance and last-month corpus, including native keyword retrieval,
+expected first matches and exact supporting evidence. These cases evaluate the limited deterministic
+vocabulary, without claiming general semantic recall or live-provider/model quality.
+
+Regressions cover explicit provider/date precedence, browser timezone month boundaries, unknown and
+ambiguous dates, scoped cross-query deduplication, conflicting metadata, candidate/excerpt/query/result
+budgets, empty versus failed/partial providers, authentication invalidation, cancellation at every
+stage, late responses and request replacement. Adversarial model cases reject unknown/duplicate
+candidate and evidence IDs, invalid scores, forged links/dates/quotes/narrative and invalid UTF-16
+spans. Model ports use synthetic responses; no inference or upload occurs.
+
+The shared panel tests verify description controls, exact plain-text explanations, fallback and
+ambiguity labels, inferred date disclosure, relevance/date sorting, source tabs, editing/cancellation
+and stale-result clearing. Real panel/client composition proves only normalized keyword requests
+cross the bridge. The isolated native-panel Chromium smoke repeats description retrieval over both
+real adapters with synthetic HTTP, requiring evidence explanations and unchanged tabs. It does not
+use personal accounts or prove live description recall or model availability.

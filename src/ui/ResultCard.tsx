@@ -1,8 +1,9 @@
 import { useId, useState } from 'react';
 import { acceptsOriginalLink, OriginalUrlSchema, validate } from '../contracts';
-import type { Candidate, LinkVerifiers } from '../contracts';
+import type { Candidate, LinkVerifiers, ModelRanking } from '../contracts';
 import { providerLabels } from './SetupScreen';
 import { Icon } from './Icon';
+import { EvidenceExplanation } from './DescriptionSummary';
 import { Badge } from './components/badge';
 import { Button } from './components/button';
 import { Card, CardContent, CardHeader } from './components/card';
@@ -22,10 +23,12 @@ export function ResultCard({
   candidate,
   verifiers,
   timeZone,
+  selection,
 }: {
   candidate: Candidate;
   verifiers: LinkVerifiers;
   timeZone: string;
+  selection?: ModelRanking['selections'][number] | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
   const excerptsId = useId();
@@ -145,6 +148,7 @@ export function ResultCard({
             {expanded ? 'Show less' : 'Show more'}
           </Button>
         )}
+        {selection && <EvidenceExplanation candidate={candidate} selection={selection} />}
         {!link && <p className="text-xs text-muted-foreground">Original link unavailable.</p>}
       </CardContent>
     </Card>
