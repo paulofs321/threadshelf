@@ -47,6 +47,25 @@ describe('independent provider document ownership', () => {
     });
   });
 
+  it.each([
+    ['account selector', 'https://www.google.com/search?udm=50&authuser=1'],
+    ['different route', 'https://www.google.com/'],
+    ['missing AI Mode query', 'https://www.google.com/search?q=fiction'],
+  ])('rejects a Google landing redirect to %s', async (_name, redirectedUrl) => {
+    const { manager, controller } = harness();
+    const landing = {
+      ...tab,
+      active: false,
+      status: 'loading',
+      url: 'https://www.google.com/search?udm=50',
+    };
+    chrome.tabs.create.mockResolvedValue(landing);
+    chrome.tabs.get.mockResolvedValue({ ...landing, status: 'complete', url: redirectedUrl });
+
+    expect(await manager.select(3, 'google-ai-mode', controller.signal)).toBeNull();
+    expect(chrome.tabs.get).toHaveBeenCalledWith(landing.id);
+  });
+
   it('connects without a manually opened provider tab using only a fixed passive landing URL', async () => {
     const { select, manager } = harness();
     expect(await select()).toEqual({ ...tab, active: false });

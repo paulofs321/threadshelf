@@ -88,6 +88,7 @@ export class PanelSearchClient implements SearchPort {
             });
           } catch {
             this.close();
+            this.closeTransport();
           }
         }
       };
@@ -108,6 +109,7 @@ export class PanelSearchClient implements SearchPort {
         this.connection.postMessage({ operation: 'keyword-search', request });
       } catch {
         this.close();
+        this.closeTransport();
       }
     });
   }

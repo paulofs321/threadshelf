@@ -228,7 +228,10 @@ describe('panel-owned validated keyword transport', () => {
     'settles when %s without leaking timers or private errors',
     async (cause) => {
       vi.useFakeTimers();
-      const { connection, client, controller, run } = harness();
+      let access: AccessClient;
+      const closeTransport = vi.fn(() => access.close());
+      const { connection, client, controller, run } = harness(closeTransport);
+      access = new AccessClient(connection, () => 'fiction-access-send-failure');
 
       if (cause === 'already aborted') controller.abort();
 
@@ -252,6 +255,9 @@ describe('panel-owned validated keyword transport', () => {
       expect(output.results).toEqual([]);
       expect(JSON.stringify(output)).not.toContain('fiction-private-error');
       expect(vi.getTimerCount()).toBe(0);
+      const shouldCloseTransport = cause === 'send throws' || cause === 'cancel send throws';
+      expect(closeTransport).toHaveBeenCalledTimes(shouldCloseTransport ? 1 : 0);
+      expect(access.isClosed).toBe(shouldCloseTransport);
     },
   );
   it('closes exhausted shared transport, interrupts pending work and permits a fresh connection', async () => {

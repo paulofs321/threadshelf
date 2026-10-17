@@ -8,6 +8,20 @@ const landingUrls: Record<ProviderId, string> = {
   'google-ai-mode': 'https://www.google.com/search?udm=50',
 };
 
+function supportedProviderUrl(provider: ProviderId, value: string): boolean {
+  if (!permittedUrl(provider, value)) return false;
+
+  if (provider !== 'google-ai-mode') return true;
+
+  const url = new URL(value);
+
+  return (
+    url.pathname === '/search' &&
+    url.searchParams.get('udm') === '50' &&
+    !url.searchParams.has('authuser')
+  );
+}
+
 /** Panel-owned provider documents. No URL/tab selector comes from a runtime message. */
 export class ProviderTabs {
   private readonly owned = new Map<ProviderId, number>();
@@ -38,11 +52,7 @@ export class ProviderTabs {
         tab.windowId === windowId &&
         !tab.incognito &&
         tab.url &&
-        permittedUrl(provider, tab.url) &&
-        (provider !== 'google-ai-mode' ||
-          (new URL(tab.url).pathname === '/search' &&
-            new URL(tab.url).searchParams.get('udm') === '50' &&
-            !new URL(tab.url).searchParams.has('authuser'))),
+        supportedProviderUrl(provider, tab.url),
     );
     const active = matching.filter((tab) => tab.active);
     const candidates =
@@ -111,7 +121,7 @@ export class ProviderTabs {
     if (
       !parsed.ok ||
       parsed.value.windowId !== windowId ||
-      !permittedUrl(provider, parsed.value.url)
+      !supportedProviderUrl(provider, parsed.value.url)
     )
       return null;
 
