@@ -64,6 +64,91 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe('trusted panel search composition and document binding', () => {
+  it('retrieves before reading context, preserving native metadata and the original description', async () => {
+    const { search, provider, candidate, request, messages } = await harness();
+    const readContext = vi.fn(async () => ({
+      requestId: request.requestId,
+      scope: request.scopes[0],
+      status: 'success',
+      candidates: [
+        {
+          ...candidate,
+          evidence: [
+            ...candidate.evidence,
+            { id: 'context:0', source: 'provider-message', text: 'Food without dairy.' },
+          ],
+        },
+      ],
+      coverage: { extent: 'partial', reasons: ['missing-evidence'] },
+    }));
+    Object.assign(provider, { readContext });
+    search.receive({
+      operation: 'description-retrieval',
+      request,
+      description: 'food without dairy',
+    });
+    await vi.waitFor(() => expect(messages).toHaveLength(1));
+    expect(readContext).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: request.requestId }),
+      candidate.conversationId,
+      'food without dairy',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(provider.search.mock.invocationCallOrder[0]).toBeLessThan(
+      readContext.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(JSON.stringify(messages[0])).toContain('Food without dairy.');
+    expect(messages[0]?.outcome.outcomes[0]).toMatchObject({
+      candidates: [expect.objectContaining({ originalUrl: candidate.originalUrl })],
+    });
+  });
+  it('does not invoke a context reader for ordinary keyword searches', async () => {
+    const { dispatch, provider, messages } = await harness();
+    const readContext = vi.fn();
+    Object.assign(provider, { readContext });
+    dispatch();
+    await vi.waitFor(() => expect(messages).toHaveLength(1));
+    expect(readContext).not.toHaveBeenCalled();
+  });
+  it.each(['cancel', 'scope-change'] as const)(
+    'discards messages after context %s',
+    async (stop) => {
+      const { search, access, provider, request, messages, candidate } = await harness();
+      const pending = deferred<unknown>();
+      const readContext = vi.fn(() => pending.promise);
+      Object.assign(provider, { readContext });
+      search.receive({ operation: 'description-retrieval', request, description: 'food' });
+      await vi.waitFor(() => expect(readContext).toHaveBeenCalledOnce());
+
+      if (stop === 'cancel')
+        search.receive({ operation: 'cancel-search', requestId: request.requestId });
+      else access.broker.invalidate('chatgpt', 'scope-changed');
+
+      pending.resolve({
+        requestId: request.requestId,
+        scope: request.scopes[0],
+        status: 'success',
+        candidates: [candidate],
+        coverage: { extent: 'complete', reasons: [] },
+      });
+      await vi.waitFor(() => expect(messages).toHaveLength(1));
+      expect(messages[0]?.outcome.results).toEqual([]);
+      expect(messages[0]?.outcome.outcomes[0]?.status).toBe(
+        stop === 'cancel' ? 'cancelled' : 'scope-changed',
+      );
+    },
+  );
+  it.each([
+    { description: '' },
+    { description: 'x'.repeat(1025) },
+    { description: 'x\u0000' },
+    { description: 'food', url: 'https://evil.invalid' },
+    { description: 'food', conversationId: 'unretrieved' },
+  ])('rejects forged context commands before provider access: %j', async (patch) => {
+    const { search, request, factory } = await harness();
+    expect(search.receive({ operation: 'description-retrieval', request, ...patch })).toBe(false);
+    expect(factory).not.toHaveBeenCalled();
+  });
   it('binds existing selections to real orchestration, reuses adapters in the same scope, and never inspects a fake session', async () => {
     const { dispatch, messages, provider, factory, request } = await harness();
     expect(dispatch()).toBe(true);

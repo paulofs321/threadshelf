@@ -1,12 +1,8 @@
 import { modelPlanSchemaFor, requireValid } from '../contracts';
 import type { ModelPlan, SearchRequest } from '../contracts';
 import { previousCalendarMonth } from '../search/dates';
+import { descriptionWords } from '../search/terms';
 
-const stopWords = new Set(
-  'a an and are about before can chat chats compare compared comparison too conversation conversations did discuss discussed do find for from had has have help how i in is it looking looked me my of on or options our previously search searched searching session sessions that the this thread threads to was we talk talked talking were what when where which with your'.split(
-    ' ',
-  ),
-);
 export type DescriptionNotice =
   | 'literal-keywords'
   | 'ambiguous-date'
@@ -17,21 +13,6 @@ export type DescriptionNotice =
 export interface Interpretation {
   plan: ModelPlan;
   notices: DescriptionNotice[];
-}
-
-/** Literal fallback only: remove retrieval phrasing, never infer a topic or related meaning. */
-export function isContentWord(word: string): boolean {
-  return !stopWords.has(word);
-}
-
-export function descriptionWords(text: string): string[] {
-  return (
-    text
-      .replace(/^show(?:\s+me)?\b/iu, '')
-      .replace(/\blast month\b/giu, '')
-      .toLowerCase()
-      .match(/[\p{L}\p{N}]+/gu) ?? []
-  ).filter(isContentWord);
 }
 
 export function interpretDescription(request: SearchRequest, now: string): Interpretation {

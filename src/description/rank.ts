@@ -1,5 +1,5 @@
 import type { Candidate, ModelRanking, SearchRequest } from '../contracts';
-import { descriptionWords, isContentWord } from './interpret';
+import { descriptionWords, isContentWord } from '../search/terms';
 
 const negation = /\b(?:no|not|never|without|excluding|except|cannot|[\p{L}]+n't)\b/iu;
 const precedingNegation =

@@ -22,6 +22,23 @@ export interface SearchPort {
   invalidate(scope: SessionScope): void;
 }
 
+export interface ContextRetrievalPort {
+  searchWithContext(
+    request: SearchRequest,
+    description: string,
+    context: OperationContext,
+  ): Promise<SearchOutcome>;
+}
+
+export interface ConversationContextPort {
+  readContext(
+    request: ProviderRequest,
+    conversationId: string,
+    description: string,
+    context: OperationContext,
+  ): Promise<unknown>;
+}
+
 export interface InterpreterPort {
   interpret(request: SearchRequest, context: OperationContext): Promise<unknown>;
 }

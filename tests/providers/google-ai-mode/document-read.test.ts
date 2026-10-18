@@ -52,6 +52,72 @@ afterEach(() => {
 });
 
 describe('self-contained Google document reads', () => {
+  it('keeps word boundaries when selecting rendered context windows', async () => {
+    vi.stubGlobal(
+      'location',
+      new URL('https://www.google.com/search?udm=50&mtid=fictional-thread-1'),
+    );
+    const block = document.createElement('div');
+    block.setAttribute('data-last-turn', '');
+    block.innerText = 'x'.repeat(998) + 'nojobs in Switzerland.';
+    document.body.append(block);
+    vi.spyOn(block, 'getBoundingClientRect').mockReturnValue({ width: 100 } as DOMRect);
+    const result = requireValid(
+      GoogleReadResultSchema,
+      await readGoogleDocument({
+        ...input(),
+        operation: {
+          kind: 'messages',
+          conversationId: 'fictional-thread-1',
+          query: 'jobs Switzerland',
+        },
+      }),
+    );
+    expect(result.status).toBe('success');
+
+    if (result.status === 'success')
+      expect(result.rendered?.every((text) => !/\bjobs\b/iu.test(text))).toBe(true);
+  });
+  it('selects a later relevant window in the supported rendered block without returning the entire text', async () => {
+    vi.stubGlobal(
+      'location',
+      new URL('https://www.google.com/search?udm=50&mtid=fictional-thread-1'),
+    );
+    const block = document.createElement('div');
+    block.setAttribute('data-last-turn', '');
+    block.innerText =
+      'x'.repeat(999) +
+      '😀' +
+      ' Other career plans. '.repeat(70) +
+      'Jobs in Switzerland include these roles. ' +
+      'Other life plans. '.repeat(100);
+    document.body.append(block);
+    vi.spyOn(block, 'getBoundingClientRect').mockReturnValue({ width: 100 } as DOMRect);
+    const result = await readGoogleDocument({
+      ...input(),
+      operation: {
+        kind: 'messages',
+        conversationId: 'fictional-thread-1',
+        query: 'jobs Switzerland',
+      },
+    });
+    expect(result).toMatchObject({
+      status: 'success',
+      rendered: [expect.stringContaining('Jobs in Switzerland')],
+    });
+    const parsed = requireValid(GoogleReadResultSchema, result);
+
+    if (parsed.status === 'success') expect(parsed.rendered?.[0]?.length).toBeLessThanOrEqual(2000);
+  });
+  it.each(['', 'x'.repeat(1025)])('rejects malformed context queries: %s', async (query) => {
+    expect(
+      await readGoogleDocument({
+        ...input(),
+        operation: { kind: 'messages', conversationId: 'fictional-thread-1', query },
+      }),
+    ).toEqual({ status: 'unavailable' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it.each(['search', 'list', 'inspect'] as const)(
     'performs bounded %s reads with fresh account checks on both sides',
     async (kind) => {

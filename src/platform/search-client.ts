@@ -1,4 +1,11 @@
-import { limits, requireValid, sameScope, searchOutcomeSchemaFor, validate } from '../contracts';
+import {
+  limits,
+  requireValid,
+  sameScope,
+  searchOutcomeSchemaFor,
+  validate,
+  QuerySchema,
+} from '../contracts';
 import type {
   LinkVerifiers,
   SearchOutcome,
@@ -45,7 +52,23 @@ export class PanelSearchClient implements SearchPort {
     connection.onDisconnect.addListener(this.close);
   }
 
-  search(input: SearchRequest, { signal }: { signal: AbortSignal }): Promise<SearchOutcome> {
+  search(input: SearchRequest, context: { signal: AbortSignal }): Promise<SearchOutcome> {
+    return this.retrieve(input, context);
+  }
+
+  searchWithContext(
+    input: SearchRequest,
+    description: string,
+    context: { signal: AbortSignal },
+  ): Promise<SearchOutcome> {
+    return this.retrieve(input, context, requireValid(QuerySchema.entries.text, description));
+  }
+
+  private retrieve(
+    input: SearchRequest,
+    { signal }: { signal: AbortSignal },
+    description?: string,
+  ): Promise<SearchOutcome> {
     const request = requireValid(KeywordRequestSchema, input);
 
     if (this.seen.size >= maximumRequestsPerPort) {
@@ -106,7 +129,11 @@ export class PanelSearchClient implements SearchPort {
       }
 
       try {
-        this.connection.postMessage({ operation: 'keyword-search', request });
+        this.connection.postMessage(
+          description === undefined
+            ? { operation: 'keyword-search', request }
+            : { operation: 'description-retrieval', request, description },
+        );
       } catch {
         this.close();
         this.closeTransport();

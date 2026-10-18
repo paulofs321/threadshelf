@@ -48,6 +48,7 @@ function lastRequest(port = ports[0]): AccessOperation {
     !request ||
     request.operation === 'cancel' ||
     request.operation === 'keyword-search' ||
+    request.operation === 'description-retrieval' ||
     request.operation === 'cancel-search'
   )
     throw new Error('Expected synthetic access operation.');
@@ -563,7 +564,8 @@ it('composes description retrieval locally over real validated keyword messages 
   if (!port) throw new Error('Missing synthetic connection');
 
   port.postMessage.mockImplementation((command) => {
-    if (command.operation !== 'keyword-search') return;
+    if (command.operation !== 'keyword-search' && command.operation !== 'description-retrieval')
+      return;
 
     const scope = command.request.scopes[0];
     const candidate = requireValid(CandidateSchema, {
@@ -603,7 +605,7 @@ it('composes description retrieval locally over real validated keyword messages 
   expect(screen.getByText('Literal keyword fallback')).toBeTruthy();
   expect(screen.getByRole('article')).toBeTruthy();
   const commands = port.postMessage.mock.calls.flatMap(([command]) =>
-    command.operation === 'keyword-search' ? [command] : [],
+    command.operation === 'description-retrieval' ? [command] : [],
   );
   expect(commands).toHaveLength(2);
   expect(new Set(commands.map((command) => command.request.requestId)).size).toBe(2);
@@ -629,7 +631,8 @@ it('enables optional local inference only after a user action and clears session
   if (!port) throw new Error('Fixture port');
 
   port.postMessage.mockImplementation((command) => {
-    if (command.operation !== 'keyword-search') return;
+    if (command.operation !== 'keyword-search' && command.operation !== 'description-retrieval')
+      return;
 
     const scope = command.request.scopes[0];
     const item = requireValid(CandidateSchema, {

@@ -221,18 +221,73 @@ describe('bounded on-device inference with grounded unknown-output ports', () =>
       expect(f.session.destroy).toHaveBeenCalledOnce();
     },
   );
-  it('falls back when disabled, aborted or the candidate prompt exceeds the character budget', async () => {
+  it('falls back when disabled, aborted or context exceeds the bounded batch budget', async () => {
     const f = fixture();
     await expect(f.model.interpret(request(), context())).rejects.toThrow();
     await f.ready();
     const controller = new AbortController();
     controller.abort();
     await expect(f.model.interpret(request(), { signal: controller.signal })).rejects.toThrow();
-    const items = Array.from({ length: 12 }, (_, i) =>
-      candidate(`large-${i}`, 'One', 'x'.repeat(2000)),
-    );
+    const items = Array.from({ length: 7 }, (_, i) => {
+      const item = candidate(`large-${i}`, 'One', 'x'.repeat(2000));
+      item.evidence.push(
+        ...Array.from({ length: 3 }, (_, n) => ({
+          id: `extra-${n}` as (typeof item.evidence)[number]['id'],
+          source: 'provider-message' as const,
+          text: 'x'.repeat(2000),
+        })),
+      );
+
+      return item;
+    });
     await expect(f.model.rank(request(), items, context())).rejects.toThrow();
     expect(f.base.clone).not.toHaveBeenCalled();
+  });
+  it('ranks bounded batches when message context exceeds a single prompt and merges owned selections', async () => {
+    const f = fixture();
+    await f.ready();
+    const items = Array.from({ length: 12 }, (_, i) =>
+      candidate(`batch-${i}`, 'General notes', 'x'.repeat(2000)),
+    );
+    f.session.prompt.mockImplementation(async (prompt) => {
+      const data = JSON.parse(String(prompt).split('Untrusted input JSON:\n')[1] ?? '{}');
+
+      return JSON.stringify({
+        selections: data.candidates.map(
+          (item: { candidateId: string; evidence: { evidenceId: string }[] }) => ({
+            candidateId: item.candidateId,
+            score: 0.9,
+            evidenceIds: [item.evidence[0]?.evidenceId],
+          }),
+        ),
+      });
+    });
+    const result = await f.model.rank(request(), items, context());
+    expect(result).toMatchObject({
+      selections: items.map((item) => expect.objectContaining({ candidateId: item.id })),
+    });
+    expect(f.session.prompt.mock.calls.length).toBeGreaterThan(1);
+    expect(f.session.prompt.mock.calls.length).toBeLessThanOrEqual(4);
+    expect(f.session.prompt.mock.calls.every(([prompt]) => String(prompt).length <= 16000)).toBe(
+      true,
+    );
+    expect(f.session.destroy).toHaveBeenCalledTimes(f.session.prompt.mock.calls.length);
+  });
+  it('rejects a selection from a different batch even when it exists in the full inventory', async () => {
+    const f = fixture();
+    await f.ready();
+    const items = Array.from({ length: 12 }, (_, i) =>
+      candidate(`batch-${i}`, 'General notes', 'x'.repeat(2000)),
+    );
+    f.session.prompt.mockResolvedValue(
+      JSON.stringify({
+        selections: [
+          { candidateId: items[0]?.id, score: 0.9, evidenceIds: [items[0]?.evidence[0]?.id] },
+        ],
+      }),
+    );
+    await expect(f.model.rank(request(), items, context())).rejects.toThrow();
+    expect(f.session.prompt).toHaveBeenCalledTimes(2);
   });
   it.each([NaN, -1, 9000])('rejects invalid or excessive measured context %s', async (usage) => {
     const f = fixture();

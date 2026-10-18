@@ -28,6 +28,9 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
     !input.partition ||
     !input.operationId ||
     (input.operation.kind === 'search' &&
+      (!input.operation.query.trim() || input.operation.query.length > 1024)) ||
+    (input.operation.kind === 'messages' &&
+      input.operation.query !== undefined &&
       (!input.operation.query.trim() || input.operation.query.length > 1024))
   )
     return { status: 'unavailable' };
@@ -196,11 +199,55 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
         .filter((e) => e.getBoundingClientRect().width > 0)
         .slice(0, 4)
         .map((e) => {
-          const value = e.innerText;
-          const end = Math.min(value.length, 2000);
+          const value = e.innerText.slice(0, 128_000);
+          let start = 0;
+
+          if (input.operation.kind === 'messages' && input.operation.query !== undefined) {
+            const terms = new Set(
+              input.operation.query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [],
+            );
+            let best = -1;
+
+            for (let offset = 0; offset < value.length; offset += 1000) {
+              const words =
+                value
+                  .slice(offset, offset + 2000)
+                  .toLowerCase()
+                  .match(/[\p{L}\p{N}]+/gu) ?? [];
+              const score = new Set(words.filter((word) => terms.has(word))).size;
+
+              if (score > best) {
+                start = offset;
+                best = score;
+              }
+            }
+          }
+
+          if (/[\uDC00-\uDFFF]/u.test(value.charAt(start))) start++;
+
+          let end = Math.min(value.length, start + 2000);
+
+          if (input.operation.kind === 'messages' && input.operation.query !== undefined) {
+            while (
+              start < end &&
+              start > 0 &&
+              /[\p{L}\p{N}]/u.test(value.charAt(start - 1)) &&
+              /[\p{L}\p{N}]/u.test(value.charAt(start))
+            )
+              start++;
+
+            while (
+              end > start &&
+              end < value.length &&
+              /[\p{L}\p{N}]/u.test(value.charAt(end - 1)) &&
+              /[\p{L}\p{N}]/u.test(value.charAt(end))
+            )
+              end--;
+          }
+
           const last = value.charCodeAt(end - 1);
 
-          return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
+          return value.slice(start, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
         })
         .filter((value) => value.trim().length > 0);
 

@@ -37,6 +37,51 @@ function fixture(value: unknown = success()) {
 afterEach(() => vi.useRealTimers());
 
 describe('Google native read adapter', () => {
+  it('reads only a retrieved thread and passes the full description to bounded rendered context', async () => {
+    const { provider, request, port } = fixture();
+    expect(
+      (await provider.readContext(request, 'unretrieved', 'food without dairy', context())).status,
+    ).toBe('unavailable');
+    const original = await provider.search(request, context());
+
+    if (original.status !== 'success') throw new Error('Fixture');
+
+    const item = original.candidates[0];
+
+    if (!item) throw new Error('Fixture');
+
+    port.openEvidence.mockResolvedValue({
+      status: 'success',
+      identityBefore: identity,
+      identityAfter: identity,
+      rendered: ['General meals. Food without dairy includes lentil soup. Other notes.'],
+    });
+    const result = await provider.readContext(
+      request,
+      item.conversationId,
+      'food without dairy',
+      context(),
+    );
+    expect(port.openEvidence).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: item.conversationId,
+        originalUrl: item.originalUrl,
+      }),
+      identity,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      'food without dairy',
+    );
+    expect(result.status).toBe('success');
+
+    if (result.status === 'success') {
+      expect(
+        result.candidates[0]?.evidence.some(
+          (part) => part.source === 'rendered-message' && part.text.includes('Food without dairy'),
+        ),
+      ).toBe(true);
+      expect(result.candidates[0]?.originalUrl).toBe(item.originalUrl);
+    }
+  });
   it('allocates independent opaque candidate IDs with the production default factory', async () => {
     const request = googleAiModeRequest();
     const port = { read: vi.fn<GoogleAiModeReadPort['read']>().mockResolvedValue(success()) };

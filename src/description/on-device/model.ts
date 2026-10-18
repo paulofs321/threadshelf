@@ -1,5 +1,11 @@
 import { modelPlanSchemaFor, modelRankingSchemaFor, requireValid } from '../../contracts';
-import type { Candidate, ModelPort, OperationContext, SearchRequest } from '../../contracts';
+import type {
+  Candidate,
+  ModelPort,
+  ModelRanking,
+  OperationContext,
+  SearchRequest,
+} from '../../contracts';
 import {
   modelOptions,
   planConstraint,
@@ -175,11 +181,32 @@ export class OnDeviceModel implements ModelPort {
     candidates: readonly Candidate[],
     context: OperationContext,
   ): Promise<unknown> {
-    const raw = await this.infer(rankingPrompt(request, candidates), rankingConstraint, context);
+    let batch: Candidate[] = [];
+    const batches: Candidate[][] = [batch];
+
+    for (const candidate of candidates) {
+      if (batch.length > 0 && rankingPrompt(request, [...batch, candidate]).length > 16_000) {
+        batch = [candidate];
+        batches.push(batch);
+      } else batch.push(candidate);
+    }
+
+    if (batches.length > 4) throw new Error('Local ranking batch limit exceeded.');
+
+    const selections: ModelRanking['selections'] = [];
+
+    for (const items of batches) {
+      const raw = await this.infer(rankingPrompt(request, items), rankingConstraint, context);
+      const ranking = requireValid(modelRankingSchemaFor(request, items), {
+        requestId: request.requestId,
+        ...requireValid(RankingOutputSchema, raw),
+      });
+      selections.push(...ranking.selections);
+    }
 
     return requireValid(modelRankingSchemaFor(request, candidates), {
       requestId: request.requestId,
-      ...requireValid(RankingOutputSchema, raw),
+      selections,
     });
   }
 

@@ -14,6 +14,7 @@ import { chatGptAvailability } from './availability';
 import { ChatGptReadResultSchema } from './transport';
 import type { ChatGptOperation, ChatGptReadPort, ChatGptReadResult } from './transport';
 import { clipChatGptText, parseChatGptCandidates, parseChatGptMessages } from './wire';
+import { attachMessageContext } from '../../search/context';
 
 const ChatGptScopeSchema = v.pipe(
   SessionScopeSchema,
@@ -225,6 +226,49 @@ export class ChatGptProvider implements ProviderPort {
       status: 'success',
       ...(result.body as { candidates: Candidate[]; coverage: Coverage }),
     });
+  }
+
+  async readContext(
+    input: ProviderRequest,
+    conversationId: string,
+    description: string,
+    context: OperationContext,
+  ): Promise<ProviderOutcome> {
+    const request = requireValid(ChatGptRequestSchema, input);
+    const early = this.unusable(request, context);
+
+    if (early) return this.outcome(request, early);
+
+    const previous = this.retrieved;
+    const candidate = previous?.candidates.find((item) => item.conversationId === conversationId);
+
+    if (
+      !previous ||
+      !candidate ||
+      previous.requestId !== request.requestId ||
+      previous.queryKey !== JSON.stringify(request.query)
+    )
+      return this.outcome(request, { status: 'scope-changed' });
+
+    const result = await this.run(context, (signal) =>
+      this.read({ kind: 'messages', conversationId: candidate.conversationId }, signal),
+    );
+
+    if (result.status !== 'success') return this.outcome(request, result);
+
+    try {
+      const texts = parseChatGptMessages(result.body, candidate.conversationId, description);
+
+      return requireValid(ProviderOutcomeSchema, {
+        requestId: request.requestId,
+        scope: request.scope,
+        status: 'success',
+        candidates: [attachMessageContext(candidate, texts, 'provider-message')],
+        coverage: { extent: 'partial', reasons: ['missing-evidence'] },
+      });
+    } catch {
+      return this.outcome(request, { status: 'schema-changed' });
+    }
   }
 
   invalidate(): void {

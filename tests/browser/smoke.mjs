@@ -210,6 +210,7 @@ try {
   const googleFixtures = await fixtureModule('google-ai-mode');
   let keywordReads = 0;
   let chatSearchReads = 0;
+  let messageReads = 0;
   let googleResultThread = googleFixtures.googleThread('fictional-unopened-thread');
   googleResultThread[5] = [Date.parse('2026-10-13T12:00:00.000Z') / 1000, 0];
   await context.unroute(/^https?:/);
@@ -234,6 +235,22 @@ try {
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
     }
 
+    if (
+      url.origin === 'https://chatgpt.com' &&
+      url.pathname.startsWith('/backend-api/conversation/')
+    ) {
+      messageReads++;
+      const id = url.pathname.split('/').at(-1);
+      const body = chatFixtures.messagesBody(id);
+      body.mapping.answer.message.content.parts = [
+        ...Array.from({ length: 12 }, (_, i) => `General fictional life discussion ${i}.`),
+        'A fictional orchard subtopic covers gate maintenance.',
+        'Other life plans.',
+      ];
+
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
+    }
+
     if (url.origin === 'https://www.google.com' && url.pathname === '/')
       return route.fulfill({
         contentType: 'text/html',
@@ -244,7 +261,7 @@ try {
       return route.fulfill({
         contentType: 'text/html',
         body: route.request().isNavigationRequest()
-          ? `<a href="https://accounts.google.com/SignOutOptions?hl=en" aria-label="Google Account: Fiction (orchard@example.invalid), Opens account menu">Account</a>${url.searchParams.has('mtid') ? '<div class="UYpEO"><div class="kwdzO">13 October 2026</div></div>' : ''}`
+          ? `<a href="https://accounts.google.com/SignOutOptions?hl=en" aria-label="Google Account: Fiction (orchard@example.invalid), Opens account menu">Account</a>${url.searchParams.has('mtid') ? '<div class="UYpEO"><div class="kwdzO">13 October 2026</div></div><div data-last-turn>General planning notes. A fictional orchard subtopic covers gate maintenance. Other life plans.</div>' : ''}`
           : '<p>Fictional AI Mode response without account metadata.</p>',
       });
 
@@ -349,21 +366,28 @@ try {
     .toMatchObject({ results: 2, dates: expect.arrayContaining([today]) });
   assert.deepEqual(await tabIds(), beforeSearchTabs);
   assert.equal(searchCreatedPages, 0);
+  assert.equal(messageReads, 0);
+  // Earlier keyword checks returned an unopened thread without reading it. Description
+  // context can reuse the supported thread that is already open in this synthetic profile.
+  googleResultThread = googleFixtures.googleThread();
   await drive('description-mode');
   await drive('search');
   await expect.poll(() => keywordReads).toBe(10);
   await expect
     .poll(async () => await drive('snapshot'))
     .toMatchObject({
-      // Only the second ChatGPT conversation contains both words together. Other native
-      // candidates match one word, and must remain excluded from description results.
-      results: 1,
-      resultLinks: [`https://chatgpt.com/c/${chatFixtures.otherConversationId}`],
-      explanations: 1,
+      // Broad titles/native previews now qualify through actual bounded message evidence.
+      results: 3,
+      resultLinks: expect.arrayContaining([
+        `https://chatgpt.com/c/${chatFixtures.conversationId}`,
+        `https://chatgpt.com/c/${chatFixtures.otherConversationId}`,
+      ]),
+      explanations: 3,
       notes: expect.arrayContaining([expect.stringContaining('Literal keyword fallback')]),
     });
   assert.deepEqual(await tabIds(), beforeSearchTabs);
   assert.equal(searchCreatedPages, 0);
+  assert.equal(messageReads, 2);
   await drive('check-ai');
   await expect.poll(async () => (await drive('snapshot')).aiStatus).not.toContain('Checking');
   const nativeAi = await drive('snapshot');
@@ -392,7 +416,7 @@ try {
   assert.deepEqual(errors, []);
 
   process.stdout.write(
-    'Chromium MV3 UI smoke passed: production mount/theme; real native-panel runtime/providers with synthetic transport; zero new tabs across native/visible/time-only date and grounded description searches; synthetic on-device interpretation/ranking; synthetic cancellation/reconnect; compact previews; keyboard/focus; 240–400px; no external requests or CSP errors.\n',
+    'Chromium MV3 UI smoke passed: production mount/theme; real native-panel runtime/providers with synthetic transport; zero keyword message reads/tabs; description reads late ChatGPT subtopics and reuses rendered Google context; synthetic on-device interpretation/ranking; synthetic cancellation/reconnect; compact previews; keyboard/focus; 240–400px; no external requests or CSP errors.\n',
   );
 } finally {
   await context?.close();

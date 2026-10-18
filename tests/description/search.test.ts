@@ -69,7 +69,7 @@ describe('grounded description retrieval', () => {
           candidates: [matching],
           coverage: { extent: 'complete', reasons: [] },
         }));
-      const input = request('authentication last month');
+      const input = request('authentication login last month');
       input.query.providers = ['chatgpt'];
       input.scopes = [chatScope];
 

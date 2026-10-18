@@ -50,7 +50,10 @@ Selection validates the document; authenticated identity is checked around each 
 keywords or select **Description** in Search settings to describe a conversation. Description
 search labels model-assisted matching or its literal keyword fallback, terms, inferred dates and ambiguity. **Why this matched**
 quotes only the selected candidate’s exact evidence. See the [description reference](description-search.md)
-for retrieval limits. **AI description search** in settings provides local model support checks,
+for bounded message-context reads and supported subtopic matching. Google may temporarily open inactive
+thread tabs, reusing existing threads where possible and preserving pages the user activates or
+navigates. Ordinary keyword searches do not read messages or create tabs. **AI description search**
+in settings provides local model support checks,
 explicit enable/download, progress, cancellation and disable controls; see [local AI](on-device-ai.md).
 ChatGPT supports personal accounts; Google Search AI Mode supports the default account in the
 verified `www.google.com/search?udm=50` context. Login or browser challenges can still require action

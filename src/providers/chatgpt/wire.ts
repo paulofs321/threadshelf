@@ -6,6 +6,7 @@ import { boundedArray, boundedText, limits } from '../../contracts/primitives';
 import type { SessionScope } from '../../contracts/session';
 import { requireValid } from '../../contracts/validation';
 import { ChatGptConversationIdSchema } from './transport';
+import { selectMessageContext } from '../../search/context';
 
 const text = v.pipe(v.string(), v.maxLength(64_000));
 const seconds = v.nullable(v.number());
@@ -226,7 +227,11 @@ const MessageSchema = v.object({
   metadata: v.object({ is_visually_hidden_from_conversation: v.exactOptional(v.boolean()) }),
 });
 
-export function parseChatGptMessages(input: unknown, conversationId: string): string[] {
+export function parseChatGptMessages(
+  input: unknown,
+  conversationId: string,
+  description?: string,
+): string[] {
   const body = requireValid(MessagesSchema, input);
 
   if (body.conversation_id !== conversationId || body.is_temporary_chat)
@@ -267,10 +272,10 @@ export function parseChatGptMessages(input: unknown, conversationId: string): st
     for (const part of message.content.parts) {
       const value = part as string;
 
-      if (value.trim() && excerpts.length < 4)
-        excerpts.push(clipChatGptText(value, limits.excerpt));
+      if (value.trim() && (description !== undefined || excerpts.length < 4))
+        excerpts.push(description === undefined ? clipChatGptText(value, limits.excerpt) : value);
     }
   }
 
-  return excerpts;
+  return description === undefined ? excerpts : selectMessageContext(excerpts, description);
 }

@@ -64,7 +64,7 @@ export function AccessPanel() {
         now: () => new Date().toISOString(),
         freshId: () => crypto.randomUUID(),
         model: () => (ai.enabled ? ai : undefined),
-        policy: { modelTimeoutMs: 10_000, requestTimeoutMs: 60_000 },
+        policy: { modelTimeoutMs: 10_000, rankingTimeoutMs: 40_000, requestTimeoutMs: 60_000 },
       });
       setSearch(new SearchModes(searchClient.current, description));
       client.current = new AccessClient(connection, () => crypto.randomUUID());

@@ -13,6 +13,7 @@ import {
 } from '../contracts';
 import type {
   Candidate,
+  ContextRetrievalPort,
   Coverage,
   DescriptionReport,
   InterpreterPort,
@@ -39,10 +40,11 @@ const PolicySchema = v.strictObject({
   maxCandidates: integer(limits.candidates),
   maxResults: integer(limits.candidates),
   modelTimeoutMs: integer(10_000),
+  rankingTimeoutMs: v.exactOptional(integer(40_000)),
   requestTimeoutMs: integer(60_000),
 });
 export interface DescriptionSearchOptions {
-  retrieval: SearchPort;
+  retrieval: SearchPort & Partial<ContextRetrievalPort>;
   linkVerifiers: LinkVerifiers;
   now(): string;
   freshId(): string;
@@ -222,7 +224,14 @@ export class DescriptionSearch implements SearchPort {
       const read = await this.bounded(
         this.options.retrieval,
         run,
-        (context) => this.options.retrieval.search(structuredClone(retrievalRequest), context),
+        (context) =>
+          this.options.retrieval.searchWithContext
+            ? this.options.retrieval.searchWithContext(
+                structuredClone(retrievalRequest),
+                effective.query.text,
+                context,
+              )
+            : this.options.retrieval.search(structuredClone(retrievalRequest), context),
         this.policy.requestTimeoutMs,
       );
 
@@ -306,8 +315,11 @@ export class DescriptionSearch implements SearchPort {
     const ranker = this.options.ranker ?? model;
 
     if (ranker && candidates.length > 0) {
-      const raw = await this.bounded(ranker, run, (context) =>
-        ranker.rank(structuredClone(effective), structuredClone(candidates), context),
+      const raw = await this.bounded(
+        ranker,
+        run,
+        (context) => ranker.rank(structuredClone(effective), structuredClone(candidates), context),
+        this.policy.rankingTimeoutMs ?? this.policy.modelTimeoutMs,
       );
       const parsed = validate(modelRankingSchemaFor(effective, candidates), raw.value);
 

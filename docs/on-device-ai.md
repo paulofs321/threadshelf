@@ -8,6 +8,10 @@ Both prompts receive the full original description. Interpretation preserves rel
 qualifiers in retrieval phrases; ranking is instructed to require the full intent in connected
 evidence and omit partial, unrelated or uncertain matches. Explicit alternatives and exclusions are
 preserved. These instructions apply to arbitrary subjects, rather than a fixed set of topics.
+Before ranking, description retrieval reads bounded message context from native candidates. A broad
+conversation can match through a supported subdiscussion even when its title or initial snippet does
+not name the requested topic. The model receives selected exact excerpts, not unlimited conversations.
+See [context limits and temporary Google tabs](description-search.md).
 
 Open **Search settings → AI description search**. Check support, then click **Enable local AI** or
 **Download and enable local AI**. The model download is separate from conversation search; preparation
@@ -42,8 +46,11 @@ data, with no model tools. Application code resolves approved references to exac
 Each prompt is limited to 20,000 UTF-16 units, with a measured context ceiling of 8,192 tokens (or the
 smaller reported model window), including a 512-token output reserve. Responses are limited to 32,000
 units. Oversized context, unsupported structured output, malformed JSON and inference errors fall
-back visibly. Inference has a nine-second local deadline within a ten-second orchestration stage;
-complete panel description search is capped at sixty seconds. Native retrieval budgets still apply.
+back visibly. Ranking splits larger inventories into at most four independent batches with a
+16,000-unit prompt target; a single oversized candidate or a larger batch count falls back explicitly.
+Each inference has a nine-second local deadline. Interpretation is capped at ten seconds and ranking
+at forty seconds, within the complete sixty-second description request. Every batch validates its own
+candidate/evidence membership before merging selections. Native retrieval budgets still apply.
 
 ## Verification and release recommendation
 

@@ -235,3 +235,21 @@ verified test configuration the API exists but reports unavailable; actual infer
 verified. A synthetic model then exercises opt-in, interpretation and evidence ranking through the
 native panel and provider runtime with intercepted HTTP. Profiles/copies are temporary; no personal
 account data, model download or hosted upload enters automated tests.
+
+## Bounded description message context
+
+Description tests now retrieve broad native candidates, read bounded context through the real
+adapters, and rank subtopics absent from the native preview. Authored examples cover locations,
+food restrictions, TV plots and unrelated craft topics, including later messages and paraphrases.
+They separately reject unrelated co-occurrences, stale/unretrieved IDs, metadata changes and
+invented native snippets. Tests cover read/scan/window budgets, Unicode and whole-word clipping,
+account/permission loss, cancellation, late replies, failed reads, rate-limit hints and evidence
+ownership. Larger local ranking inputs use at most four isolated batches, with per-batch membership
+checks before merging selections.
+
+The native Chromium smoke intercepts message HTTP as well as native searches. It verifies that keyword
+search makes no message reads, then description mode finds a later ChatGPT subtopic and reads Google
+context from an existing supported thread. Unit tests separately exercise temporary Google tab
+creation, cleanup failure and preservation when the user activates, moves or navigates a page.
+These are synthetic integration checks; they do not establish current live-account coverage or
+Gemini Nano semantic accuracy. Google context still uses only the supported rendered last-turn blocks.

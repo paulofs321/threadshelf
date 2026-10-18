@@ -1,13 +1,20 @@
 import { sameScope, validate } from '../contracts';
-import type { ProviderId, ProviderPort, SearchRequest, SessionScope } from '../contracts';
+import type {
+  ConversationContextPort,
+  ProviderId,
+  ProviderPort,
+  SearchRequest,
+  SessionScope,
+} from '../contracts';
 import { KeywordSearch } from '../search';
 import type { AccessBroker, SelectedDocumentBinding } from './broker';
 import { providerLinkVerifiers } from './link-verifiers';
 import { maximumRequestsPerPort } from './protocol';
 import { SearchCommandSchema } from './search-protocol';
 import type { SearchReply } from './search-protocol';
+import { readProviderContext } from '../search/read-context';
 
-interface BoundProvider extends ProviderPort {
+interface BoundProvider extends ProviderPort, Partial<ConversationContextPort> {
   invalidate(): void;
 }
 type ProviderFactory = (binding: SelectedDocumentBinding) => BoundProvider;
@@ -17,7 +24,8 @@ export class PanelSearchBroker {
   private readonly engine: KeywordSearch;
   private readonly providers = new Map<ProviderId, { scope: SessionScope; port: BoundProvider }>();
   private readonly seen = new Set<string>();
-  private active: { request: SearchRequest; controller: AbortController } | undefined;
+  private active:
+    { request: SearchRequest; controller: AbortController; description?: string } | undefined;
   private closed = false;
 
   constructor(
@@ -27,10 +35,12 @@ export class PanelSearchBroker {
   ) {
     this.engine = new KeywordSearch({
       linkVerifiers: providerLinkVerifiers,
+      policy: { providerTimeoutMs: 24_000 },
       providers: (['chatgpt', 'google-ai-mode'] as const).map(
         (provider): Pick<ProviderPort, 'provider' | 'search'> => ({
           provider,
           search: async (request, context) => {
+            const run = this.active;
             const binding = access.bindSelectedDocument(request.scope);
 
             if (!binding)
@@ -48,7 +58,26 @@ export class PanelSearchBroker {
               this.providers.set(provider, bound);
             }
 
-            return bound.port.search(request, context);
+            const outcome = await bound.port.search(request, context);
+
+            if (!run?.description || this.active !== run || context.signal.aborted) return outcome;
+
+            const enriched = await readProviderContext(
+              bound.port,
+              request,
+              outcome,
+              run.description,
+              providerLinkVerifiers,
+              context,
+            );
+
+            return access.bindSelectedDocument(request.scope)
+              ? enriched
+              : {
+                  requestId: request.requestId,
+                  scope: request.scope,
+                  status: 'scope-changed',
+                };
           },
         }),
       ),
@@ -80,7 +109,13 @@ export class PanelSearchBroker {
 
     this.seen.add(request.requestId);
     this.active?.controller.abort();
-    const run = { request, controller: new AbortController() };
+    const run = {
+      request,
+      controller: new AbortController(),
+      ...(command.operation === 'description-retrieval'
+        ? { description: command.description }
+        : {}),
+    };
     this.active = run;
     void this.engine
       .search(request, { signal: run.controller.signal })

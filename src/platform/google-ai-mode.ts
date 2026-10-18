@@ -20,6 +20,7 @@ import type {
 } from '../providers/google-ai-mode/transport';
 import { verifyGoogleOriginalLink } from '../providers/google-ai-mode/wire';
 import type { SelectedDocumentBinding } from './broker';
+import { descriptionWords } from '../search/terms';
 import { inspectSelectedDocument } from './document-probe';
 import { permittedUrl, providerOrigins, providerPermission, validateProbe } from './policy';
 
@@ -61,7 +62,12 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
     });
   }
 
-  openEvidence(candidate: Candidate, expectedIdentity: string, context: OperationContext) {
+  openEvidence(
+    candidate: Candidate,
+    expectedIdentity: string,
+    context: OperationContext,
+    description?: string,
+  ) {
     const parsed = validate(CandidateSchema, candidate);
 
     if (
@@ -168,7 +174,13 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
         const result = await this.execute(
           tabId,
           documentId,
-          { kind: 'messages', conversationId: candidate.conversationId },
+          {
+            kind: 'messages',
+            conversationId: candidate.conversationId,
+            ...(description === undefined
+              ? {}
+              : { query: descriptionWords(description).join(' ') || description }),
+          },
           expectedIdentity,
           signal,
         );
@@ -187,7 +199,19 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
 
         return result;
       } finally {
-        if (owned && tabId !== undefined) await browser.tabs.remove(tabId).catch(() => {});
+        if (owned && tabId !== undefined) {
+          const current = await browser.tabs.get(tabId).catch(() => undefined);
+
+          if (
+            current &&
+            current.windowId === this.binding.tab.windowId &&
+            !current.incognito &&
+            !current.active &&
+            current.url === destination &&
+            current.pendingUrl === undefined
+          )
+            await browser.tabs.remove(tabId).catch(() => {});
+        }
       }
     });
   }

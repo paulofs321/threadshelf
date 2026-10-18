@@ -16,7 +16,9 @@ not replace these matching requirements.
 
 `DescriptionSearch` implements `SearchPort` in `src/description`. The panel's `SearchModes` composition
 routes description requests through it and leaves direct keyword requests with `PanelSearchClient`.
-Only normalized keyword searches cross the existing validated worker bridge. Shared presentation has
+Normalized keyword requests and a narrow description-retrieval operation cross the validated worker
+bridge. The latter carries the original description, never a caller-supplied conversation ID or URL.
+Shared presentation has
 no browser or provider imports. No permissions, persistent caches or uploads are added. Chrome AI type definitions are a pinned development dependency.
 
 ## Pipeline
@@ -26,10 +28,15 @@ no browser or provider imports. No permissions, persistent caches or uploads are
    month. Explicit provider selections and date controls remain authoritative. Other recognized date
    wording is labeled ambiguous/unsupported; use date controls to resolve it.
 2. Search selected native providers for at most three distinct terms, sequentially. Each keyword
-   request has a fresh ID and uses the existing bounded two-provider engine. Retrieval and ranking
-   use the same trimmed, lowercase terms. There is no listing, pagination crawl, automatic message
-   enrichment or per-candidate tab creation.
-3. Deduplicate by provider, full session scope/generation and conversation ID. Preserve the first
+   request has a fresh ID and uses the existing bounded two-provider engine. Expanded terms retrieve
+   candidates; the original full description remains authoritative for ranking. There is no history crawl.
+3. Before ranking, read bounded message context for at most two eligible native results per provider
+   and term, with a six-second context deadline. ChatGPT uses its verified active-branch message read;
+   Google uses its supported rendered last-turn blocks. Prefer relevant windows and keep recent context
+   so paraphrases remain available. A broad conversation qualifies when a subdiscussion supports the
+   complete description; other surrounding subjects do not disqualify it. Separate unrelated mentions
+   still do not establish the requested relationship.
+4. Deduplicate by provider, full session scope/generation and conversation ID. Preserve the first
    candidate ID and merge exact evidence within limits. Apply effective date filters before collection
    budgets so excluded candidates cannot crowd out eligible matches from later terms.
    Response-local candidate/evidence IDs are reassigned when reused across searches; snippet variants
@@ -40,7 +47,7 @@ no browser or provider imports. No permissions, persistent caches or uploads are
    manufacture a match. Match whole words, preserve exact spans and stable ties, and weight excerpt
    evidence more strongly than title evidence. AI can select supported paraphrases without these
    literal-word requirements.
-4. Return candidate IDs with scores and owned evidence IDs/optional exact spans. Links, dates, titles
+5. Return candidate IDs with scores and owned evidence IDs/optional exact spans. Links, dates, titles
    and quotations come from the validated retrieved inventory. **Why this matched** resolves those
    references into exact text. No model-generated narrative, quote, date or link is accepted.
 
@@ -52,17 +59,34 @@ across sentences and passages with intervening content words. It does not establ
 Its constraints come from the full original description, even when an AI-expanded retrieval plan was
 used before a ranking error or timeout. The literal-fallback notice remains visible in that case.
 
+Context reading is deliberately bounded, not a full-history scan. ChatGPT selects at most four exact
+800-unit windows from up to 128,000 UTF-16 units of eligible messages. Google remains limited to the
+known visible last-turn blocks and selects query-relevant windows there; earlier unrendered messages
+are not made accessible by this feature. Only the small selected windows and unchanged titles/native
+excerpts reach ranking. Missing, timed-out, unsupported or omitted context retains an explicit
+`missing-evidence` coverage reason. Native results survive nonterminal context errors; login,
+permission or account/scope changes discard that provider's evidence. Context rate limits retain retry
+hints and cooldowns. Keyword searches do not trigger message reads.
+
+Google may open temporary inactive thread tabs when a retrieved thread is not already open. Matching
+existing tabs are reused. Temporary pages close after reading if still inactive and unchanged; pages
+the user activates or navigates are preserved. No new permission, credential handling, hosted upload
+or persistent conversation cache is added.
+
 ## Bounds and outcomes
 
-| Boundary                             | Default / hard maximum                                                       |
-| ------------------------------------ | ---------------------------------------------------------------------------- |
-| Native query terms                   | 3 / 8, at most two selected providers per term                               |
-| Collected candidates                 | 100 per provider, shared contract bound                                      |
-| Evidence                             | 8 items per candidate; 2,000 UTF-16 units each; 64,000 units per provider    |
-| Ranking context                      | 100 candidates and 64,000 evidence units total across providers              |
-| Selected results                     | 50 / 100                                                                     |
-| Optional interpreter or ranker stage | 10 seconds in the side panel / 10 seconds (generic port default: 3 seconds)  |
-| Complete description request         | 60 seconds in the side panel / 60 seconds (generic port default: 45 seconds) |
+| Boundary                     | Default / hard maximum                                                       |
+| ---------------------------- | ---------------------------------------------------------------------------- |
+| Native query terms           | 3 / 8, at most two selected providers per term                               |
+| Context reads                | 2 per provider/term; at most 12 at default query count, 32 at hard maximum   |
+| Context-read deadline        | 6 seconds per provider/term, within the complete request deadline            |
+| Collected candidates         | 100 per provider, shared contract bound                                      |
+| Evidence                     | 8 items per candidate; 2,000 UTF-16 units each; 64,000 units per provider    |
+| Ranking context              | 100 candidates and 64,000 evidence units total across providers              |
+| Selected results             | 50 / 100                                                                     |
+| Optional interpreter stage   | 10 seconds in the side panel (generic port default: 3 seconds)               |
+| Local ranking stage          | At most 4 bounded prompts, 9 seconds each, within a 40-second stage          |
+| Complete description request | 60 seconds in the side panel / 60 seconds (generic port default: 45 seconds) |
 
 Topic/keyword plans each allow eight terms of 128 UTF-16 units. The ranking context prefers lexical
 matches before remaining retrieved excerpts. Missing/omitted evidence and reached budgets are
