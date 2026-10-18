@@ -5,13 +5,13 @@
 | Path                            | Role                                                                       |
 | ------------------------------- | -------------------------------------------------------------------------- |
 | `src/entrypoints/`              | WXT background and side panel entrypoints                                  |
-| `src/ui/`                       | Shared shadcn/ui keyword search, results and connection controls           |
+| `src/ui/`                       | Shared shadcn/ui keyword/description search, results and connections       |
 | `src/contracts/`                | Normalized runtime schemas, validation helpers and ports                   |
 | `src/platform/`                 | Selected-tab broker, context validation and access lifecycle               |
 | `src/providers/chatgpt/`        | Verified personal-account ChatGPT reads, normalization and identity checks |
 | `src/providers/google-ai-mode/` | Verified Google read adapter, wire parsing and document reader             |
 | `src/search/`                   | Keyword orchestration, scoped deduplication, cancellation and date filters |
-| `src/description/`              | Reserved for interpretation, ranking, and evidence validation              |
+| `src/description/`              | Bounded topic retrieval, interpretation, ranking and evidence validation   |
 | `src/storage/`                  | Reserved for isolated optional local storage                               |
 | `tests/contracts/`              | Synthetic contract and boundary regression tests                           |
 | `tests/platform/`               | Synthetic broker, panel client and Chrome API wiring tests                 |
@@ -461,3 +461,7 @@ publishing must use only its dedicated build directory and must not import provi
 
 No distribution license has been selected. Keep publishing and store submission as separate later
 decisions. Local builds can be inspected with Developer mode as described in the README.
+
+Description search runs in the panel document over the existing normalized keyword transport.
+See the [description pipeline](description-search.md) for its ports, budgets, grounding and fallback
+policy. No model implementation, hosted request, dependency or permission is added.

@@ -77,6 +77,26 @@ describe('provider outcomes', () => {
     });
   });
 
+  it('retains bounded rate-limit metadata only with disclosed incomplete successful reads', () => {
+    const retained = {
+      ...chatSuccess,
+      coverage: { extent: 'partial', reasons: ['provider-failure'] },
+    };
+
+    for (const rateLimit of [{}, { retryAfterMs: 0 }, { retryAfterMs: limits.retryAfterMs }]) {
+      expect(validate(schema, { ...retained, rateLimit }).ok).toBe(true);
+      expect(validate(schema, { ...chatSuccess, rateLimit }).ok).toBe(false);
+    }
+
+    for (const retryAfterMs of [-1, 0.5, Infinity, limits.retryAfterMs + 1])
+      expect(validate(schema, { ...retained, rateLimit: { retryAfterMs } }).ok).toBe(false);
+
+    expect(validate(schema, { ...retained, rateLimit: { rawBody: 'untrusted' } }).ok).toBe(false);
+    expect(validate(schema, { ...retained, rateLimit: null }).ok).toBe(false);
+    expect(validate(schema, { ...retained, rateLimit: undefined }).ok).toBe(false);
+    expect(validate(schema, { ...googleFailure, rateLimit: {} }).ok).toBe(false);
+  });
+
   it('rejects obsolete request IDs, account/workspace changes and generations', () => {
     const scopes = [
       { ...chatScope, generation: 2 },

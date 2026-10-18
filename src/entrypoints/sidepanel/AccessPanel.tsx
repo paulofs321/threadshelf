@@ -11,6 +11,7 @@ import { providerPermission } from '../../platform/policy';
 import { SearchScreen } from '../../ui/SearchScreen';
 import { PanelSearchClient } from '../../platform/search-client';
 import { providerLinkVerifiers } from '../../platform/link-verifiers';
+import { DescriptionSearch, SearchModes } from '../../description';
 
 interface ProviderState {
   status: AccessReply['status'] | 'idle' | 'connecting';
@@ -48,7 +49,13 @@ export function AccessPanel() {
       searchClient.current = new PanelSearchClient(connection, providerLinkVerifiers, () =>
         client.current?.close(),
       );
-      setSearch(searchClient.current);
+      const description = new DescriptionSearch({
+        retrieval: searchClient.current,
+        linkVerifiers: providerLinkVerifiers,
+        now: () => new Date().toISOString(),
+        freshId: () => crypto.randomUUID(),
+      });
+      setSearch(new SearchModes(searchClient.current, description));
       client.current = new AccessClient(connection, () => crypto.randomUUID());
       client.current.subscribe((event: AccessEvent) => {
         // Interruption is published inside the port callback; consume Chrome's error there.

@@ -8,6 +8,7 @@ import {
   EvidenceIdSchema,
   limits,
   RequestIdSchema,
+  CountSchema,
   unique,
 } from './primitives';
 import {
@@ -21,7 +22,13 @@ import type { SearchRequest } from './query';
 import { requireValid } from './validation';
 
 const TermsSchema = v.pipe(
-  boundedArray(boundedText(limits.term), limits.planTerms),
+  boundedArray(
+    v.pipe(
+      boundedText(limits.term),
+      v.check((term) => !/\p{Cc}/u.test(term)),
+    ),
+    limits.planTerms,
+  ),
   v.check(unique, 'Duplicate model terms.'),
 );
 
@@ -45,6 +52,20 @@ export const ModelRankingSchema = v.strictObject({
           v.minLength(1),
           v.check(unique, 'Duplicate evidence references.'),
         ),
+        spans: v.exactOptional(
+          v.pipe(
+            boundedArray(
+              v.strictObject({
+                evidenceId: EvidenceIdSchema,
+                start: CountSchema,
+                end: CountSchema,
+              }),
+              limits.evidencePerCandidate,
+            ),
+            v.minLength(1),
+            v.check((spans) => unique(spans.map((span) => span.evidenceId))),
+          ),
+        ),
       }),
       limits.candidates,
     ),
@@ -57,6 +78,60 @@ export const ModelRankingSchema = v.strictObject({
 
 export type ModelPlan = v.InferOutput<typeof ModelPlanSchema>;
 export type ModelRanking = v.InferOutput<typeof ModelRankingSchema>;
+
+// Offsets use UTF-16, like String.slice; reject splits inside a surrogate pair.
+export function rankingReferencesCandidates(
+  ranking: Pick<ModelRanking, 'selections'>,
+  candidates: readonly Candidate[],
+): boolean {
+  return ranking.selections.every((selection) => {
+    const candidate = candidates.find((item) => item.id === selection.candidateId);
+
+    return (
+      candidate !== undefined &&
+      selection.evidenceIds.every((id) => candidate.evidence.some((item) => item.id === id)) &&
+      (selection.spans === undefined ||
+        selection.spans.every((span) => {
+          const evidence = candidate.evidence.find((item) => item.id === span.evidenceId);
+
+          return (
+            selection.evidenceIds.includes(span.evidenceId) &&
+            evidence !== undefined &&
+            span.start < span.end &&
+            span.end <= evidence.text.length &&
+            !/[\uDC00-\uDFFF]/u.test(evidence.text.charAt(span.start)) &&
+            !/[\uDC00-\uDFFF]/u.test(evidence.text.charAt(span.end))
+          );
+        }))
+    );
+  });
+}
+
+export const DescriptionReportSchema = v.strictObject({
+  strategy: v.picklist(['keyword-topic-fallback', 'model-assisted']),
+  terms: v.pipe(
+    boundedArray(boundedText(limits.term), limits.planTerms * 2),
+    v.minLength(1),
+    v.check(unique),
+  ),
+  notices: v.pipe(
+    boundedArray(
+      v.picklist([
+        'limited-vocabulary',
+        'ambiguous-date',
+        'explicit-date-precedence',
+        'model-unavailable',
+        'invalid-model-output',
+        'model-timeout',
+      ]),
+      6,
+    ),
+    v.check(unique),
+  ),
+  dateRange: v.exactOptional(DateRangeSchema),
+  ranking: ModelRankingSchema,
+});
+export type DescriptionReport = v.InferOutput<typeof DescriptionReportSchema>;
 
 export function modelPlanSchemaFor(requestInput: SearchRequest) {
   const request = requireValid(SearchRequestSchema, requestInput);
@@ -99,24 +174,13 @@ export function modelRankingSchemaFor(
     throw new Error('Invalid contract context.');
   }
 
-  const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
-
   return v.pipe(
     ModelRankingSchema,
     v.check(
       (ranking) =>
         request.query.mode === 'description' &&
         ranking.requestId === request.requestId &&
-        ranking.selections.every((selection) => {
-          const candidate = byId.get(selection.candidateId);
-
-          return (
-            candidate !== undefined &&
-            selection.evidenceIds.every((id) =>
-              candidate.evidence.some((evidence) => evidence.id === id),
-            )
-          );
-        }),
+        rankingReferencesCandidates(ranking, candidates),
       'Model selections must reference retrieved candidates and their own evidence.',
     ),
   );
