@@ -55,6 +55,10 @@ interface Run {
   status?: 'cancelled' | 'scope-changed' | 'timeout';
 }
 
+function normalizeTerms(terms: readonly string[]): string[] {
+  return [...new Set(terms.map((term) => term.trim().toLowerCase()))];
+}
+
 /** Panel/document-owned orchestration. No model implementation, browser access or persistent state. */
 export class DescriptionSearch implements SearchPort {
   private active: Run | undefined;
@@ -186,9 +190,12 @@ export class DescriptionSearch implements SearchPort {
 
     if (run.status) return this.terminal(run);
 
-    const terms = [
-      ...new Set([...plan.topics, ...plan.keywords].map((term) => term.trim().toLowerCase())),
-    ];
+    plan = {
+      ...plan,
+      topics: normalizeTerms(plan.topics),
+      keywords: normalizeTerms(plan.keywords),
+    };
+    const terms = [...new Set([...plan.topics, ...plan.keywords])];
     const queries = terms.slice(0, this.policy.maxQueries);
     const reasons: Coverage['reasons'] = terms.length > queries.length ? ['query-budget'] : [];
     const collected = new Map<ProviderId, ProviderOutcome>();

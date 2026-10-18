@@ -103,7 +103,7 @@ describe('shared description presentation', () => {
     'retains earlier matches and enforces a later rate limit with retry hint %s',
     async (retryAfterMs) => {
       vi.useFakeTimers();
-      const { engine, native, google } = setup();
+      const { engine, native, chat, google } = setup();
       google.search
         .mockImplementationOnce(async (input): Promise<ProviderOutcome> => ({
           requestId: input.requestId,
@@ -130,14 +130,41 @@ describe('shared description presentation', () => {
       fireEvent.click(search);
       fireEvent.submit(screen.getByRole('search'));
       expect(google.search).toHaveBeenCalledTimes(2);
+      const chatReads = chat.search.mock.calls.length;
       await act(async () => {
-        await vi.advanceTimersByTimeAsync((retryAfterMs ?? 1000) - 1);
+        await vi.advanceTimersByTimeAsync(200);
       });
-      expect(refresh.hasAttribute('disabled')).toBe(true);
+      const edits = [
+        () => fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'new query' } }),
+        () =>
+          fireEvent.change(screen.getByLabelText('Search mode'), { target: { value: 'keyword' } }),
+        () => fireEvent.click(screen.getByRole('checkbox', { name: 'Google Search AI Mode' })),
+        () =>
+          fireEvent.change(screen.getByLabelText('From date'), { target: { value: '2026-09-01' } }),
+        () =>
+          fireEvent.change(screen.getByLabelText('Before date (exclusive)'), {
+            target: { value: '2026-10-01' },
+          }),
+        () => fireEvent.click(screen.getByRole('button', { name: 'Clear search' })),
+      ];
+
+      for (const edit of edits) {
+        edit();
+        expect(screen.queryByRole('article')).toBeNull();
+        expect(search.hasAttribute('disabled')).toBe(true);
+        expect(screen.getByRole('status').textContent).toContain('Rate limited');
+        fireEvent.submit(screen.getByRole('search'));
+        expect(chat.search).toHaveBeenCalledTimes(chatReads);
+        expect(google.search).toHaveBeenCalledTimes(2);
+      }
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync((retryAfterMs ?? 1000) - 201);
+      });
+      expect(search.hasAttribute('disabled')).toBe(true);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1);
       });
-      expect(refresh.hasAttribute('disabled')).toBe(false);
       expect(search.hasAttribute('disabled')).toBe(false);
     },
   );

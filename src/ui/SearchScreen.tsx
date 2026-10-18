@@ -81,7 +81,8 @@ export function SearchScreen(props: SearchScreenProps) {
   const currentKey = useRef(key);
   currentKey.current = key;
   const [view, setView] = useState<View>({ key, phase: 'idle' });
-  const [cooldown, setCooldown] = useState(false);
+  const [retryUntil, setRetryUntil] = useState(0);
+  const cooldown = retryUntil > Date.now();
   const [retired, setRetired] = useState<Partial<Record<ProviderId, SessionScope>>>({});
   const active = useRef<{ controller: AbortController; key: string } | null>(null);
   const queryInput = useRef<HTMLInputElement>(null);
@@ -98,16 +99,6 @@ export function SearchScreen(props: SearchScreenProps) {
       selected.includes(scope.provider) && previous !== undefined && sameScope(previous, scope)
     );
   });
-  const retryMs = Math.max(
-    0,
-    ...(outcome?.outcomes.map((item) =>
-      item.status === 'rate-limited'
-        ? (item.retryAfterMs ?? 1000)
-        : item.status === 'success' && item.rateLimit
-          ? (item.rateLimit.retryAfterMs ?? 1000)
-          : 0,
-    ) ?? []),
-  );
 
   useEffect(() => {
     if (previousPage.current === page) return;
@@ -139,14 +130,14 @@ export function SearchScreen(props: SearchScreenProps) {
   }, [key, props.search]);
 
   useEffect(() => {
-    setCooldown(retryMs > 0);
+    const retryMs = retryUntil - Date.now();
 
-    if (retryMs === 0) return;
+    if (retryMs <= 0) return;
 
-    const timer = setTimeout(() => setCooldown(false), retryMs);
+    const timer = setTimeout(() => setRetryUntil(0), retryMs);
 
     return () => clearTimeout(timer);
-  }, [outcome, retryMs]);
+  }, [retryUntil]);
 
   function edit() {
     active.current?.controller.abort();
@@ -202,6 +193,22 @@ export function SearchScreen(props: SearchScreenProps) {
       if (!result.ok) throw new Error('Invalid search outcome.');
 
       if (!run.controller.signal.aborted) {
+        const retryMs = Math.max(
+          0,
+          ...result.value.outcomes.map((item) =>
+            item.status === 'rate-limited'
+              ? (item.retryAfterMs ?? 1000)
+              : item.status === 'success' && item.rateLimit
+                ? (item.rateLimit.retryAfterMs ?? 1000)
+                : 0,
+          ),
+        );
+
+        if (retryMs > 0) {
+          const deadline = Date.now() + retryMs;
+          setRetryUntil((previous) => Math.max(previous, deadline));
+        }
+
         const terminal = result.value.outcomes.filter((item) =>
           ['login-expired', 'permission-needed', 'scope-changed'].includes(item.status),
         );
@@ -254,7 +261,11 @@ export function SearchScreen(props: SearchScreenProps) {
         : visible.phase === 'cancelled'
           ? 'Search cancelled.'
           : (visible.error ??
-            (outcome ? outcomeStatus(outcome) : 'Ready to search. Enter a query above.'));
+            (outcome
+              ? outcomeStatus(outcome)
+              : cooldown
+                ? 'Rate limited. Wait before searching again.'
+                : 'Ready to search. Enter a query above.'));
 
   return (
     <main className="mx-auto flex min-h-svh min-w-0 max-w-xl flex-col bg-background text-sm">

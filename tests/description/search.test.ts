@@ -6,7 +6,7 @@ import {
   validate,
   ModelPlanSchema,
 } from '../../src/contracts';
-import type { SearchPort } from '../../src/contracts';
+import type { Candidate, SearchPort } from '../../src/contracts';
 import { aggregateSearch } from '../../src/search/aggregate';
 import {
   corpus,
@@ -20,6 +20,76 @@ import {
 import { setup, context } from './helpers';
 
 describe('grounded description retrieval', () => {
+  it.each([
+    ['candidates', 'explicit'],
+    ['candidates', 'inferred'],
+    ['evidence', 'explicit'],
+    ['evidence', 'inferred'],
+  ] as const)(
+    'keeps date-ineligible reads out of the %s budget with an %s range',
+    async (budget, dateMode) => {
+      const first = Array.from({ length: budget === 'candidates' ? 100 : 4 }, (_, i) => {
+        const item = candidate(
+          `old-${i}`,
+          'Authentication',
+          'Authentication',
+          chatScope,
+          i === 0 ? undefined : '2026-08-15T00:00:00.000Z',
+        );
+
+        if (budget === 'evidence')
+          item.evidence = Array.from({ length: 8 }, (_, n) => ({
+            id: `snippet-${i}-${n}` as Candidate['evidence'][number]['id'],
+            source: 'native-snippet' as const,
+            text: 'Authentication ' + 'x'.repeat(1985),
+          }));
+
+        return item;
+      });
+      const matching = candidate(
+        'eligible-auth',
+        'Authentication',
+        'Authentication login.',
+        chatScope,
+        '2026-09-15T00:00:00.000Z',
+      );
+      const { engine, chat } = setup({ policy: { maxQueries: 2 } });
+      chat.search
+        .mockImplementationOnce(async (input) => ({
+          requestId: input.requestId,
+          scope: input.scope,
+          status: 'success',
+          candidates: first,
+          coverage: { extent: 'unknown', reasons: ['unknown-reach'] },
+        }))
+        .mockImplementation(async (input) => ({
+          requestId: input.requestId,
+          scope: input.scope,
+          status: 'success',
+          candidates: [matching],
+          coverage: { extent: 'complete', reasons: [] },
+        }));
+      const input = request('authentication last month');
+      input.query.providers = ['chatgpt'];
+      input.scopes = [chatScope];
+
+      if (dateMode === 'explicit')
+        input.query.dateRange = {
+          start: '2026-09-01T00:00:00.000Z',
+          end: '2026-10-01T00:00:00.000Z',
+        };
+
+      const result = await engine.search(input, context());
+      expect(result.results).toEqual(['eligible-auth']);
+      expect(result.outcomes[0]).toMatchObject({ status: 'success', candidates: [matching] });
+      expect(result.coverage.extent).toBe('unknown');
+      expect(result.coverage.reasons).toContain('unknown-reach');
+      expect(result.coverage.reasons).toContain('unknown-dates');
+      expect(result.coverage.reasons).not.toContain('result-limit');
+      expect(chat.search).toHaveBeenCalledTimes(2);
+      expect(validate(searchOutcomeSchemaFor(input, linkVerifiers), result).ok).toBe(true);
+    },
+  );
   it.each(examples)(
     'grounds $text in the authored corpus',
     async ({ text, expected, evidence }) => {

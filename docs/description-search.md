@@ -17,11 +17,14 @@ no browser or provider imports. No permissions, dependencies, persistent caches 
    month. Explicit provider selections and date controls remain authoritative. Other recognized date
    wording is labeled ambiguous/unsupported; use date controls to resolve it.
 2. Search selected native providers for at most three distinct terms, sequentially. Each keyword
-   request has a fresh ID and uses the existing bounded two-provider engine. There is no listing,
-   pagination crawl, automatic message enrichment or per-candidate tab creation.
+   request has a fresh ID and uses the existing bounded two-provider engine. Retrieval and ranking
+   use the same trimmed, lowercase terms. There is no listing, pagination crawl, automatic message
+   enrichment or per-candidate tab creation.
 3. Deduplicate by provider, full session scope/generation and conversation ID. Preserve the first
-   candidate ID and merge exact evidence within limits. Response-local candidate/evidence IDs are
-   reassigned when reused across searches; snippet variants retain their exact text. Conflicting
+   candidate ID and merge exact evidence within limits. Apply effective date filters before collection
+   budgets so excluded candidates cannot crowd out eligible matches from later terms.
+   Response-local candidate/evidence IDs are reassigned when reused across searches; snippet variants
+   retain their exact text. Conflicting
    metadata or malformed IDs within one response fail closed. Rank whole-word title/excerpt matches
    deterministically, weighting excerpt evidence more strongly than title evidence, with stable ties.
    Unrelated text does not match just by substring.
@@ -54,11 +57,12 @@ A provider failure leaves other providers' useful results available. A later top
 earlier successful reads with incomplete coverage; login/permission/scope loss erases that provider's
 prior results. A later rate limit retains its bounded retry hint alongside earlier matches in the
 successful outcome's optional `rateLimit` field. The panel shows the limit and blocks search/refresh
-for that interval (one second when no hint is available). Cancellation, query replacement and global
-timeout abort work and discard obsolete private results. Abandoned ports retain physical ownership
+for that interval (one second when no hint is available). Editing or clearing search controls does not
+reset the retry deadline. Cancellation, query replacement and global timeout abort work and discard
+obsolete private results. Abandoned ports retain physical ownership
 until their promises settle, preventing concurrent reuse. Replacement retrieval waits for that
-settlement within the new request's deadline;
-cancellation and scope invalidation also stop the wait. No automatic retry occurs.
+settlement within the new request's deadline; cancellation and scope invalidation also stop the wait.
+No automatic retry occurs.
 
 Date filters use each candidate's available timestamp with its stated provenance; conversation or
 provider-record dates do not prove when a topic was discussed. Unknown dates cannot satisfy a date

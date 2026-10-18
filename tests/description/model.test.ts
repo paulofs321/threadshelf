@@ -1,12 +1,42 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Candidate, SearchRequest } from '../../src/contracts';
-import { request } from '../fixtures/description/corpus';
+import { request, candidate } from '../fixtures/description/corpus';
 import { deferred } from '../fixtures/search/providers';
 import { setup, context, ranking } from './helpers';
 
 afterEach(() => vi.useRealTimers());
 
 describe('untrusted model ports', () => {
+  it.each([false, true])(
+    'uses the same normalized interpretation for retrieval and fallback ranking (invalid ranker: %s)',
+    async (invalidRanker) => {
+      const item = candidate('orchard', 'Orchard', 'Orchard cultivation.');
+      const interpreter = {
+        interpret: vi.fn(async (input: SearchRequest) => ({
+          requestId: input.requestId,
+          topics: ['  ORCHARD  ', ' orchard '],
+          keywords: ['  CULTIVATION  '],
+        })),
+      };
+      const { engine, retrieval } = setup(
+        {
+          interpreter,
+          ...(invalidRanker ? { ranker: { rank: vi.fn(async () => ({})) } } : {}),
+        },
+        [item],
+      );
+      const result = await engine.search(request('orchard'), context());
+      expect(retrieval.search.mock.calls.map(([input]) => input.query.text)).toEqual([
+        'orchard',
+        'cultivation',
+      ]);
+      expect(result.description?.terms).toEqual(['orchard', 'cultivation']);
+      expect(result.results).toEqual(['orchard']);
+      const selection = result.description?.ranking.selections[0];
+      expect(selection?.evidenceIds).toContain('orchard-excerpt');
+      expect(selection?.spans).toContainEqual({ evidenceId: 'orchard-excerpt', start: 0, end: 7 });
+    },
+  );
   it('accepts validated interpretation and ranking without model-owned metadata', async () => {
     const interpreter = {
       interpret: vi.fn(async (input: SearchRequest) => ({

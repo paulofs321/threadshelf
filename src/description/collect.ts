@@ -3,6 +3,7 @@ import {
   EvidenceIdSchema,
   conversationKey,
   limits,
+  matchesDateRange,
   requireValid,
 } from '../contracts';
 import type {
@@ -37,6 +38,15 @@ export function collect(
   verifiers: LinkVerifiers,
 ): ProviderOutcome {
   const next = { ...incoming, requestId: request.requestId };
+
+  if (next.status === 'success' && request.query.dateRange) {
+    if (next.candidates.some((candidate) => candidate.date === undefined))
+      next.coverage = limitedCoverage(next.coverage, 'unknown-dates');
+
+    next.candidates = next.candidates.filter((candidate) =>
+      matchesDateRange(candidate, request.query.dateRange),
+    );
+  }
 
   if (!previous || previous.status !== 'success') return next;
 
