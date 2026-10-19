@@ -12,7 +12,9 @@ export const SearchCommandSchema = v.variant('operation', [
     operation: v.literal('description-retrieval'),
     request: KeywordRequestSchema,
     description: QuerySchema.entries.text,
+    groupId: v.exactOptional(RequestIdSchema),
   }),
+  v.strictObject({ operation: v.literal('finish-description'), groupId: RequestIdSchema }),
   v.strictObject({ operation: v.literal('cancel-search'), requestId: RequestIdSchema }),
 ]);
 export type SearchCommand = v.InferOutput<typeof SearchCommandSchema>;

@@ -5,6 +5,7 @@ import {
   searchOutcomeSchemaFor,
   validate,
   QuerySchema,
+  RequestIdSchema,
 } from '../contracts';
 import type {
   LinkVerifiers,
@@ -60,14 +61,32 @@ export class PanelSearchClient implements SearchPort {
     input: SearchRequest,
     description: string,
     context: { signal: AbortSignal },
+    groupId?: SearchRequest['requestId'],
   ): Promise<SearchOutcome> {
-    return this.retrieve(input, context, requireValid(QuerySchema.entries.text, description));
+    return this.retrieve(
+      input,
+      context,
+      requireValid(QuerySchema.entries.text, description),
+      groupId === undefined ? undefined : requireValid(RequestIdSchema, groupId),
+    );
+  }
+
+  releaseContext(groupId: SearchRequest['requestId']): void {
+    try {
+      this.connection.postMessage({
+        operation: 'finish-description',
+        groupId: requireValid(RequestIdSchema, groupId),
+      });
+    } catch {
+      this.close();
+    }
   }
 
   private retrieve(
     input: SearchRequest,
     { signal }: { signal: AbortSignal },
     description?: string,
+    groupId?: SearchRequest['requestId'],
   ): Promise<SearchOutcome> {
     const request = requireValid(KeywordRequestSchema, input);
 
@@ -132,7 +151,12 @@ export class PanelSearchClient implements SearchPort {
         this.connection.postMessage(
           description === undefined
             ? { operation: 'keyword-search', request }
-            : { operation: 'description-retrieval', request, description },
+            : {
+                operation: 'description-retrieval',
+                request,
+                description,
+                ...(groupId === undefined ? {} : { groupId }),
+              },
         );
       } catch {
         this.close();

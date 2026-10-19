@@ -260,8 +260,9 @@ try {
     if (url.origin === 'https://www.google.com' && url.pathname === '/search')
       return route.fulfill({
         contentType: 'text/html',
+        headers: { 'x-frame-options': 'SAMEORIGIN' },
         body: route.request().isNavigationRequest()
-          ? `<a href="https://accounts.google.com/SignOutOptions?hl=en" aria-label="Google Account: Fiction (orchard@example.invalid), Opens account menu">Account</a>${url.searchParams.has('mtid') ? '<div class="UYpEO"><div class="kwdzO">13 October 2026</div></div><div data-last-turn>General planning notes. A fictional orchard subtopic covers gate maintenance. Other life plans.</div>' : ''}`
+          ? `<a href="https://accounts.google.com/SignOutOptions?hl=en" aria-label="Google Account: Fiction (orchard@example.invalid), Opens account menu">Account</a>${url.searchParams.has('mtid') ? '<div class="UYpEO"><div class="kwdzO">13 October 2026</div></div><div class="CKgc1d"><div class="pWvJNd">General planning notes. A fictional orchard subtopic covers gate maintenance.</div></div><div class="CKgc1d" data-last-turn><div class="pWvJNd">Later unrelated life plans.</div></div>' : ''}`
           : '<p>Fictional AI Mode response without account metadata.</p>',
       });
 
@@ -367,9 +368,9 @@ try {
   assert.deepEqual(await tabIds(), beforeSearchTabs);
   assert.equal(searchCreatedPages, 0);
   assert.equal(messageReads, 0);
-  // Earlier keyword checks returned an unopened thread without reading it. Description
-  // context can reuse the supported thread that is already open in this synthetic profile.
-  googleResultThread = googleFixtures.googleThread();
+  // A previously unopened saved thread must load inside an owned frame, without a new tab.
+  googleResultThread = googleFixtures.googleThread('fictional-background-context');
+  const googleSourceUrl = googlePage.url();
   await drive('description-mode');
   await drive('search');
   await expect.poll(() => keywordReads).toBe(10);
@@ -388,6 +389,8 @@ try {
   assert.deepEqual(await tabIds(), beforeSearchTabs);
   assert.equal(searchCreatedPages, 0);
   assert.equal(messageReads, 2);
+  assert.equal(googlePage.url(), googleSourceUrl);
+  await expect.poll(() => googlePage.locator('iframe').count()).toBe(0);
   await drive('check-ai');
   await expect.poll(async () => (await drive('snapshot')).aiStatus).not.toContain('Checking');
   const nativeAi = await drive('snapshot');
@@ -416,7 +419,7 @@ try {
   assert.deepEqual(errors, []);
 
   process.stdout.write(
-    'Chromium MV3 UI smoke passed: production mount/theme; real native-panel runtime/providers with synthetic transport; zero keyword message reads/tabs; description reads late ChatGPT subtopics and reuses rendered Google context; synthetic on-device interpretation/ranking; synthetic cancellation/reconnect; compact previews; keyboard/focus; 240–400px; no external requests or CSP errors.\n',
+    'Chromium MV3 UI smoke passed: production mount/theme; real native-panel runtime/providers with synthetic transport; zero keyword message reads/tabs; description reads late ChatGPT subtopics and an unopened Google thread through an owned same-origin frame, preserving source URL and cleaning frames; zero new search tabs; synthetic on-device interpretation/ranking; synthetic cancellation/reconnect; compact previews; keyboard/focus; 240–400px; no external requests or CSP errors.\n',
   );
 } finally {
   await context?.close();

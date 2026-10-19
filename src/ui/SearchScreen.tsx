@@ -455,7 +455,7 @@ export function SearchScreen(props: SearchScreenProps) {
                     ? 'Description uses optional local AI with a keyword/topic fallback.'
                     : 'Description uses keyword/topic fallback matching. Optional model support is unavailable.'}
                   {mode === 'description' &&
-                    ' Searches read limited conversation excerpts to find matching subtopics. Google may briefly open background thread tabs.'}
+                    ' Searches read limited conversation excerpts to find matching subtopics. Google reads saved threads in a hidden frame within its connected page, without opening tabs.'}
                 </p>
               </div>
               {props.ai && (

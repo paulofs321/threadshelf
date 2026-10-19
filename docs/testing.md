@@ -82,8 +82,9 @@ context, not complete-history access or universal account/browser support.
 
 `tests/platform/google-ai-mode.test.ts` covers the concrete host with mocked Chrome APIs: scoped
 candidate membership/link validation, pinned document/frame IDs, owning context and permission
-checks, source/temporary-tab changes, account rechecks, stalled reads, abort-injection rejection,
-late tab creation and listener/timer/tab cleanup. Permission-removal tests distinguish the Google
+checks, source changes, account rechecks, stalled reads, abort-injection rejection and listener/timer
+cleanup, with zero tab creation/removal assertions. `tests/providers/google-ai-mode/frame-read.test.ts`
+covers the owned frame's message and cleanup lifecycle. Permission-removal tests distinguish the Google
 origin/shared scripting permission from unrelated removals and verify an unaffected session stays ready.
 Broker tests cover selected-document capabilities, replacement/closure and conservative context lookup.
 
@@ -249,7 +250,11 @@ checks before merging selections.
 
 The native Chromium smoke intercepts message HTTP as well as native searches. It verifies that keyword
 search makes no message reads, then description mode finds a later ChatGPT subtopic and reads Google
-context from an existing supported thread. Unit tests separately exercise temporary Google tab
-creation, cleanup failure and preservation when the user activates, moves or navigates a page.
+context from a previously unopened saved thread through a hidden same-origin frame. Browser checks
+assert unchanged source URL, removed frames and zero new search tabs. Unit tests cover pinned source
+and child account/thread checks, redirected or blocked frames, delayed content, cancellation, timeout,
+message budgets, nested turn deduplication and source changes.
 These are synthetic integration checks; they do not establish current live-account coverage or
-Gemini Nano semantic accuracy. Google context still uses only the supported rendered last-turn blocks.
+Gemini Nano semantic accuracy. Google context remains bounded to supported rendered turns. Candidate
+coverage tests exercise distinctive qualifiers beyond the former first-two results, distinct reads
+across terms, request-state release and later messages beyond the former text-prefix limit.

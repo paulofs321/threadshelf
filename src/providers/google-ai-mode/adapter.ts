@@ -221,7 +221,16 @@ export class GoogleAiModeProvider implements ProviderPort {
       if (enriched.evidence.length >= limits.evidencePerCandidate) break;
 
       enriched.evidence.push(
-        requireValid(EvidenceSchema, { id: `rendered-${index}`, text, source: 'rendered-message' }),
+        requireValid(EvidenceSchema, {
+          id: `rendered-${index}`,
+          text: text.slice(
+            0,
+            /[\uD800-\uDBFF]/u.test(text.charAt(limits.excerpt - 1))
+              ? limits.excerpt - 1
+              : limits.excerpt,
+          ),
+          source: 'rendered-message',
+        }),
       );
     }
 

@@ -54,6 +54,29 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe('panel-owned validated keyword transport', () => {
+  it('scopes candidate coverage to the original request and explicitly releases it', async () => {
+    const { client, request, connection, controller } = harness();
+    const pending = client.searchWithContext(
+      request,
+      'jobs Switzerland',
+      { signal: controller.signal },
+      request.requestId,
+    );
+    expect(connection.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'description-retrieval', groupId: request.requestId }),
+    );
+    connection.onMessage.emit({ kind: 'search-result', outcome: await success(request) });
+    await pending;
+    client.releaseContext(request.requestId);
+    expect(connection.postMessage).toHaveBeenLastCalledWith({
+      operation: 'finish-description',
+      groupId: request.requestId,
+    });
+    connection.postMessage.mockImplementation(() => {
+      throw new Error('Synthetic closed connection');
+    });
+    expect(() => client.releaseContext(request.requestId)).not.toThrow();
+  });
   it('sends the original description with a narrow context-retrieval operation', async () => {
     const { connection, client, request, controller } = harness();
     const pending = client.searchWithContext(request, '  Food without dairy  ', {

@@ -49,7 +49,8 @@ function lastRequest(port = ports[0]): AccessOperation {
     request.operation === 'cancel' ||
     request.operation === 'keyword-search' ||
     request.operation === 'description-retrieval' ||
-    request.operation === 'cancel-search'
+    request.operation === 'cancel-search' ||
+    request.operation === 'finish-description'
   )
     throw new Error('Expected synthetic access operation.');
 

@@ -3,7 +3,12 @@ import { PanelSearchBroker } from '../../src/platform/search-broker';
 import type { SearchReply } from '../../src/platform/search-protocol';
 import { maximumRequestsPerPort } from '../../src/platform/protocol';
 import { CandidateSchema, SearchRequestSchema, requireValid } from '../../src/contracts';
-import type { ProviderId, ProviderPort, SearchRequest } from '../../src/contracts';
+import type {
+  ConversationContextPort,
+  ProviderId,
+  ProviderPort,
+  SearchRequest,
+} from '../../src/contracts';
 import type { SelectedDocumentBinding } from '../../src/platform/broker';
 import { chatCandidate, deferred } from '../fixtures/search/providers';
 import { brokerHarness, selected } from './helpers';
@@ -64,6 +69,57 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe('trusted panel search composition and document binding', () => {
+  it('visits distinct candidates across terms and releases request-local coverage state', async () => {
+    const f = await harness();
+    const candidates = Array.from({ length: 12 }, (_, i) => {
+      const id = `11111111-1111-1111-1111-${String(i).padStart(12, '0')}`;
+
+      return {
+        ...f.candidate,
+        id: `candidate-${i}`,
+        conversationId: id,
+        originalUrl: `https://chatgpt.com/c/${id}`,
+      };
+    });
+    f.provider.search.mockImplementation(async (request) => ({
+      requestId: request.requestId,
+      scope: request.scope,
+      status: 'success',
+      candidates,
+      coverage: { extent: 'complete', reasons: [] },
+    }));
+    const readContext = vi.fn<ConversationContextPort['readContext']>(async (request, id) => ({
+      requestId: request.requestId,
+      scope: request.scope,
+      status: 'success',
+      candidates: [candidates.find((item) => item.conversationId === id)],
+      coverage: { extent: 'partial', reasons: ['missing-evidence'] },
+    }));
+    Object.assign(f.provider, { readContext });
+    const dispatch = (id: string, text: string) =>
+      f.search.receive({
+        operation: 'description-retrieval',
+        groupId: 'original-description',
+        description: 'jobs Switzerland',
+        request: { ...f.request, requestId: id, query: { ...f.request.query, text } },
+      });
+    dispatch('first-term', 'jobs');
+    await vi.waitFor(() => expect(f.messages).toHaveLength(1));
+    dispatch('second-term', 'Switzerland');
+    await vi.waitFor(() => expect(f.messages).toHaveLength(2));
+    expect(readContext).toHaveBeenCalledTimes(12);
+    expect(new Set(readContext.mock.calls.map((call) => call[1])).size).toBe(12);
+    expect(f.search.receive({ operation: 'finish-description', groupId: 'unrelated' })).toBe(true);
+    dispatch('third-term', 'jobs');
+    await vi.waitFor(() => expect(f.messages).toHaveLength(3));
+    expect(readContext).toHaveBeenCalledTimes(12);
+    expect(
+      f.search.receive({ operation: 'finish-description', groupId: 'original-description' }),
+    ).toBe(true);
+    dispatch('new-description', 'jobs');
+    await vi.waitFor(() => expect(f.messages).toHaveLength(4));
+    expect(readContext).toHaveBeenCalledTimes(20);
+  });
   it('retrieves before reading context, preserving native metadata and the original description', async () => {
     const { search, provider, candidate, request, messages } = await harness();
     const readContext = vi.fn(async () => ({

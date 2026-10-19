@@ -24,6 +24,7 @@ export class PanelSearchBroker {
   private readonly engine: KeywordSearch;
   private readonly providers = new Map<ProviderId, { scope: SessionScope; port: BoundProvider }>();
   private readonly seen = new Set<string>();
+  private group: { id: string; key: string; visited: Map<ProviderId, Set<string>> } | undefined;
   private active:
     { request: SearchRequest; controller: AbortController; description?: string } | undefined;
   private closed = false;
@@ -69,6 +70,7 @@ export class PanelSearchBroker {
               run.description,
               providerLinkVerifiers,
               context,
+              this.group?.visited.get(provider),
             );
 
             return access.bindSelectedDocument(request.scope)
@@ -93,6 +95,12 @@ export class PanelSearchBroker {
 
     const command = parsed.value;
 
+    if (command.operation === 'finish-description') {
+      if (this.group?.id === command.groupId) this.group = undefined;
+
+      return true;
+    }
+
     if (command.operation === 'cancel-search') {
       if (this.active?.request.requestId === command.requestId) this.active.controller.abort();
 
@@ -100,6 +108,20 @@ export class PanelSearchBroker {
     }
 
     const request = command.request;
+
+    if (command.operation === 'description-retrieval' && command.groupId !== undefined) {
+      const key = JSON.stringify([command.description, request.scopes, request.query.dateRange]);
+
+      if (this.group?.id !== command.groupId || this.group.key !== key)
+        this.group = {
+          id: command.groupId,
+          key,
+          visited: new Map([
+            ['chatgpt', new Set()],
+            ['google-ai-mode', new Set()],
+          ]),
+        };
+    } else this.group = undefined;
 
     if (this.seen.has(request.requestId) || this.seen.size >= maximumRequestsPerPort) {
       this.access.close();
@@ -131,6 +153,7 @@ export class PanelSearchBroker {
   }
 
   invalidate(provider: ProviderId): void {
+    this.group?.visited.delete(provider);
     const bound = this.providers.get(provider);
 
     if (bound) {
@@ -152,5 +175,6 @@ export class PanelSearchBroker {
     for (const provider of ['chatgpt', 'google-ai-mode'] as const) this.invalidate(provider);
 
     this.seen.clear();
+    this.group = undefined;
   }
 }

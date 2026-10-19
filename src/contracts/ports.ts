@@ -27,7 +27,9 @@ export interface ContextRetrievalPort {
     request: SearchRequest,
     description: string,
     context: OperationContext,
+    groupId?: SearchRequest['requestId'],
   ): Promise<SearchOutcome>;
+  releaseContext?(groupId: SearchRequest['requestId']): void;
 }
 
 export interface ConversationContextPort {

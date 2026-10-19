@@ -8,6 +8,7 @@ import type {
 } from '../contracts';
 import { normalizeProviderOutcome } from './normalize';
 import { contextDeadlineMs, contextReadLimit } from './context';
+import { descriptionWords } from './terms';
 
 /** The trusted worker chooses targets only from this request's validated native result inventory. */
 export async function readProviderContext(
@@ -17,14 +18,33 @@ export async function readProviderContext(
   description: string,
   verifiers: LinkVerifiers,
   context: OperationContext,
+  visited = new Set<string>(),
 ): Promise<ProviderOutcome> {
   const original = normalizeProviderOutcome(input, request, verifiers);
 
   if (original.status !== 'success' || original.candidates.length === 0) return original;
 
   const candidates = structuredClone(original.candidates);
+  const terms = new Set(descriptionWords(description));
+  const words = candidates.map(
+    (candidate) => new Set(candidate.evidence.flatMap((item) => descriptionWords(item.text))),
+  );
+  const weights = new Map(
+    [...terms].map((term) => [term, 1 / Math.max(1, words.filter((set) => set.has(term)).length)]),
+  );
+  const score = (candidate: (typeof candidates)[number]) =>
+    [...terms].reduce(
+      (total, term) =>
+        total + (words[candidates.indexOf(candidate)]?.has(term) ? (weights.get(term) ?? 0) : 0),
+      0,
+    );
   const selected = candidates
-    .filter((candidate) => matchesDateRange(candidate, request.query.dateRange))
+    .filter(
+      (candidate) =>
+        matchesDateRange(candidate, request.query.dateRange) &&
+        !visited.has(candidate.conversationId),
+    )
+    .toSorted((a, b) => score(b) - score(a))
     .slice(0, contextReadLimit);
   const controller = new AbortController();
   const cancel = () => controller.abort();
@@ -46,6 +66,7 @@ export async function readProviderContext(
     for (const candidate of selected) {
       if (context.signal.aborted || controller.signal.aborted || !port.readContext) break;
 
+      visited.add(candidate.conversationId);
       let raw: unknown;
 
       try {
@@ -56,7 +77,7 @@ export async function readProviderContext(
           interrupted,
         ]);
       } catch {
-        break;
+        continue;
       }
 
       if (controller.signal.aborted) break;
@@ -71,7 +92,9 @@ export async function readProviderContext(
           result.rateLimit =
             outcome.retryAfterMs === undefined ? {} : { retryAfterMs: outcome.retryAfterMs };
 
-        break;
+        if (outcome.status === 'rate-limited') break;
+
+        continue;
       }
 
       const enriched = outcome.candidates[0];

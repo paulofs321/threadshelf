@@ -113,6 +113,8 @@ export class DescriptionSearch implements SearchPort {
       clearTimeout(timer);
       context.signal.removeEventListener('abort', cancel);
 
+      this.options.retrieval.releaseContext?.(request.requestId);
+
       if (this.active === run) this.active = undefined;
     }
   }
@@ -230,6 +232,7 @@ export class DescriptionSearch implements SearchPort {
                 structuredClone(retrievalRequest),
                 effective.query.text,
                 context,
+                request.requestId,
               )
             : this.options.retrieval.search(structuredClone(retrievalRequest), context),
         this.policy.requestTimeoutMs,

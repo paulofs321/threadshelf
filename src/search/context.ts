@@ -2,10 +2,10 @@ import { limits, requireValid, CandidateSchema } from '../contracts';
 import type { Candidate, Evidence } from '../contracts';
 import { descriptionWords } from './terms';
 
-export const contextReadLimit = 2;
-export const contextDeadlineMs = 6000;
-const scanLimit = 128_000;
-const windowSize = 800;
+export const contextReadLimit = 8;
+export const contextDeadlineMs = 12_000;
+const scanLimit = 3_000_000;
+const windowSize = 1000;
 
 /** Exact, bounded windows from existing messages; no topic expansion or generated quotations. */
 export function selectMessageContext(parts: readonly string[], description: string): string[] {
@@ -17,7 +17,7 @@ export function selectMessageContext(parts: readonly string[], description: stri
     const length = Math.min(text.length, remaining);
     remaining -= length;
 
-    for (let start = 0; start < length; start += 600) {
+    for (let start = 0; start < length; start += 750) {
       let begin = start;
       let end = Math.min(start + windowSize, length);
 
@@ -56,9 +56,17 @@ export function selectMessageContext(parts: readonly string[], description: stri
 
   const selected: typeof windows = [];
   const ranked = windows.toSorted((a, b) => b.score - a.score);
-  // Keep recent context as well as lexical hits so paraphrases are still available to the model.
+  const best = ranked.find((item) => item.score > 0);
+  // Neighboring prompts/replies retain the context of short follow-ups; recent text allows paraphrases.
+  const neighbors = best
+    ? [
+        windows.findLast((item) => item.part === best.part - 1),
+        windows.find((item) => item.part === best.part + 1),
+      ].filter((item): item is (typeof windows)[number] => item !== undefined)
+    : [];
   const choices = [
     ...ranked.filter((item) => item.score > 0).slice(0, 2),
+    ...neighbors,
     ...windows.toReversed().slice(0, 2),
     ...ranked,
   ];
@@ -75,7 +83,7 @@ export function selectMessageContext(parts: readonly string[], description: stri
 
     selected.push(window);
 
-    if (selected.length === 4) break;
+    if (selected.length === 5) break;
   }
 
   return selected.toSorted((a, b) => a.part - b.part || a.start - b.start).map((item) => item.text);

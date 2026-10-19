@@ -22,7 +22,7 @@ import { verifyGoogleOriginalLink } from '../providers/google-ai-mode/wire';
 import type { SelectedDocumentBinding } from './broker';
 import { descriptionWords } from '../search/terms';
 import { inspectSelectedDocument } from './document-probe';
-import { permittedUrl, providerOrigins, providerPermission, validateProbe } from './policy';
+import { providerOrigins, providerPermission, validateProbe } from './policy';
 
 type ReadResult = v.InferOutput<typeof GoogleReadResultSchema>;
 const failure = (status: Exclude<ReadResult['status'], 'success'>): ReadResult => ({ status });
@@ -81,161 +81,33 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
     candidate = parsed.value;
 
     return this.run(context, async (signal) => {
-      let tabId: number | undefined;
-      let owned = false;
-      let destination = candidate.originalUrl;
+      const before = await this.source(signal);
 
-      try {
-        const before = await this.confirmSource(expectedIdentity, signal);
+      if (before) return before;
 
-        if (before) return before;
+      const result = await this.execute(
+        this.binding.tab.id,
+        this.binding.documentId,
+        {
+          kind: 'messages',
+          conversationId: candidate.conversationId,
+          ...(description === undefined
+            ? {}
+            : { query: descriptionWords(description).join(' ') || description }),
+        },
+        expectedIdentity,
+        signal,
+        candidate.originalUrl,
+      );
 
-        if (signal.aborted) return failure('cancelled');
+      if (
+        result.status === 'success' &&
+        (result.identityBefore !== expectedIdentity || result.identityAfter !== expectedIdentity)
+      )
+        return failure('scope-changed');
 
-        const existing = (
-          await browser.tabs.query({
-            windowId: this.binding.tab.windowId,
-            url: 'https://www.google.com/*',
-          })
-        ).find((tab) => {
-          if (
-            tab.incognito ||
-            tab.windowId !== this.binding.tab.windowId ||
-            tab.status !== 'complete' ||
-            tab.pendingUrl !== undefined ||
-            !tab.url ||
-            !permittedUrl('google-ai-mode', tab.url)
-          )
-            return false;
-
-          const url = new URL(tab.url);
-
-          return (
-            url.origin === 'https://www.google.com' &&
-            url.pathname === '/search' &&
-            url.searchParams.get('udm') === '50' &&
-            !url.searchParams.has('authuser') &&
-            url.searchParams.get('mtid') === candidate.conversationId
-          );
-        });
-
-        if (signal.aborted) return failure('cancelled');
-
-        if (existing) {
-          tabId = existing.id;
-          destination = existing.url;
-        } else {
-          owned = true;
-          const tab = await browser.tabs.create({
-            windowId: this.binding.tab.windowId,
-            active: false,
-            url: candidate.originalUrl,
-          });
-          tabId = tab.id;
-        }
-
-        if (tabId === undefined) return failure('unavailable');
-
-        // Reuse an already rendered matching thread when possible. Never navigate or close user tabs.
-        for (;;) {
-          if (signal.aborted) return failure('cancelled');
-
-          const current = await browser.tabs.get(tabId);
-
-          if (current.incognito || current.windowId !== this.binding.tab.windowId)
-            return failure('scope-changed');
-
-          if (current.status === 'complete') {
-            if (current.url !== destination || current.pendingUrl !== undefined) {
-              return failure('scope-changed');
-            }
-
-            break;
-          }
-
-          await new Promise<void>((resolve) => {
-            const stop = () => {
-              clearTimeout(timer);
-              resolve();
-            };
-
-            const timer = setTimeout(() => {
-              signal.removeEventListener('abort', stop);
-              resolve();
-            }, 100);
-            signal.addEventListener('abort', stop, { once: true });
-          });
-        }
-
-        const documentId = await this.probe(tabId);
-
-        if (!documentId || signal.aborted) return failure('scope-changed');
-
-        const result = await this.execute(
-          tabId,
-          documentId,
-          {
-            kind: 'messages',
-            conversationId: candidate.conversationId,
-            ...(description === undefined
-              ? {}
-              : { query: descriptionWords(description).join(' ') || description }),
-          },
-          expectedIdentity,
-          signal,
-        );
-        const reopened = await browser.tabs.get(tabId);
-
-        if (
-          reopened.url !== destination ||
-          reopened.pendingUrl !== undefined ||
-          !(await this.probe(tabId, documentId))
-        )
-          return failure('scope-changed');
-
-        const after = await this.confirmSource(expectedIdentity, signal);
-
-        if (after) return after;
-
-        return result;
-      } finally {
-        if (owned && tabId !== undefined) {
-          const current = await browser.tabs.get(tabId).catch(() => undefined);
-
-          if (
-            current &&
-            current.windowId === this.binding.tab.windowId &&
-            !current.incognito &&
-            !current.active &&
-            current.url === destination &&
-            current.pendingUrl === undefined
-          )
-            await browser.tabs.remove(tabId).catch(() => {});
-        }
-      }
+      return (await this.source(signal)) ?? result;
     });
-  }
-
-  private async confirmSource(
-    expectedIdentity: string,
-    signal: AbortSignal,
-  ): Promise<ReadResult | undefined> {
-    const source = await this.source(signal);
-
-    if (source) return source;
-
-    const identity = await this.execute(
-      this.binding.tab.id,
-      this.binding.documentId,
-      { kind: 'inspect' },
-      expectedIdentity,
-      signal,
-    );
-
-    if (identity.status !== 'success') return identity;
-
-    if (identity.identityBefore !== expectedIdentity || identity.identityAfter !== expectedIdentity)
-      return failure('scope-changed');
   }
 
   private async source(signal: AbortSignal): Promise<ReadResult | undefined> {
@@ -294,6 +166,7 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
     operation: GoogleReadOperation,
     expectedIdentity: string | undefined,
     signal: AbortSignal,
+    originalUrl?: string,
   ): Promise<ReadResult> {
     if (signal.aborted) return failure('cancelled');
 
@@ -326,6 +199,7 @@ export class ChromeGoogleAiModeReadPort implements GoogleAiModeReadPort {
           {
             operation,
             operationId,
+            ...(originalUrl === undefined ? {} : { originalUrl }),
             partition: scope.partition,
             ...(expectedIdentity === undefined ? {} : { expectedIdentity }),
           },

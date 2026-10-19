@@ -41,6 +41,22 @@ const run = (
 afterEach(() => vi.useRealTimers());
 
 describe('bounded exact message windows', () => {
+  it('retrieves later qualifiers past the former prefix limit and preserves neighboring messages', () => {
+    const parts = [
+      'General engineering opportunities. '.repeat(6000),
+      'Please focus on jobs in Switzerland.',
+      'We can compare application requirements next.',
+    ];
+    const selected = selectMessageContext(parts, 'conversations about jobs in Switzerland');
+    expect(selected).toContain(parts[1]);
+    expect(selected).toContain(parts[2]);
+    expect(selected.every((text) => parts.some((part) => part.includes(text)))).toBe(true);
+    const recent = selectMessageContext(
+      ['Old planning.', 'Other unrelated planning.', 'Hiring opportunities around Zürich.'],
+      'jobs Switzerland',
+    );
+    expect(recent).toContain('Hiring opportunities around Zürich.');
+  });
   it('does not create a keyword by cutting inside a larger word', () => {
     const parts = ['x'.repeat(598) + 'nojobs in Switzerland.'];
     const windows = selectMessageContext(parts, 'jobs Switzerland');
@@ -52,7 +68,7 @@ describe('bounded exact message windows', () => {
     parts.push('We compared jobs in Switzerland, including application requirements.');
     const windows = selectMessageContext(parts, input.query.text);
     expect(windows).toContain(parts.at(-1));
-    expect(windows).toHaveLength(4);
+    expect(windows).toHaveLength(5);
     expect(windows.every((text) => parts.some((part) => part.includes(text)))).toBe(true);
     expect(selectMessageContext([], '???')).toEqual([]);
     expect(selectMessageContext(['   ', 'Same', 'Same'], '???')).toEqual(['Same']);
@@ -68,15 +84,15 @@ describe('bounded exact message windows', () => {
       'x'.repeat(140000);
     const windows = selectMessageContext([text, 'Unscanned marker'], input.query.text);
     expect(windows.some((value) => value.includes('jobs in Switzerland'))).toBe(true);
-    expect(windows.length).toBeLessThanOrEqual(4);
+    expect(windows.length).toBeLessThanOrEqual(5);
 
     for (const value of windows) {
-      expect(value.length).toBeLessThanOrEqual(800);
+      expect(value.length).toBeLessThanOrEqual(1000);
       expect(value).not.toMatch(/^[\uDC00-\uDFFF]|[\uD800-\uDBFF]$/u);
-      expect(text).toContain(value);
+      expect([text, 'Unscanned marker'].some((part) => part.includes(value))).toBe(true);
     }
 
-    expect(windows).not.toContain('Unscanned marker');
+    expect(windows).toContain('Unscanned marker');
   });
   it('attaches source-owned messages and the exact title without ID collisions or mutating inputs', () => {
     const item = structuredClone(first);
@@ -116,7 +132,51 @@ describe('bounded exact message windows', () => {
 });
 
 describe('retrieved-inventory context boundary', () => {
-  it('reads at most two eligible candidates, preserving metadata, quotes and original input', async () => {
+  it('prioritizes a distinctive qualifier beyond the first eight native results', async () => {
+    const items = Array.from({ length: 20 }, (_, i) =>
+      candidate(`broad-${i}`, 'Engineering job watch', 'Jobs in general.'),
+    );
+    const target = candidate(
+      'qualified',
+      'Weekly engineering watch',
+      'Focus on jobs in Switzerland.',
+    );
+    items.push(target);
+    const readContext = vi.fn<ConversationContextPort['readContext']>(async (_request, id) => {
+      const item = items.find((part) => part.conversationId === id);
+
+      if (!item) throw new Error('Unexpected synthetic candidate');
+
+      return success([
+        attachMessageContext(item, ['Exact supporting message.'], 'provider-message'),
+      ]);
+    });
+    const visited = new Set<string>();
+    const outcome = success(items);
+    await readProviderContext(
+      { readContext },
+      query,
+      outcome,
+      input.query.text,
+      linkVerifiers,
+      context(),
+      visited,
+    );
+    expect(readContext).toHaveBeenCalledTimes(8);
+    expect(readContext.mock.calls[0]?.[1]).toBe(target.conversationId);
+    await readProviderContext(
+      { readContext },
+      query,
+      outcome,
+      input.query.text,
+      linkVerifiers,
+      context(),
+      visited,
+    );
+    expect(readContext).toHaveBeenCalledTimes(16);
+    expect(new Set(readContext.mock.calls.map((call) => call[1])).size).toBe(16);
+  });
+  it('reads date-eligible candidates beyond the former first two, preserving metadata, quotes and original input', async () => {
     const excluded = candidate(
       'excluded',
       'Old',
@@ -149,7 +209,7 @@ describe('retrieved-inventory context boundary', () => {
       return success([attachMessageContext(item, ['Jobs in Switzerland.'], 'provider-message')]);
     });
     const result = await run({ readContext }, outcome, context(), req);
-    expect(readContext.mock.calls.map((call) => call[1])).toEqual(['first', 'second']);
+    expect(readContext.mock.calls.map((call) => call[1])).toEqual(['first', 'second', 'third']);
     expect(readContext.mock.calls[0]?.[2]).toBe(input.query.text);
     expect(JSON.stringify(result)).toContain('Jobs in Switzerland.');
     expect(JSON.stringify(outcome)).toBe(before);
@@ -179,7 +239,7 @@ describe('retrieved-inventory context boundary', () => {
     }));
     const result = await run({ readContext });
     expect(result).toMatchObject({ status: 'success', candidates: [first, second] });
-    expect(readContext).toHaveBeenCalledOnce();
+    expect(readContext).toHaveBeenCalledTimes(status === 'rate-limited' ? 1 : 2);
 
     if (status === 'rate-limited') expect(result).toHaveProperty('rateLimit', {});
   });

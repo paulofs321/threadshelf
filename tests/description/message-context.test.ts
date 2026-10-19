@@ -114,6 +114,70 @@ function fixture(
 
 describe('retrieve then read message context then rank', () => {
   it.each([
+    ['jobs in Switzerland', 'Please focus on jobs in Switzerland.'],
+    ['food without dairy', 'Food without dairy includes this lentil soup.'],
+    ['TV show time travel', 'The TV show about time travel follows a detective.'],
+  ])(
+    'finds a later native candidate with a long hidden subtopic: %s',
+    async (description, target) => {
+      const f = fixture();
+      const ids = Array.from({ length: 9 }, (_, i) =>
+        i === 6 ? conversationId : `22222222-2222-2222-2222-${String(i).padStart(12, '0')}`,
+      );
+      f.read.mockImplementation(async (operation) =>
+        readResult(
+          operation.kind === 'search'
+            ? searchBody(
+                ids.map((id) => ({
+                  ...searchItem(id),
+                  title: 'Weekly engineering and life notes',
+                  snippet: 'General plans and updates.',
+                })),
+              )
+            : history(
+                operation.conversationId ?? conversationId,
+                operation.conversationId === conversationId
+                  ? 'Other daily planning. '.repeat(7000) + target
+                  : 'Jobs in Canada. Travel in Switzerland. Unrelated everyday planning.',
+              ),
+        ),
+      );
+      const release = vi.fn();
+      Object.assign(f.retrieval, { releaseContext: release });
+      const result = await f.engine.search(f.request(description), context());
+      expect(result.results).toHaveLength(1);
+      const stored = result.outcomes.flatMap((item) =>
+        item.status === 'success' ? item.candidates : [],
+      );
+      expect(stored.find((item) => item.id === result.results[0])?.conversationId).toBe(
+        conversationId,
+      );
+      expect(release).toHaveBeenCalledExactlyOnceWith(f.request(description).requestId);
+    },
+  );
+  it('finds a qualifier late in a long broad conversation', async () => {
+    const f = fixture(
+      'General engineering career updates. '.repeat(6000) + 'Please focus on jobs in Switzerland.',
+    );
+    const result = await f.engine.search(
+      f.request('Conversations about jobs in Switzerland'),
+      context(),
+    );
+    expect(result.results).toHaveLength(1);
+    const stored = result.outcomes.flatMap((item) =>
+      item.status === 'success' ? item.candidates : [],
+    );
+    expect(
+      stored.some((candidate) =>
+        candidate.evidence.some(
+          (part) =>
+            part.source === 'provider-message' &&
+            part.text.includes('focus on jobs in Switzerland'),
+        ),
+      ),
+    ).toBe(true);
+  });
+  it.each([
     {
       description: 'jobs in Switzerland',
       target: 'Jobs in Switzerland, including application requirements.',

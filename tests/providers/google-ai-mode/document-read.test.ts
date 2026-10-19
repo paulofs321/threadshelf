@@ -78,7 +78,7 @@ describe('self-contained Google document reads', () => {
     if (result.status === 'success')
       expect(result.rendered?.every((text) => !/\bjobs\b/iu.test(text))).toBe(true);
   });
-  it('selects a later relevant window in the supported rendered block without returning the entire text', async () => {
+  it('preserves later rendered text for relevance selection in the adapter', async () => {
     vi.stubGlobal(
       'location',
       new URL('https://www.google.com/search?udm=50&mtid=fictional-thread-1'),
@@ -107,7 +107,8 @@ describe('self-contained Google document reads', () => {
     });
     const parsed = requireValid(GoogleReadResultSchema, result);
 
-    if (parsed.status === 'success') expect(parsed.rendered?.[0]?.length).toBeLessThanOrEqual(2000);
+    if (parsed.status === 'success')
+      expect(parsed.rendered?.[0]?.length).toBe(block.innerText.length);
   });
   it.each(['', 'x'.repeat(1025)])('rejects malformed context queries: %s', async (query) => {
     expect(

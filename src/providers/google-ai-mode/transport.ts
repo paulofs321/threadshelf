@@ -29,7 +29,13 @@ export const GoogleReadResultSchema = v.variant('status', [
         observedAt: TimestampSchema,
       }),
     ),
-    rendered: v.exactOptional(v.pipe(boundedArray(boundedText(2000), 4), v.minLength(1))),
+    rendered: v.exactOptional(
+      v.pipe(
+        boundedArray(boundedText(3_000_000), 2048),
+        v.minLength(1),
+        v.check((parts) => parts.reduce((sum, part) => sum + part.length, 0) <= 3_000_000),
+      ),
+    ),
   }),
   v.strictObject({
     status: v.picklist([

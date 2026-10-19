@@ -145,6 +145,9 @@ beforeEach(() => {
 afterEach(() => {
   for (const e of events) expect(e.size()).toBe(0);
 
+  expect(chrome.tabs.create).not.toHaveBeenCalled();
+  expect(chrome.tabs.remove).not.toHaveBeenCalled();
+
   vi.useRealTimers();
 });
 const read = () => port.read({ kind: 'search', query: 'authentication' }, identity, context());
@@ -207,21 +210,22 @@ describe('Chrome Google selected-document transport', () => {
       }),
     );
   });
-  it('reopens only a scoped validated candidate, checks identities, and closes its own passive tab', async () => {
+  it('reads a verified saved thread in the pinned source without creating or navigating tabs', async () => {
     expect(await port.openEvidence(candidate(), identity, context())).toEqual({
       ...success,
       rendered: ['An exact fictional rendered turn.'],
     });
-    expect(chrome.tabs.create).toHaveBeenCalledWith({
-      windowId: 3,
-      active: false,
-      url: candidate().originalUrl,
-    });
-    expect(chrome.tabs.remove).toHaveBeenCalledExactlyOnceWith(8);
+    expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: { tabId: 7, documentIds: ['fiction-source'] },
+        world: 'ISOLATED',
+        args: [expect.objectContaining({ originalUrl: candidate().originalUrl })],
+      }),
+    );
     const reads = chrome.scripting.executeScript.mock.calls
       .filter(([o]) => o.func === readGoogleDocument)
       .map(([o]) => o.args[0].operation.kind);
-    expect(reads).toEqual(['inspect', 'messages', 'inspect']);
+    expect(reads).toEqual(['messages']);
   });
   it.each([
     { kind: 'messages', conversationId: 'fictional-thread-1' },
@@ -358,121 +362,11 @@ describe('Chrome Google selected-document transport', () => {
     );
     expect(chrome.tabs.create).not.toHaveBeenCalled();
   });
-  it('handles an uncreated tab', async () => {
-    chrome.tabs.create.mockResolvedValue({});
-    expect(await port.openEvidence(candidate(), identity, context())).toEqual({
-      status: 'unavailable',
-    });
-    expect(chrome.tabs.remove).not.toHaveBeenCalled();
-  });
-  it.each([
-    { incognito: true },
-    { windowId: 99 },
-    { url: 'https://evil.invalid/' },
-    { pendingUrl: 'https://www.google.com/' },
-  ])('discards evidence and preserves navigated pages: %j', async (patch) => {
-    chrome.tabs.get.mockResolvedValue({
-      windowId: 3,
-      status: 'complete',
-      url: candidate().originalUrl,
-      ...patch,
-    });
-    expect(await port.openEvidence(candidate(), identity, context())).toEqual({
-      status: 'scope-changed',
-    });
-
-    expect(chrome.tabs.remove).not.toHaveBeenCalled();
-  });
-  it('preserves a tab when its current ownership cannot be verified', async () => {
-    chrome.tabs.get.mockRejectedValue(new Error('private'));
-    chrome.tabs.remove.mockRejectedValue(new Error('already closed'));
-    expect(await port.openEvidence(candidate(), identity, context())).toEqual({
-      status: 'unavailable',
-    });
-    expect(chrome.tabs.remove).not.toHaveBeenCalled();
-  });
-  it('retains successful evidence when Chrome cannot remove its unchanged temporary tab', async () => {
-    chrome.tabs.remove.mockRejectedValue(new Error('Synthetic removal failure'));
-    expect((await port.openEvidence(candidate(), identity, context())).status).toBe('success');
-    expect(chrome.tabs.remove).toHaveBeenCalledWith(8);
-  });
-  it('rejects an evidence document probe with missing metadata', async () => {
-    const original = script;
-    chrome.scripting.executeScript.mockImplementation(async (o) =>
-      o.target.tabId === 8 ? [] : original(o),
-    );
-    expect(await port.openEvidence(candidate(), identity, context())).toEqual({
-      status: 'scope-changed',
-    });
-  });
   it('discards rendered evidence if the source changes while it loads', async () => {
     chrome.tabs.query.mockResolvedValueOnce([tab]).mockResolvedValue([]);
     expect(await port.openEvidence(candidate(), identity, context())).toEqual({
       status: 'scope-changed',
     });
-    expect(chrome.tabs.remove).toHaveBeenCalledWith(8);
-  });
-  it.each([
-    { status: 'login-expired' },
-    { ...success, identityBefore: 'b'.repeat(64) },
-    { ...success, identityAfter: 'b'.repeat(64) },
-  ])('rechecks source identity after rendering', async (result) => {
-    const original = script;
-    let inspect = 0;
-    chrome.scripting.executeScript.mockImplementation(async (o) =>
-      o.func === readGoogleDocument && o.args[0].operation.kind === 'inspect' && ++inspect === 2
-        ? [{ frameId: 0, documentId: 'fiction-source', result }]
-        : original(o),
-    );
-    expect((await port.openEvidence(candidate(), identity, context())).status).toBe(
-      result.status === 'login-expired' ? 'login-expired' : 'scope-changed',
-    );
-    expect(chrome.tabs.remove).toHaveBeenCalledWith(8);
-  });
-  it('rejects a reopened thread that changes URL or document after rendering', async () => {
-    chrome.tabs.get
-      .mockResolvedValueOnce({ windowId: 3, status: 'complete', url: candidate().originalUrl })
-      .mockResolvedValue({ url: 'https://www.google.com/search?udm=50' });
-    expect(await port.openEvidence(candidate(), identity, context())).toEqual({
-      status: 'scope-changed',
-    });
-    expect(chrome.tabs.remove).not.toHaveBeenCalled();
-  });
-
-  it('waits for an owned evidence tab to finish loading', async () => {
-    vi.useFakeTimers();
-    chrome.tabs.get.mockResolvedValueOnce({ windowId: 3, status: 'loading' });
-    const pending = port.openEvidence(candidate(), identity, context());
-    await vi.advanceTimersByTimeAsync(100);
-    expect((await pending).status).toBe('success');
-  });
-  it('cancels and closes a loading evidence tab', async () => {
-    vi.useFakeTimers();
-    chrome.tabs.get.mockResolvedValue({
-      windowId: 3,
-      status: 'loading',
-      active: false,
-      url: candidate().originalUrl,
-    });
-    const controller = new AbortController();
-    const pending = port.openEvidence(candidate(), identity, { signal: controller.signal });
-    await vi.advanceTimersByTimeAsync(0);
-    controller.abort();
-    expect(await pending).toEqual({ status: 'cancelled' });
-    expect(chrome.tabs.remove).toHaveBeenCalledWith(8);
-  });
-  it('times out and closes a stuck evidence tab', async () => {
-    vi.useFakeTimers();
-    chrome.tabs.get.mockResolvedValue({
-      windowId: 3,
-      status: 'loading',
-      active: false,
-      url: candidate().originalUrl,
-    });
-    const pending = port.openEvidence(candidate(), identity, context());
-    await vi.advanceTimersByTimeAsync(9500);
-    expect(await pending).toEqual({ status: 'timeout' });
-    expect(chrome.tabs.remove).toHaveBeenCalledWith(8);
   });
   it('does nothing after caller cancellation', async () => {
     const controller = new AbortController();
@@ -591,75 +485,6 @@ describe('Chrome Google selected-document transport', () => {
     expect(await pending).toEqual({ status: 'timeout' });
     data.resolve([]);
     await vi.advanceTimersByTimeAsync(0);
-  });
-  it('closes a tab whose creation finishes after cancellation', async () => {
-    const tabCreation = deferred<{ id: number }>();
-    chrome.tabs.create.mockReturnValue(tabCreation.promise);
-    const controller = new AbortController();
-    const pending = port.openEvidence(candidate(), identity, { signal: controller.signal });
-    await vi.waitFor(() => expect(chrome.tabs.create).toHaveBeenCalled());
-    controller.abort();
-    expect(await pending).toEqual({ status: 'cancelled' });
-    tabCreation.resolve({ id: 8 });
-    await vi.waitFor(() => expect(chrome.tabs.remove).toHaveBeenCalledWith(8));
-    expect(chrome.tabs.get).toHaveBeenCalledWith(8);
-  });
-});
-
-describe('already rendered Google conversations', () => {
-  it('reuses a matching conversation without navigating, creating or closing a user tab', async () => {
-    const existingUrl =
-      'https://www.google.com/search?udm=50&mtid=fictional-thread-1&source=synthetic';
-    chrome.tabs.query.mockResolvedValue([
-      { ...tab },
-      {
-        ...tab,
-        id: 8,
-        active: false,
-        url: existingUrl,
-      },
-    ]);
-    chrome.tabs.get.mockResolvedValue({ ...tab, id: 8, url: existingUrl });
-    expect((await port.openEvidence(candidate(), identity, context())).status).toBe('success');
-    expect(chrome.tabs.create).not.toHaveBeenCalled();
-    expect(chrome.tabs.remove).not.toHaveBeenCalled();
-  });
-  it.each([
-    { incognito: true },
-    { windowId: 9 },
-    { status: 'loading' },
-    { pendingUrl: 'https://www.google.com/' },
-    { url: undefined },
-    { url: 'invalid' },
-    { url: 'https://user:secret@www.google.com/search?udm=50&mtid=fictional-thread-1' },
-    { url: 'https://www.google.com/other?udm=50&mtid=fictional-thread-1' },
-    { url: 'https://www.google.com/search?udm=50&mtid=fictional-thread-1&authuser=1' },
-    { url: 'https://www.google.com/search?udm=14&mtid=fictional-thread-1' },
-    { url: 'https://other.invalid/search?udm=50&mtid=fictional-thread-1' },
-  ])('does not reuse unsupported or changing pages: %j', async (patch) => {
-    chrome.tabs.query.mockResolvedValue([
-      { ...tab },
-      {
-        ...tab,
-        id: 9,
-        url: candidate().originalUrl,
-        ...patch,
-      },
-    ]);
-    expect((await port.openEvidence(candidate(), identity, context())).status).toBe('success');
-    expect(chrome.tabs.create).toHaveBeenCalledOnce();
-    expect(chrome.tabs.remove).toHaveBeenCalledExactlyOnceWith(8);
-  });
-  it('preserves an existing user tab even when it changes during an evidence read', async () => {
-    chrome.tabs.query.mockResolvedValue([
-      { ...tab },
-      { ...tab, id: 8, url: candidate().originalUrl },
-    ]);
-    chrome.tabs.get.mockResolvedValue({ ...tab, id: 8, url: 'https://www.google.com/other' });
-    expect((await port.openEvidence(candidate(), identity, context())).status).toBe(
-      'scope-changed',
-    );
-    expect(chrome.tabs.remove).not.toHaveBeenCalled();
   });
 });
 

@@ -30,9 +30,13 @@ no browser or provider imports. No permissions, persistent caches or uploads are
 2. Search selected native providers for at most three distinct terms, sequentially. Each keyword
    request has a fresh ID and uses the existing bounded two-provider engine. Expanded terms retrieve
    candidates; the original full description remains authoritative for ranking. There is no history crawl.
-3. Before ranking, read bounded message context for at most two eligible native results per provider
-   and term, with a six-second context deadline. ChatGPT uses its verified active-branch message read;
-   Google uses its supported rendered last-turn blocks. Prefer relevant windows and keep recent context
+3. Before ranking, read bounded message context for at most eight eligible native results per provider
+   and term, with a twelve-second context deadline. Prefer candidates containing distinctive words
+   from the complete description. Within one description request, successive terms examine previously
+   unvisited conversations; this request-local tracking is released after completion or cancellation.
+   ChatGPT uses its verified active-branch message read; Google reads supported rendered turns in a
+   temporary same-origin frame inside the connected Google page. Prefer relevant windows, adjacent
+   prompts/replies and recent context
    so paraphrases remain available. A broad conversation qualifies when a subdiscussion supports the
    complete description; other surrounding subjects do not disqualify it. Separate unrelated mentions
    still do not establish the requested relationship.
@@ -59,27 +63,31 @@ across sentences and passages with intervening content words. It does not establ
 Its constraints come from the full original description, even when an AI-expanded retrieval plan was
 used before a ranking error or timeout. The literal-fallback notice remains visible in that case.
 
-Context reading is deliberately bounded, not a full-history scan. ChatGPT selects at most four exact
-800-unit windows from up to 128,000 UTF-16 units of eligible messages. Google remains limited to the
-known visible last-turn blocks and selects query-relevant windows there; earlier unrendered messages
-are not made accessible by this feature. Only the small selected windows and unchanged titles/native
+Context reading is deliberately bounded, not a full-history scan. Passage selection considers up to
+3,000,000 UTF-16 units of eligible message text and keeps at most five exact 1,000-unit windows. A
+relevant passage beyond the former initial 128,000-unit limit can now reach ranking. Neighboring
+messages help interpret short follow-up prompts. Google reads supported rendered conversation turns,
+with a last-turn fallback; messages absent from that rendered document remain unavailable. Only the
+small selected windows and unchanged titles/native
 excerpts reach ranking. Missing, timed-out, unsupported or omitted context retains an explicit
 `missing-evidence` coverage reason. Native results survive nonterminal context errors; login,
 permission or account/scope changes discard that provider's evidence. Context rate limits retain retry
 hints and cooldowns. Keyword searches do not trigger message reads.
 
-Google may open temporary inactive thread tabs when a retrieved thread is not already open. Matching
-existing tabs are reused. Temporary pages close after reading if still inactive and unchanged; pages
-the user activates or navigates are preserved. No new permission, credential handling, hosted upload
-or persistent conversation cache is added.
+Google message reads require the existing connected Google page. They load verified saved threads in
+owned hidden frames, then remove those frames on completion, cancellation or failure. Search does not
+create, navigate or close browser tabs. The connected page's document/account and the child thread's
+origin, ID and account are checked. A missing source page or blocked frame yields incomplete context;
+there is no new-tab fallback. No new permission, credential handling, hosted upload or persistent
+conversation cache is added.
 
 ## Bounds and outcomes
 
 | Boundary                     | Default / hard maximum                                                       |
 | ---------------------------- | ---------------------------------------------------------------------------- |
 | Native query terms           | 3 / 8, at most two selected providers per term                               |
-| Context reads                | 2 per provider/term; at most 12 at default query count, 32 at hard maximum   |
-| Context-read deadline        | 6 seconds per provider/term, within the complete request deadline            |
+| Context reads                | 8 per provider/term; at most 48 at default query count, 128 at hard maximum  |
+| Context-read deadline        | 12 seconds per provider/term, within the complete request deadline           |
 | Collected candidates         | 100 per provider, shared contract bound                                      |
 | Evidence                     | 8 items per candidate; 2,000 UTF-16 units each; 64,000 units per provider    |
 | Ranking context              | 100 candidates and 64,000 evidence units total across providers              |

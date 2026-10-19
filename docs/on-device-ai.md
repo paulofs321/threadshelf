@@ -11,7 +11,7 @@ preserved. These instructions apply to arbitrary subjects, rather than a fixed s
 Before ranking, description retrieval reads bounded message context from native candidates. A broad
 conversation can match through a supported subdiscussion even when its title or initial snippet does
 not name the requested topic. The model receives selected exact excerpts, not unlimited conversations.
-See [context limits and temporary Google tabs](description-search.md).
+See [candidate coverage, passage limits and Google frame reads](description-search.md).
 
 Open **Search settings → AI description search**. Check support, then click **Enable local AI** or
 **Download and enable local AI**. The model download is separate from conversation search; preparation
