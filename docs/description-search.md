@@ -93,7 +93,7 @@ conversation cache is added.
 | Ranking context              | 100 candidates and 64,000 evidence units total across providers              |
 | Selected results             | 50 / 100                                                                     |
 | Optional interpreter stage   | 10 seconds in the side panel (generic port default: 3 seconds)               |
-| Local ranking stage          | At most 4 bounded prompts, 9 seconds each, within a 40-second stage          |
+| Local ranking stage          | Bounded inventory batches, 9 seconds each, within a 40-second stage          |
 | Complete description request | 60 seconds in the side panel / 60 seconds (generic port default: 45 seconds) |
 
 Topic/keyword plans each allow eight terms of 128 UTF-16 units. The ranking context prefers lexical
@@ -127,7 +127,13 @@ split a surrogate pair. Duplicate references, unknown evidence, stale requests a
 or prose fail validation. Retrieved instructions remain inert evidence with no privileged tools.
 
 Invalid, throwing, unsupported or timed-out stages use deterministic fallback with an explicit notice.
-Successful optional stages are labeled model-assisted. The panel injects the on-device model only
+Only successful AI matching is labeled model-assisted; interpretation alone does not establish that
+the model judged candidate relevance. **AI and retrieval details** shows each stage's completion and
+actual prompt-call counts, candidates supplied to matching, candidates with message context, and
+per-provider retrieved versus matched counts. A model port notifies `ModelOperationContext.onPrompt`
+immediately before an actual inference call; preflight rejection and abandoned callbacks are not
+counted. These counters contain no private prompt text and are scoped to the current search.
+The panel injects the on-device model only
 after explicit enablement. Each stage clones an instruction-only session, checks context limits and
 destroys the clone after use; queries/evidence are not carried into another request. Disable, account
 change, cancellation and panel closure destroy obsolete model state. Hosted processing remains

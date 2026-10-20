@@ -8,13 +8,15 @@ const messages = {
   downloadable: 'Chrome needs to download its local model before AI search can run.',
   starting: 'Preparing local AI…',
   downloading: 'Downloading the local AI model…',
-  ready: 'Local AI enabled. Description search uses AI interpretation and ranking.',
+  ready:
+    'Local AI enabled and ready. Each search reports whether AI interpretation and matching completed.',
   running: 'Local AI is interpreting or ranking this search…',
   unavailable:
     'Local AI is unavailable on this device or Chrome configuration. Keyword/topic fallback remains available.',
   error:
     'Local AI could not start. Keyword/topic fallback remains available. Check support to retry.',
-  disabled: 'Local AI is off. Description search uses keyword/topic fallback.',
+  disabled:
+    'Local AI is off. Description search requires literal words together in an excerpt and can miss related meanings.',
 };
 
 export function LocalAiSettings({ controls }: { controls: LocalAiControls }) {

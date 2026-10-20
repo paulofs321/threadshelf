@@ -103,6 +103,58 @@ describe('shared description presentation', () => {
       true,
     );
   });
+  it('distinguishes retrieved candidates from final matches when AI is off', async () => {
+    const items = [
+      candidate('other', 'Notes', 'Jobs in Canada. Holidays in Switzerland.'),
+      candidate('match', 'Notes', 'Jobs in Switzerland.', googleScope),
+    ];
+    const { native, engine } = setup({}, items);
+    panel({ search: new SearchModes(native, engine) });
+    await submit('jobs in Switzerland');
+    fireEvent.click(screen.getByText('AI and retrieval details'));
+    expect(screen.getByText('AI prompts sent: interpretation 0; matching 0.')).toBeTruthy();
+    expect(screen.getByText('ChatGPT: 1 retrieved; 0 matched.')).toBeTruthy();
+    expect(screen.getByText('Google Search AI Mode: 1 retrieved; 1 matched.')).toBeTruthy();
+    expect(
+      screen.getByText(/Conversations supplied for matching: 2; with message context: 0/),
+    ).toBeTruthy();
+    expect(screen.getByText(/Paraphrases and longer explanations can be missed/)).toBeTruthy();
+  });
+  it.each(['completed', 'failed', 'timeout', 'no-candidates'] as const)(
+    'shows the actual matching stage outcome %s and prompt counts separately from readiness',
+    (status) => {
+      const report: DescriptionReport = {
+        strategy: status === 'completed' ? 'model-assisted' : 'keyword-topic-fallback',
+        terms: ['origami'],
+        notices: [],
+        ranking: { requestId: request().requestId, selections: [] },
+        execution: {
+          interpretation: { status: 'completed', promptCalls: 1 },
+          matching: { status, promptCalls: status === 'no-candidates' ? 0 : 2 },
+          candidates: 3,
+          messageCandidates: 2,
+        },
+      };
+      render(
+        <DescriptionSummary
+          report={report}
+          timeZone="UTC"
+          outcomes={[
+            { requestId: request().requestId, scope: chatScope, status: 'schema-changed' },
+          ]}
+        />,
+      );
+      fireEvent.click(screen.getByText('AI and retrieval details'));
+      expect(screen.getByText('AI interpretation: completed.')).toBeTruthy();
+      expect(screen.getByText(/ChatGPT: retrieval failed; see provider error/)).toBeTruthy();
+      expect(
+        screen.getByText(
+          `AI prompts sent: interpretation 1; matching ${report.execution?.matching.promptCalls}.`,
+        ),
+      ).toBeTruthy();
+      expect(screen.getByText(/AI can judge only the retrieved excerpts/)).toBeTruthy();
+    },
+  );
   it('keeps explicit controls authoritative and discloses ambiguity', async () => {
     panel();
     fireEvent.change(screen.getByLabelText('From date'), { target: { value: '2026-08-01' } });
@@ -255,7 +307,7 @@ describe('shared description presentation', () => {
     };
     render(<DescriptionSummary report={report} timeZone="UTC" />);
     expect(screen.getByText('Model-assisted matching with verified evidence')).toBeTruthy();
-    expect(screen.getByText(/Invalid model output was discarded/)).toBeTruthy();
+    expect(screen.getByText(/AI stage failed or returned unusable output/)).toBeTruthy();
     expect(screen.getByText(/model did not finish/)).toBeTruthy();
   });
   it('defaults to ranking order and permits date sorting and independent provider tabs', async () => {

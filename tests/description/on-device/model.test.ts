@@ -221,14 +221,14 @@ describe('bounded on-device inference with grounded unknown-output ports', () =>
       expect(f.session.destroy).toHaveBeenCalledOnce();
     },
   );
-  it('falls back when disabled, aborted or context exceeds the bounded batch budget', async () => {
+  it('rejects disabled, aborted or oversized inventory before prompting', async () => {
     const f = fixture();
     await expect(f.model.interpret(request(), context())).rejects.toThrow();
     await f.ready();
     const controller = new AbortController();
     controller.abort();
     await expect(f.model.interpret(request(), { signal: controller.signal })).rejects.toThrow();
-    const items = Array.from({ length: 7 }, (_, i) => {
+    const items = Array.from({ length: 9 }, (_, i) => {
       const item = candidate(`large-${i}`, 'One', 'x'.repeat(2000));
       item.evidence.push(
         ...Array.from({ length: 3 }, (_, n) => ({

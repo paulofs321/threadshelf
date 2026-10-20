@@ -384,7 +384,10 @@ try {
         `https://chatgpt.com/c/${chatFixtures.otherConversationId}`,
       ]),
       explanations: 3,
-      notes: expect.arrayContaining([expect.stringContaining('Literal keyword fallback')]),
+      notes: expect.arrayContaining([
+        expect.stringContaining('Literal keyword fallback'),
+        expect.stringContaining('AI prompts sent: interpretation 0; matching 0.'),
+      ]),
     });
   assert.deepEqual(await tabIds(), beforeSearchTabs);
   assert.equal(searchCreatedPages, 0);
@@ -411,6 +414,7 @@ try {
       explanations: 1,
       notes: expect.arrayContaining([
         expect.stringContaining('Model-assisted matching with verified evidence'),
+        expect.stringContaining('AI prompts sent: interpretation 1; matching 1.'),
       ]),
     });
   assert.deepEqual(await tabIds(), beforeSearchTabs);

@@ -20,6 +20,14 @@ literal keyword fallback while AI is off, downloading, unsupported or failing. E
 for this panel session and is cleared on connection/account changes; Chrome manages downloaded model
 files. No private excerpt cache or persistent conversation history is created by this integration.
 
+**Enabled and ready** describes the model session, not the outcome of a search. Expand **AI and
+retrieval details** below the results to see interpretation/matching completion, actual prompt-call
+counts, the number of conversations supplied for matching and how many include message context.
+Per-provider retrieved and matched counts distinguish empty native search from later rejection.
+Prompt counts increase immediately before calling Chrome's model, including calls that fail; context
+or batch checks that reject before inference do not increase them. No prompt text or provider content
+is logged. An interpreted query whose AI matching fails is labeled **Literal keyword fallback**.
+
 Chrome's [Prompt API](https://developer.chrome.com/docs/ai/prompt-api) supports extension documents
 from Chrome 138. It runs Gemini Nano locally after a separate model download. Availability depends
 on Chrome configuration, supported language, operating system, hardware/storage and model readiness.
@@ -46,11 +54,14 @@ data, with no model tools. Application code resolves approved references to exac
 Each prompt is limited to 20,000 UTF-16 units, with a measured context ceiling of 8,192 tokens (or the
 smaller reported model window), including a 512-token output reserve. Responses are limited to 32,000
 units. Oversized context, unsupported structured output, malformed JSON and inference errors fall
-back visibly. Ranking splits larger inventories into at most four independent batches with a
-16,000-unit prompt target; a single oversized candidate or a larger batch count falls back explicitly.
+back visibly. Ranking splits the validated inventory into independent batches with a 16,000-unit
+prompt target, keeping each conversation's evidence together. The inventory bounds work to 100
+candidates and 64,000 evidence units; a single oversized candidate falls back explicitly.
 Each inference has a nine-second local deadline. Interpretation is capped at ten seconds and ranking
 at forty seconds, within the complete sixty-second description request. Every batch validates its own
 candidate/evidence membership before merging selections. Native retrieval budgets still apply.
+The overall deadline can stop ranking before all batches finish; incomplete or invalid ranking
+uses the labeled fallback rather than claiming completed AI matching.
 
 ## Verification and release recommendation
 

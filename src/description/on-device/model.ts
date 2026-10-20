@@ -3,7 +3,7 @@ import type {
   Candidate,
   ModelPort,
   ModelRanking,
-  OperationContext,
+  ModelOperationContext,
   SearchRequest,
 } from '../../contracts';
 import {
@@ -167,7 +167,7 @@ export class OnDeviceModel implements ModelPort {
     this.set({ status: 'disabled' });
   }
 
-  async interpret(request: SearchRequest, context: OperationContext): Promise<unknown> {
+  async interpret(request: SearchRequest, context: ModelOperationContext): Promise<unknown> {
     const raw = await this.infer(planPrompt(request), planConstraint, context);
 
     return requireValid(modelPlanSchemaFor(request), {
@@ -179,8 +179,9 @@ export class OnDeviceModel implements ModelPort {
   async rank(
     request: SearchRequest,
     candidates: readonly Candidate[],
-    context: OperationContext,
+    context: ModelOperationContext,
   ): Promise<unknown> {
+    const schema = modelRankingSchemaFor(request, candidates);
     let batch: Candidate[] = [];
     const batches: Candidate[][] = [batch];
 
@@ -191,8 +192,8 @@ export class OnDeviceModel implements ModelPort {
       } else batch.push(candidate);
     }
 
-    if (batches.length > 4) throw new Error('Local ranking batch limit exceeded.');
-
+    // The validated inventory bounds batch count; the caller's overall deadline bounds time.
+    // Do not discard a valid inventory before prompting just because messages need more batches.
     const selections: ModelRanking['selections'] = [];
 
     for (const items of batches) {
@@ -204,7 +205,7 @@ export class OnDeviceModel implements ModelPort {
       selections.push(...ranking.selections);
     }
 
-    return requireValid(modelRankingSchemaFor(request, candidates), {
+    return requireValid(schema, {
       requestId: request.requestId,
       selections,
     });
@@ -213,7 +214,7 @@ export class OnDeviceModel implements ModelPort {
   private async infer(
     prompt: string,
     constraint: Record<string, unknown>,
-    { signal }: OperationContext,
+    { signal, onPrompt }: ModelOperationContext,
   ): Promise<unknown> {
     const base = this.base;
 
@@ -264,6 +265,7 @@ export class OnDeviceModel implements ModelPort {
 
         if (controller.signal.aborted) throw new Error('Local inference stopped.');
 
+        onPrompt?.();
         const response = await session.prompt(prompt, options);
 
         if (controller.signal.aborted || generation !== this.generation || response.length > 32_000)

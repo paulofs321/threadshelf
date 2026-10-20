@@ -130,6 +130,20 @@ export const DescriptionReportSchema = v.strictObject({
   ),
   dateRange: v.exactOptional(DateRangeSchema),
   ranking: ModelRankingSchema,
+  execution: v.exactOptional(
+    v.strictObject({
+      interpretation: v.strictObject({
+        status: v.picklist(['unavailable', 'completed', 'failed', 'timeout']),
+        promptCalls: CountSchema,
+      }),
+      matching: v.strictObject({
+        status: v.picklist(['unavailable', 'completed', 'failed', 'timeout', 'no-candidates']),
+        promptCalls: CountSchema,
+      }),
+      candidates: v.pipe(CountSchema, v.maxValue(limits.candidates)),
+      messageCandidates: v.pipe(CountSchema, v.maxValue(limits.candidates)),
+    }),
+  ),
 });
 export type DescriptionReport = v.InferOutput<typeof DescriptionReportSchema>;
 

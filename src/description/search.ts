@@ -167,7 +167,12 @@ export class DescriptionSearch implements SearchPort {
     const fallback = interpretDescription(request, this.options.now());
     const notices = fallback.notices;
     let plan = fallback.plan;
-    let assisted = false;
+    const execution: NonNullable<DescriptionReport['execution']> = {
+      interpretation: { status: 'unavailable', promptCalls: 0 },
+      matching: { status: 'unavailable', promptCalls: 0 },
+      candidates: 0,
+      messageCandidates: 0,
+    };
     const effective: SearchRequest = {
       ...request,
       query: {
@@ -181,7 +186,12 @@ export class DescriptionSearch implements SearchPort {
 
     if (interpreter) {
       const raw = await this.bounded(interpreter, run, (context) =>
-        interpreter.interpret(structuredClone(effective), context),
+        interpreter.interpret(structuredClone(effective), {
+          ...context,
+          onPrompt: () => {
+            if (!context.signal.aborted) execution.interpretation.promptCalls++;
+          },
+        }),
       );
       const parsed = validate(modelPlanSchemaFor(effective), raw.value);
 
@@ -191,8 +201,11 @@ export class DescriptionSearch implements SearchPort {
           JSON.stringify(effective.query.dateRange)
       ) {
         plan = parsed.value;
-        assisted = true;
-      } else notices.push(raw.timeout ? 'model-timeout' : 'invalid-model-output');
+        execution.interpretation.status = 'completed';
+      } else {
+        execution.interpretation.status = raw.timeout ? 'timeout' : 'failed';
+        notices.push(raw.timeout ? 'model-timeout' : 'invalid-model-output');
+      }
     } else notices.push('model-unavailable');
 
     if (run.status) return this.terminal(run);
@@ -315,13 +328,26 @@ export class DescriptionSearch implements SearchPort {
     let ranking = rankKeywords(effective, candidates);
     let modelRanked = false;
 
+    execution.candidates = candidates.length;
+    execution.messageCandidates = candidates.filter((item) =>
+      item.evidence.some((part) => ['provider-message', 'rendered-message'].includes(part.source)),
+    ).length;
+
     const ranker = this.options.ranker ?? model;
+
+    if (ranker && candidates.length === 0) execution.matching.status = 'no-candidates';
 
     if (ranker && candidates.length > 0) {
       const raw = await this.bounded(
         ranker,
         run,
-        (context) => ranker.rank(structuredClone(effective), structuredClone(candidates), context),
+        (context) =>
+          ranker.rank(structuredClone(effective), structuredClone(candidates), {
+            ...context,
+            onPrompt: () => {
+              if (!context.signal.aborted) execution.matching.promptCalls++;
+            },
+          }),
         this.policy.rankingTimeoutMs ?? this.policy.modelTimeoutMs,
       );
       const parsed = validate(modelRankingSchemaFor(effective, candidates), raw.value);
@@ -329,9 +355,12 @@ export class DescriptionSearch implements SearchPort {
       if (parsed.ok) {
         ranking = parsed.value;
         ranking.selections.sort((a, b) => b.score - a.score);
-        assisted = true;
         modelRanked = true;
-      } else notices.push(raw.timeout ? 'model-timeout' : 'invalid-model-output');
+        execution.matching.status = 'completed';
+      } else {
+        execution.matching.status = raw.timeout ? 'timeout' : 'failed';
+        notices.push(raw.timeout ? 'model-timeout' : 'invalid-model-output');
+      }
     }
 
     if (run.status) return this.terminal(run);
@@ -340,12 +369,13 @@ export class DescriptionSearch implements SearchPort {
 
     ranking.selections = ranking.selections.slice(0, this.policy.maxResults);
     const report: DescriptionReport = {
-      strategy: assisted ? 'model-assisted' : 'keyword-topic-fallback',
+      strategy: modelRanked ? 'model-assisted' : 'keyword-topic-fallback',
       terms,
       notices: [
         ...new Set(notices.filter((notice) => !modelRanked || notice !== 'literal-keywords')),
       ],
       ranking,
+      execution,
       ...(effective.query.dateRange ? { dateRange: effective.query.dateRange } : {}),
     };
     const aggregate = aggregateSearch(

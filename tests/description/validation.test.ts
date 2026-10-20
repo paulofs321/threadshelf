@@ -103,7 +103,8 @@ describe('exact evidence spans and contextual outcome validation', () => {
       request('authentication last month'),
       context(),
     );
-    expect(result.description?.strategy).toBe('model-assisted');
+    expect(result.description?.strategy).toBe('keyword-topic-fallback');
+    expect(result.description?.execution?.interpretation.status).toBe('completed');
   });
   it.each([
     'keyword-mode',

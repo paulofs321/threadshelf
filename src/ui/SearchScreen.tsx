@@ -570,7 +570,11 @@ export function SearchScreen(props: SearchScreenProps) {
               {status}
             </Alert>
             {outcome?.description && (
-              <DescriptionSummary report={outcome.description} timeZone={props.timeZone} />
+              <DescriptionSummary
+                report={outcome.description}
+                timeZone={props.timeZone}
+                outcomes={outcome.outcomes}
+              />
             )}
             {outcome && (
               <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
