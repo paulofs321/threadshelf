@@ -12,6 +12,8 @@ export interface OperationContext {
 export interface ModelOperationContext extends OperationContext {
   /** Notify immediately before each actual model prompt, including failed calls. No prompt text. */
   readonly onPrompt?: () => void;
+  /** Untrusted until validated; never send exception messages or model output. */
+  readonly onFailure?: (failure: unknown) => void;
 }
 
 // Boundary outputs remain unknown until the caller applies the contextual runtime schema.

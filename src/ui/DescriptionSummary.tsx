@@ -1,6 +1,13 @@
 import { rankingReferencesCandidates } from '../contracts';
-import type { Candidate, DescriptionReport, ModelRanking, SearchOutcome } from '../contracts';
+import type {
+  Candidate,
+  DescriptionReport,
+  ModelFailure,
+  ModelRanking,
+  SearchOutcome,
+} from '../contracts';
 import { providerLabels } from './SetupScreen';
+import { providerFailureText } from './provider-failures';
 
 const noticeText: Record<DescriptionReport['notices'][number], string> = {
   'literal-keywords':
@@ -21,6 +28,28 @@ const stageText = {
   timeout: 'timed out; fallback used',
   'no-candidates': 'skipped; no candidates',
 };
+
+const failureText: Record<ModelFailure['code'], string> = {
+  unavailable: 'Local model session unavailable',
+  busy: 'Previous local inference still running',
+  'prompt-limit': 'Prompt exceeded the size limit',
+  'context-limit': 'Prompt exceeded the model context budget',
+  timeout: 'Local inference deadline reached',
+  cancelled: 'Local inference was stopped',
+  'api-error': 'Chrome model API rejected the operation',
+  'response-limit': 'Model response exceeded the size limit',
+  'invalid-json': 'Model response was not valid JSON',
+  'invalid-output': 'Model output failed schema or evidence validation',
+};
+
+function FailureDetail({ stage, failure }: { stage: string; failure: ModelFailure }) {
+  return (
+    <p>
+      {stage}: {failureText[failure.code]} ({failure.phase}
+      {failure.apiError ? `; ${failure.apiError}` : ''}).
+    </p>
+  );
+}
 
 export function DescriptionSummary({
   report,
@@ -51,6 +80,15 @@ export function DescriptionSummary({
           <summary className="cursor-pointer">AI and retrieval details</summary>
           <p>AI interpretation: {stageText[report.execution.interpretation.status]}.</p>
           <p>AI matching: {stageText[report.execution.matching.status]}.</p>
+          {report.execution.interpretation.failure && (
+            <FailureDetail
+              stage="Interpretation failure"
+              failure={report.execution.interpretation.failure}
+            />
+          )}
+          {report.execution.matching.failure && (
+            <FailureDetail stage="Matching failure" failure={report.execution.matching.failure} />
+          )}
           <p>
             AI prompts sent: interpretation {report.execution.interpretation.promptCalls}; matching{' '}
             {report.execution.matching.promptCalls}.
@@ -64,7 +102,7 @@ export function DescriptionSummary({
               {providerLabels[item.scope.provider]}:{' '}
               {item.status === 'success'
                 ? `${item.candidates.length} retrieved; ${report.ranking.selections.filter((selection) => item.candidates.some((candidate) => candidate.id === selection.candidateId)).length} matched.`
-                : 'retrieval failed; see provider error.'}
+                : `retrieval failed (${item.status}). ${providerFailureText[item.status]}`}
             </p>
           ))}
           <p>

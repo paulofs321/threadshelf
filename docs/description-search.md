@@ -110,7 +110,8 @@ reset the retry deadline. Cancellation, query replacement and global timeout abo
 obsolete private results. Abandoned ports retain physical ownership
 until their promises settle, preventing concurrent reuse. Replacement retrieval waits for that
 settlement within the new request's deadline; cancellation and scope invalidation also stop the wait.
-No automatic retry occurs.
+Provider retrieval does not automatically retry. Local AI has one narrowly bounded structured-output
+compatibility attempt, described in [local AI](on-device-ai.md).
 
 Date filters use each candidate's available timestamp with its stated provenance; conversation or
 provider-record dates do not prove when a topic was discussed. Unknown dates cannot satisfy a date
@@ -133,6 +134,10 @@ actual prompt-call counts, candidates supplied to matching, candidates with mess
 per-provider retrieved versus matched counts. A model port notifies `ModelOperationContext.onPrompt`
 immediately before an actual inference call; preflight rejection and abandoned callbacks are not
 counted. These counters contain no private prompt text and are scoped to the current search.
+`ModelOperationContext.onFailure` carries only runtime-validated reason codes/phases and allowlisted
+Chrome exception names, with no raw error messages or model output. Local inference deadlines are
+reported as timeouts. Provider failures include their explanation directly in the global search
+details, independently of the selected provider tab.
 The panel injects the on-device model only
 after explicit enablement. Each stage clones an instruction-only session, checks context limits and
 destroys the clone after use; queries/evidence are not carried into another request. Disable, account

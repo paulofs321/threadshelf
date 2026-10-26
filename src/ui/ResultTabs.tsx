@@ -3,21 +3,11 @@ import type { ReactNode } from 'react';
 import type { LinkVerifiers, ProviderId, SearchOutcome } from '../contracts';
 import { ResultCard } from './ResultCard';
 import { providerLabels } from './SetupScreen';
+import { providerFailureText } from './provider-failures';
 import { Alert } from './components/alert';
 import { Button } from './components/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/tabs';
 
-const failureText = {
-  'login-expired': 'Login expired. Sign in on the provider site, then reconnect.',
-  'permission-needed': 'Site permission is required. Reconnect to request access.',
-  unavailable: 'Provider unavailable. Open the supported provider page and try again.',
-  'schema-changed': 'Provider response changed. Search is unavailable until support is updated.',
-  'rate-limited': 'Rate limited. Wait before retrying.',
-  timeout: 'Search timed out. You can retry.',
-  cancelled: 'Search cancelled.',
-  'scope-changed': 'Account or selected context changed. Reconnect before searching.',
-  interrupted: 'Connection interrupted. Reconnect to retry.',
-};
 const sources = [
   { value: 'all', label: 'All sources' },
   { value: 'chatgpt', label: 'ChatGPT' },
@@ -115,7 +105,7 @@ export function ResultTabs({
                   <Alert key={item.scope.provider} role="note" variant="destructive">
                     <p className="font-semibold">{providerLabels[item.scope.provider]}</p>
                     <p>
-                      {failureText[item.status]}
+                      {providerFailureText[item.status]}
                       {item.status === 'rate-limited' && item.retryAfterMs !== undefined
                         ? ` Retry after ${Math.ceil(item.retryAfterMs / 1000)} seconds.`
                         : ''}

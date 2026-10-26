@@ -419,6 +419,25 @@ try {
     });
   assert.deepEqual(await tabIds(), beforeSearchTabs);
   assert.equal(searchCreatedPages, 0);
+  await drive('disable-ai');
+  await drive('synthetic-ai-unsupported');
+  await expect
+    .poll(async () => (await drive('snapshot')).aiStatus)
+    .toContain('Local AI is available');
+  await drive('enable-ai');
+  await expect.poll(async () => (await drive('snapshot')).aiStatus).toContain('Local AI enabled');
+  await drive('search');
+  await expect
+    .poll(async () => await drive('snapshot'))
+    .toMatchObject({
+      results: 1,
+      notes: expect.arrayContaining([
+        expect.stringContaining('Model-assisted matching with verified evidence'),
+        expect.stringContaining('AI prompts sent: interpretation 2; matching 2.'),
+      ]),
+    });
+  assert.deepEqual(await tabIds(), beforeSearchTabs);
+  assert.equal(searchCreatedPages, 0);
   assert.deepEqual(externalRequests, []);
   assert.deepEqual(errors, []);
 

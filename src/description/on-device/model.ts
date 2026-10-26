@@ -1,9 +1,16 @@
-import { modelPlanSchemaFor, modelRankingSchemaFor, requireValid } from '../../contracts';
+import {
+  ModelApiErrorNameSchema,
+  modelPlanSchemaFor,
+  modelRankingSchemaFor,
+  requireValid,
+  validate,
+} from '../../contracts';
 import type {
   Candidate,
   ModelPort,
   ModelRanking,
   ModelOperationContext,
+  ModelFailure,
   SearchRequest,
 } from '../../contracts';
 import {
@@ -17,6 +24,34 @@ import {
   TermsOutputSchema,
 } from './prompts';
 import type { LocalAiState, LocalModelFactory, LocalSession } from './types';
+
+class InferenceError extends Error {
+  constructor(readonly failure: ModelFailure) {
+    super('Local inference failed.');
+  }
+}
+
+function apiFailure(error: unknown, phase: ModelFailure['phase']): InferenceError {
+  if (error instanceof InferenceError) return error;
+
+  const name = validate(
+    ModelApiErrorNameSchema,
+    error instanceof Error || error instanceof DOMException ? error.name : undefined,
+  );
+
+  return new InferenceError({
+    phase,
+    code:
+      name.ok && name.value === 'TimeoutError'
+        ? 'timeout'
+        : name.ok && name.value === 'AbortError'
+          ? 'cancelled'
+          : name.ok && name.value === 'QuotaExceededError'
+            ? 'context-limit'
+            : 'api-error',
+    ...(name.ok ? { apiError: name.value } : {}),
+  });
+}
 
 export function browserLanguageModel(): LocalModelFactory | undefined {
   return typeof LanguageModel === 'undefined' ? undefined : LanguageModel;
@@ -170,10 +205,12 @@ export class OnDeviceModel implements ModelPort {
   async interpret(request: SearchRequest, context: ModelOperationContext): Promise<unknown> {
     const raw = await this.infer(planPrompt(request), planConstraint, context);
 
-    return requireValid(modelPlanSchemaFor(request), {
-      requestId: request.requestId,
-      ...requireValid(TermsOutputSchema, raw),
-    });
+    return this.validated(context, () =>
+      requireValid(modelPlanSchemaFor(request), {
+        requestId: request.requestId,
+        ...requireValid(TermsOutputSchema, raw),
+      }),
+    );
   }
 
   async rank(
@@ -198,32 +235,57 @@ export class OnDeviceModel implements ModelPort {
 
     for (const items of batches) {
       const raw = await this.infer(rankingPrompt(request, items), rankingConstraint, context);
-      const ranking = requireValid(modelRankingSchemaFor(request, items), {
-        requestId: request.requestId,
-        ...requireValid(RankingOutputSchema, raw),
-      });
+      const ranking = this.validated(context, () =>
+        requireValid(modelRankingSchemaFor(request, items), {
+          requestId: request.requestId,
+          ...requireValid(RankingOutputSchema, raw),
+        }),
+      );
       selections.push(...ranking.selections);
     }
 
-    return requireValid(schema, {
-      requestId: request.requestId,
-      selections,
-    });
+    return this.validated(context, () =>
+      requireValid(schema, { requestId: request.requestId, selections }),
+    );
+  }
+
+  private validated<T>(context: ModelOperationContext, check: () => T): T {
+    try {
+      return check();
+    } catch {
+      const error = new InferenceError({ phase: 'validate', code: 'invalid-output' });
+      context.onFailure?.(error.failure);
+      throw error;
+    }
   }
 
   private async infer(
     prompt: string,
     constraint: Record<string, unknown>,
-    { signal, onPrompt }: ModelOperationContext,
+    { signal, onPrompt, onFailure }: ModelOperationContext,
   ): Promise<unknown> {
     const base = this.base;
 
-    if (!base || signal.aborted || this.physicallyPending || prompt.length > 20_000)
-      throw new Error('Local inference unavailable.');
+    if (!base || signal.aborted || this.physicallyPending || prompt.length > 20_000) {
+      const error = new InferenceError({
+        phase: 'prepare',
+        code: !base
+          ? 'unavailable'
+          : signal.aborted
+            ? 'cancelled'
+            : this.physicallyPending
+              ? 'busy'
+              : 'prompt-limit',
+      });
+      onFailure?.(error.failure);
+      throw error;
+    }
 
     const generation = this.generation;
     const controller = new AbortController();
     this.operation = controller;
+    let phase: ModelFailure['phase'] = 'prepare';
+    let timedOut = false;
     const cancel = () => controller.abort();
     signal.addEventListener('abort', cancel, { once: true });
     const stop = new Promise<never>((_, reject) => {
@@ -231,49 +293,80 @@ export class OnDeviceModel implements ModelPort {
         for (const session of this.sessions) session.destroy();
 
         this.sessions.clear();
-        reject(new Error('Local inference stopped.'));
+        reject(new InferenceError({ phase, code: timedOut ? 'timeout' : 'cancelled' }));
       };
     });
-    const timer = setTimeout(cancel, 9000);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      cancel();
+    }, 9000);
     this.physicallyPending = true;
     this.set({ status: 'running' });
     const pending = (async () => {
-      const session = await base.clone({ signal: controller.signal });
+      // Retry only unsupported structured output, with a fresh clone and the SAME deadline.
+      for (const constrained of [true, false]) {
+        phase = 'prepare';
+        const session = await base.clone({ signal: controller.signal });
 
-      if (controller.signal.aborted || generation !== this.generation) {
-        session.destroy();
-        throw new Error('Obsolete local session.');
-      }
+        if (controller.signal.aborted || generation !== this.generation) {
+          session.destroy();
+          throw new InferenceError({ phase, code: 'cancelled' });
+        }
 
-      this.sessions.add(session);
+        this.sessions.add(session);
 
-      try {
-        const options: LanguageModelPromptOptions = {
-          responseConstraint: constraint,
-          signal: controller.signal,
-        };
-        const usage = await session.measureContextUsage(prompt, options);
+        try {
+          const options: LanguageModelPromptOptions = {
+            ...(constrained ? { responseConstraint: constraint } : {}),
+            signal: controller.signal,
+          };
+          phase = 'measure';
+          const usage = await session.measureContextUsage(prompt, options);
 
-        if (
-          !Number.isFinite(usage) ||
-          usage < 0 ||
-          !Number.isFinite(session.contextUsage) ||
-          !Number.isFinite(session.contextWindow) ||
-          usage + session.contextUsage + 512 > Math.min(session.contextWindow, 8192)
-        )
-          throw new Error('Local context budget exceeded.');
+          if (
+            !Number.isFinite(usage) ||
+            usage < 0 ||
+            !Number.isFinite(session.contextUsage) ||
+            !Number.isFinite(session.contextWindow) ||
+            usage + session.contextUsage + 512 > Math.min(session.contextWindow, 8192)
+          )
+            throw new InferenceError({ phase, code: 'context-limit' });
 
-        if (controller.signal.aborted) throw new Error('Local inference stopped.');
+          if (controller.signal.aborted) throw new InferenceError({ phase, code: 'cancelled' });
 
-        onPrompt?.();
-        const response = await session.prompt(prompt, options);
+          phase = 'prompt';
+          onPrompt?.();
+          const response = await session.prompt(prompt, options);
 
-        if (controller.signal.aborted || generation !== this.generation || response.length > 32_000)
-          throw new Error('Invalid local response.');
+          if (controller.signal.aborted || generation !== this.generation)
+            throw new InferenceError({ phase, code: 'cancelled' });
 
-        return JSON.parse(response) as unknown;
-      } finally {
-        if (this.sessions.delete(session)) session.destroy();
+          phase = 'parse';
+
+          if (response.length > 32_000) throw new InferenceError({ phase, code: 'response-limit' });
+
+          try {
+            // Accept a single JSON code fence, never surrounding prose or multiple JSON values.
+            const json = response.trim().replace(/^```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```$/u, '$1');
+
+            return JSON.parse(json) as unknown;
+          } catch {
+            throw new InferenceError({ phase, code: 'invalid-json' });
+          }
+        } catch (error) {
+          const failure = apiFailure(error, phase);
+
+          if (
+            !constrained ||
+            (phase !== 'measure' && phase !== 'prompt') ||
+            failure.failure.apiError !== 'NotSupportedError' ||
+            controller.signal.aborted ||
+            generation !== this.generation
+          )
+            throw failure;
+        } finally {
+          if (this.sessions.delete(session)) session.destroy();
+        }
       }
     })();
 
@@ -285,6 +378,10 @@ export class OnDeviceModel implements ModelPort {
 
     try {
       return await Promise.race([pending, stop]);
+    } catch (error) {
+      const failure = apiFailure(error, phase);
+      onFailure?.(failure.failure);
+      throw failure;
     } finally {
       clearTimeout(timer);
       signal.removeEventListener('abort', cancel);

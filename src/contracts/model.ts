@@ -79,6 +79,37 @@ export const ModelRankingSchema = v.strictObject({
 export type ModelPlan = v.InferOutput<typeof ModelPlanSchema>;
 export type ModelRanking = v.InferOutput<typeof ModelRankingSchema>;
 
+// Allowlisted diagnostics only: browser exception messages and model responses may contain data.
+export const ModelApiErrorNameSchema = v.picklist([
+  'AbortError',
+  'InvalidStateError',
+  'NotAllowedError',
+  'NotSupportedError',
+  'OperationError',
+  'QuotaExceededError',
+  'SyntaxError',
+  'TimeoutError',
+  'TypeError',
+  'UnknownError',
+]);
+export const ModelFailureSchema = v.strictObject({
+  phase: v.picklist(['prepare', 'measure', 'prompt', 'parse', 'validate']),
+  code: v.picklist([
+    'unavailable',
+    'busy',
+    'prompt-limit',
+    'context-limit',
+    'timeout',
+    'cancelled',
+    'api-error',
+    'response-limit',
+    'invalid-json',
+    'invalid-output',
+  ]),
+  apiError: v.exactOptional(ModelApiErrorNameSchema),
+});
+export type ModelFailure = v.InferOutput<typeof ModelFailureSchema>;
+
 // Offsets use UTF-16, like String.slice; reject splits inside a surrogate pair.
 export function rankingReferencesCandidates(
   ranking: Pick<ModelRanking, 'selections'>,
@@ -135,10 +166,12 @@ export const DescriptionReportSchema = v.strictObject({
       interpretation: v.strictObject({
         status: v.picklist(['unavailable', 'completed', 'failed', 'timeout']),
         promptCalls: CountSchema,
+        failure: v.exactOptional(ModelFailureSchema),
       }),
       matching: v.strictObject({
         status: v.picklist(['unavailable', 'completed', 'failed', 'timeout', 'no-candidates']),
         promptCalls: CountSchema,
+        failure: v.exactOptional(ModelFailureSchema),
       }),
       candidates: v.pipe(CountSchema, v.maxValue(limits.candidates)),
       messageCandidates: v.pipe(CountSchema, v.maxValue(limits.candidates)),

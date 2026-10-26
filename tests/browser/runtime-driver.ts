@@ -29,12 +29,18 @@ browser.runtime.onMessage.addListener((input: unknown, _sender, sendResponse) =>
 
   if (input.command === 'check-ai') button('Check AI support')?.click();
 
-  if (input.command === 'synthetic-ai') {
+  if (input.command === 'disable-ai') button('Disable local AI')?.click();
+
+  if (input.command === 'synthetic-ai' || input.command === 'synthetic-ai-unsupported') {
+    const unsupported = input.command === 'synthetic-ai-unsupported';
     const session = (): LocalSession => ({
       contextUsage: 20,
       contextWindow: 8192,
       measureContextUsage: async () => 200,
-      prompt: async (prompt) => {
+      prompt: async (prompt, options) => {
+        if (unsupported && options?.responseConstraint)
+          throw new DOMException('Synthetic unsupported constraint', 'NotSupportedError');
+
         if (String(prompt).startsWith('Interpret'))
           return JSON.stringify({ topics: ['fictional orchard'], keywords: [] });
 

@@ -9,6 +9,7 @@ import { ResultTabs } from '../../src/ui/ResultTabs';
 import { SearchModes } from '../../src/description';
 import type {
   DescriptionReport,
+  ModelFailure,
   ProviderOutcome,
   SearchPort,
   SearchRequest,
@@ -67,6 +68,36 @@ async function submit(text = 'authentication last month') {
 }
 
 describe('shared description presentation', () => {
+  it.each([
+    { phase: 'prompt', code: 'api-error', apiError: 'NotSupportedError' },
+    { phase: 'prompt', code: 'timeout' },
+    { phase: 'parse', code: 'invalid-json' },
+    { phase: 'validate', code: 'invalid-output' },
+  ] satisfies ModelFailure[])(
+    'explains an actual AI failure $code without raw output',
+    (failure) => {
+      const report: DescriptionReport = {
+        strategy: 'keyword-topic-fallback',
+        terms: ['origami'],
+        notices: [],
+        ranking: { requestId: request().requestId, selections: [] },
+        execution: {
+          interpretation: { status: 'failed', promptCalls: 1, failure },
+          matching: { status: 'failed', promptCalls: 1, failure },
+          candidates: 3,
+          messageCandidates: 1,
+        },
+      };
+      render(<DescriptionSummary report={report} timeZone="UTC" />);
+      fireEvent.click(screen.getByText('AI and retrieval details'));
+      expect(screen.getByText(/Interpretation failure:/)).toBeTruthy();
+      expect(screen.getByText(/Matching failure:/)).toBeTruthy();
+
+      if (failure.code === 'api-error')
+        expect(screen.getAllByText(/NotSupportedError/)).toHaveLength(2);
+      else expect(screen.queryByText(/NotSupportedError/)).toBeNull();
+    },
+  );
   it('shows only the complete description match from broad native results', async () => {
     const items = [
       candidate('complete', 'Space series', 'A TV show about space travel.'),
@@ -146,13 +177,44 @@ describe('shared description presentation', () => {
       );
       fireEvent.click(screen.getByText('AI and retrieval details'));
       expect(screen.getByText('AI interpretation: completed.')).toBeTruthy();
-      expect(screen.getByText(/ChatGPT: retrieval failed; see provider error/)).toBeTruthy();
+      expect(
+        screen.getByText(/ChatGPT: retrieval failed \(schema-changed\).*Provider response changed/),
+      ).toBeTruthy();
       expect(
         screen.getByText(
           `AI prompts sent: interpretation 1; matching ${report.execution?.matching.promptCalls}.`,
         ),
       ).toBeTruthy();
       expect(screen.getByText(/AI can judge only the retrieved excerpts/)).toBeTruthy();
+    },
+  );
+  it.each([
+    ['schema-changed', 'Provider response changed.'],
+    ['timeout', 'Search timed out.'],
+    ['unavailable', 'Provider unavailable.'],
+  ] as const)(
+    'explains Google %s in global details even when the ChatGPT tab is selected',
+    async (status, message) => {
+      const user = userEvent.setup();
+      const { native, engine, google } = setup({}, [
+        candidate('match', 'Notes', 'Jobs in Switzerland.'),
+      ]);
+      google.search.mockImplementation(async (input) => ({
+        requestId: input.requestId,
+        scope: input.scope,
+        status,
+      }));
+      panel({ search: new SearchModes(native, engine) });
+      await submit('jobs in Switzerland');
+      await user.click(screen.getByRole('tab', { name: /ChatGPT/ }));
+      await user.click(screen.getByText('AI and retrieval details'));
+      const details = screen.getByRole('note', { name: 'Description search details' });
+      expect(details.textContent).toContain(
+        `Google Search AI Mode: retrieval failed (${status}). ${message}`,
+      );
+      expect(
+        within(screen.getByRole('tabpanel')).queryByText(message, { exact: false }),
+      ).toBeNull();
     },
   );
   it('keeps explicit controls authoritative and discloses ambiguity', async () => {

@@ -3,6 +3,7 @@ import {
   limits,
   matchesDateRange,
   modelPlanSchemaFor,
+  ModelFailureSchema,
   modelRankingSchemaFor,
   requireValid,
   sameScope,
@@ -191,6 +192,12 @@ export class DescriptionSearch implements SearchPort {
           onPrompt: () => {
             if (!context.signal.aborted) execution.interpretation.promptCalls++;
           },
+          onFailure: (failure) => {
+            const parsed = validate(ModelFailureSchema, failure);
+
+            if (!context.signal.aborted && parsed.ok)
+              execution.interpretation.failure = parsed.value;
+          },
         }),
       );
       const parsed = validate(modelPlanSchemaFor(effective), raw.value);
@@ -202,9 +209,11 @@ export class DescriptionSearch implements SearchPort {
       ) {
         plan = parsed.value;
         execution.interpretation.status = 'completed';
+        delete execution.interpretation.failure;
       } else {
-        execution.interpretation.status = raw.timeout ? 'timeout' : 'failed';
-        notices.push(raw.timeout ? 'model-timeout' : 'invalid-model-output');
+        const timeout = raw.timeout || execution.interpretation.failure?.code === 'timeout';
+        execution.interpretation.status = timeout ? 'timeout' : 'failed';
+        notices.push(timeout ? 'model-timeout' : 'invalid-model-output');
       }
     } else notices.push('model-unavailable');
 
@@ -347,6 +356,11 @@ export class DescriptionSearch implements SearchPort {
             onPrompt: () => {
               if (!context.signal.aborted) execution.matching.promptCalls++;
             },
+            onFailure: (failure) => {
+              const parsed = validate(ModelFailureSchema, failure);
+
+              if (!context.signal.aborted && parsed.ok) execution.matching.failure = parsed.value;
+            },
           }),
         this.policy.rankingTimeoutMs ?? this.policy.modelTimeoutMs,
       );
@@ -357,9 +371,11 @@ export class DescriptionSearch implements SearchPort {
         ranking.selections.sort((a, b) => b.score - a.score);
         modelRanked = true;
         execution.matching.status = 'completed';
+        delete execution.matching.failure;
       } else {
-        execution.matching.status = raw.timeout ? 'timeout' : 'failed';
-        notices.push(raw.timeout ? 'model-timeout' : 'invalid-model-output');
+        const timeout = raw.timeout || execution.matching.failure?.code === 'timeout';
+        execution.matching.status = timeout ? 'timeout' : 'failed';
+        notices.push(timeout ? 'model-timeout' : 'invalid-model-output');
       }
     }
 

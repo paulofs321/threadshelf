@@ -27,6 +27,9 @@ Per-provider retrieved and matched counts distinguish empty native search from l
 Prompt counts increase immediately before calling Chrome's model, including calls that fail; context
 or batch checks that reject before inference do not increase them. No prompt text or provider content
 is logged. An interpreted query whose AI matching fails is labeled **Literal keyword fallback**.
+Failure details distinguish preparation/context errors, the local inference deadline, Chrome API
+rejection, invalid JSON and schema/evidence validation. Only fixed reason codes, phases and
+allowlisted exception names are exposed; exception messages and model responses are never logged.
 
 Chrome's [Prompt API](https://developer.chrome.com/docs/ai/prompt-api) supports extension documents
 from Chrome 138. It runs Gemini Nano locally after a separate model download. Availability depends
@@ -53,8 +56,14 @@ data, with no model tools. Application code resolves approved references to exac
 
 Each prompt is limited to 20,000 UTF-16 units, with a measured context ceiling of 8,192 tokens (or the
 smaller reported model window), including a 512-token output reserve. Responses are limited to 32,000
-units. Oversized context, unsupported structured output, malformed JSON and inference errors fall
-back visibly. Ranking splits the validated inventory into independent batches with a 16,000-unit
+units. A `NotSupportedError` during constrained measurement or prompting triggers one compatibility
+attempt on a fresh clone without `responseConstraint`. Both prompts explicitly specify the JSON
+format, and the same application schema, size, scope and evidence checks validate either mode.
+The two attempts share the same nine-second deadline; there is no retry for other errors or
+unsupported session creation. A single enclosing JSON code fence is accepted before parsing;
+surrounding prose and multiple JSON values are rejected. Oversized context, invalid output and
+remaining inference errors use visible literal fallback.
+Ranking splits the validated inventory into independent batches with a 16,000-unit
 prompt target, keeping each conversation's evidence together. The inventory bounds work to 100
 candidates and 64,000 evidence units; a single oversized candidate falls back explicitly.
 Each inference has a nine-second local deadline. Interpretation is capped at ten seconds and ranking
@@ -71,6 +80,11 @@ check uses the real API's availability call first: it exposes `LanguageModel` bu
 in the tested configuration. It then injects a synthetic model to verify opt-in, interpretation,
 ranking and cleanup alongside real provider code with synthetic HTTP. Actual Gemini Nano semantic
 accuracy and inference latency remain **unverified**; mock results are not a quality benchmark.
+A separate native probe with synthetic input reproduced `NotSupportedError` for the original
+constrained prompt. Follow-up live verification of the compatibility attempt did not reach inference
+because new session preparation did not complete within the probe deadline. The compatibility path
+is covered by unit and isolated-extension browser tests, including two prompt attempts per stage;
+successful real-model matching remains unverified.
 
 Keep local AI optional and treat it as experimental until it can be evaluated with the authored
 corpus on an available device. No complete-history or general recall guarantee is made. The fallback
