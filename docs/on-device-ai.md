@@ -56,8 +56,10 @@ data, with no model tools. Application code resolves approved references to exac
 
 Each prompt is limited to 20,000 UTF-16 units, with a measured context ceiling of 8,192 tokens (or the
 smaller reported model window), including a 512-token output reserve. Responses are limited to 32,000
-units. A `NotSupportedError` during constrained measurement or prompting triggers one compatibility
-attempt on a fresh clone without `responseConstraint`. Both prompts explicitly specify the JSON
+units. Context checks reject negative or nonfinite usage and nonpositive or nonfinite windows before
+prompting; invalid metadata cannot increase the available budget. A `NotSupportedError` during
+constrained measurement or prompting triggers one compatibility attempt on a fresh clone without
+`responseConstraint`. Both prompts explicitly specify the JSON
 format, and the same application schema, size, scope and evidence checks validate either mode.
 The two attempts share the same nine-second deadline; there is no retry for other errors or
 unsupported session creation. A single enclosing JSON code fence is accepted before parsing;

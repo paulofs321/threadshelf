@@ -39,6 +39,7 @@ Run the established checks with the synthetic tests and lint:
 npm test -- tests/contracts
 npm test -- tests/platform
 npm test -- tests/providers/chatgpt
+npm test -- tests/description/on-device
 npm test
 npm run test:coverage
 npm run lint

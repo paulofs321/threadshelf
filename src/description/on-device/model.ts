@@ -327,7 +327,9 @@ export class OnDeviceModel implements ModelPort {
             !Number.isFinite(usage) ||
             usage < 0 ||
             !Number.isFinite(session.contextUsage) ||
+            session.contextUsage < 0 ||
             !Number.isFinite(session.contextWindow) ||
+            session.contextWindow <= 0 ||
             usage + session.contextUsage + 512 > Math.min(session.contextWindow, 8192)
           )
             throw new InferenceError({ phase, code: 'context-limit' });
