@@ -51,7 +51,8 @@ Without a selected-document binding, either adapter remains unavailable. Optiona
 available through the side-panel document when Chrome supports it. Private conversation storage and
 release packaging remain unimplemented. The fictional static demo shares the panel and pure search
 engines with isolated in-memory state. GitHub Actions runs locked
-installation, tests, lint, type/format checks and the Chrome build on pull requests and pushes to
+installation, enforced coverage, lint, type/format checks, separate extension/demo builds, artifact
+boundaries, public links and isolated synthetic Chromium suites on pull requests and pushes to
 `main`. Internal provider website interfaces are undocumented and may change.
 
 ## Development
@@ -123,6 +124,7 @@ The fallback extracts literal keywords without topic dictionaries. Explicit filt
 See [local AI setup and limits](docs/on-device-ai.md) for device support and verification status.
 Hosted processing is disabled; private excerpts are never silently uploaded.
 
-The future static demo will use fictional conversations and share suitable UI/search code without
-provider access or private storage. Extension ZIP packaging and GitHub Pages readiness remain
-planned. Public demo deployment and store submission remain future actions.
+The [static demo](docs/demo.md) shares UI/search code using fictional ports and memory-only state.
+It supports root and nested hosting paths; deployment and store submission remain future actions.
+Extension ZIP packaging remains planned. See the [acceptance matrix](docs/acceptance.md) for current
+synthetic proof, historical live evidence and real sign-in/model gaps.

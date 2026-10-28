@@ -17,7 +17,7 @@
 | `tests/platform/`               | Synthetic broker, panel client and Chrome API wiring tests                   |
 | `tests/providers/chatgpt/`      | Synthetic ChatGPT parser, transport, identity and scope tests                |
 | `tests/fixtures/`               | Handwritten fictional normalized data and link policies                      |
-| `demo/`                         | Reserved for the future synthetic static demo                                |
+| `demo/`                         | Fictional static composition using shared views and pure search engines      |
 | `public/`                       | Only deliberately public extension assets                                    |
 
 Empty directories contain `.gitkeep` files. They do not implement the reserved capability. Keep
@@ -54,7 +54,8 @@ needed. Missing suites and focused `.only` tests fail. These checks prove contra
 boundary behavior using handwritten fictional metadata and injected/mocked Chrome APIs. They do
 not establish actual installed-extension behavior or authenticated provider access. GitHub Actions
 runs the locked install, tests, lint, type/format checks, and Chrome extension build on pull requests
-and pushes to `main`. It does not upload artifacts or build the planned demo. ZIP commands remain
+and pushes to `main`. It also enforces coverage, separately builds the extension and root/nested demo,
+checks output boundaries/public links, and runs isolated synthetic browser suites. It uploads no artifacts. ZIP commands remain
 planned.
 See [testing](testing.md) for the complete defective-scenario matrix, coverage thresholds and ignored
 reports, and [technical foundation](foundation.md) for the implemented data and request flow.
@@ -106,7 +107,8 @@ a repeat search after switching tabs. A temporary manifest pregrants the exact o
 scripting; its test-only driver bypasses the permission dialog. Gesture/denial behavior is tested
 separately in components. DNS is blackholed, and fixture pages are prepared before navigation.
 The profile/extension copy are deleted even on failure. Fixtures/drivers never enter production
-output. Live accounts and screen-reader acceptance remain separate; CI’s checks are unchanged.
+output. Live accounts and screen-reader acceptance remain separate; see the current
+[acceptance matrix](acceptance.md) for CI/browser coverage and its limits.
 
 ## Shared contracts
 
