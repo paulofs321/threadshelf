@@ -14,6 +14,7 @@ coverage/
 .vitest/
 playwright-report/
 test-results/
+output/playwright/
 *.tsbuildinfo
 
 # Private configuration and local captures

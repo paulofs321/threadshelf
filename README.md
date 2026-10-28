@@ -11,7 +11,8 @@ available date, exact excerpts and validated original links. The shadcn/ui panel
 filters, per-provider result tabs, compact expandable previews, cancellation, retry/reconnect and
 explicit empty, partial and failed outcomes. [Description search](docs/description-search.md) adds
 bounded keyword/topic retrieval, evidence ranking and exact supporting quotations. The fictional
-demo remains planned.
+demo is available as a [separate static build](docs/demo.md), with seven invented conversations and
+no accounts, backend or original navigation.
 
 ## Current status
 
@@ -47,8 +48,9 @@ complete-history coverage is never claimed. Live checks are separate from synthe
 [Google Search AI Mode adapter](docs/google-ai-mode-adapter.md) for the technical reference.
 
 Without a selected-document binding, either adapter remains unavailable. Optional local AI is
-available through the side-panel document when Chrome supports it. Persistent storage, demo and
-release packaging remain unimplemented. GitHub Actions runs locked
+available through the side-panel document when Chrome supports it. Private conversation storage and
+release packaging remain unimplemented. The fictional static demo shares the panel and pure search
+engines with isolated in-memory state. GitHub Actions runs locked
 installation, tests, lint, type/format checks and the Chrome build on pull requests and pushes to
 `main`. Internal provider website interfaces are undocumented and may change.
 

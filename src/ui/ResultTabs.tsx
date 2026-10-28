@@ -20,12 +20,14 @@ export function ResultTabs({
   timeZone,
   onConnect,
   children,
+  environment,
 }: {
   outcome: SearchOutcome | undefined;
   verifiers: LinkVerifiers;
   timeZone: string;
   onConnect(provider: ProviderId): void;
   children: ReactNode;
+  environment?: 'extension' | 'demo' | undefined;
 }) {
   const [selectedSort, setSort] = useState<string>();
   const sort =
@@ -149,6 +151,7 @@ export function ResultTabs({
                 candidate={candidate}
                 verifiers={verifiers}
                 timeZone={timeZone}
+                environment={environment}
                 selection={outcome?.description?.ranking.selections.find(
                   (item) => item.candidateId === candidate.id,
                 )}

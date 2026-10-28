@@ -61,6 +61,46 @@ export default defineConfig([
     },
   },
   {
+    files: ['demo/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                'wxt',
+                'wxt/*',
+                '@wxt-dev/*',
+                'webextension-polyfill',
+                '**/platform/**',
+                '**/providers/**',
+                '**/entrypoints/**',
+                '**/storage/**',
+                '**/on-device/model',
+                '**/on-device/prompts',
+              ],
+              message:
+                'The fictional demo may only receive synthetic capabilities and shared pure code.',
+            },
+          ],
+        },
+      ],
+      'no-restricted-globals': [
+        'error',
+        'chrome',
+        'browser',
+        'fetch',
+        'XMLHttpRequest',
+        'WebSocket',
+        'localStorage',
+        'sessionStorage',
+        'indexedDB',
+        'LanguageModel',
+      ],
+    },
+  },
+  {
     files: ['src/contracts/**/*.ts'],
     rules: {
       'no-restricted-imports': [

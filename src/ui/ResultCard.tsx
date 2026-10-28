@@ -24,11 +24,13 @@ export function ResultCard({
   verifiers,
   timeZone,
   selection,
+  environment,
 }: {
   candidate: Candidate;
   verifiers: LinkVerifiers;
   timeZone: string;
   selection?: ModelRanking['selections'][number] | undefined;
+  environment?: 'extension' | 'demo' | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
   const excerptsId = useId();
@@ -149,7 +151,13 @@ export function ResultCard({
           </Button>
         )}
         {selection && <EvidenceExplanation candidate={candidate} selection={selection} />}
-        {!link && <p className="text-xs text-muted-foreground">Original link unavailable.</p>}
+        {!link && (
+          <p className="text-xs text-muted-foreground">
+            {environment === 'demo'
+              ? 'Fictional conversation — original navigation disabled.'
+              : 'Original link unavailable.'}
+          </p>
+        )}
       </CardContent>
     </Card>
   );
