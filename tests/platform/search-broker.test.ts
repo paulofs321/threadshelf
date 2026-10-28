@@ -149,6 +149,25 @@ describe('trusted panel search composition and document binding', () => {
     await f.search.recheckSessions();
     f.access.broker.close();
   });
+  it('excludes final session verification from heartbeat inspections until it settles', async () => {
+    const f = await harness();
+    f.provider.inspectSession.mockResolvedValue({ status: 'ready', scope: f.scope });
+    await f.search.inspectSession(f.scope, new AbortController().signal);
+    f.dispatch();
+    await vi.waitFor(() => expect(f.messages).toHaveLength(1));
+    const pending = deferred<unknown>();
+    f.provider.inspectSession.mockReturnValueOnce(pending.promise);
+    const finalVerification = f.search.inspectSession(f.scope, new AbortController().signal);
+    await f.search.recheckSessions();
+    await f.search.recheckSessions();
+    expect(f.provider.inspectSession).toHaveBeenCalledTimes(2);
+    expect(f.access.broker.bindSelectedDocument(f.scope)).not.toBeNull();
+    pending.resolve({ status: 'ready', scope: f.scope });
+    expect(await finalVerification).toEqual({ status: 'ready', scope: f.scope });
+    await f.search.recheckSessions();
+    expect(f.provider.inspectSession).toHaveBeenCalledTimes(3);
+    f.access.broker.close();
+  });
   it('rejects a retired scope before session reads and cancels checks before a new search', async () => {
     const f = await harness();
     f.provider.inspectSession.mockResolvedValueOnce({ status: 'ready', scope: f.scope });
