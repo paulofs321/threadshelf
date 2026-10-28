@@ -97,6 +97,7 @@ it.each([undefined, 4000])(
 it.each([
   [{}, undefined, {}],
   [{ retryAfterMs: 2000 }, undefined, { retryAfterMs: 2000 }],
+  [{ retryAfterMs: 0 }, undefined, { retryAfterMs: 0 }],
   [{}, { retryAfterMs: 5000 }, { retryAfterMs: 5000 }],
   [{ retryAfterMs: 4000 }, { retryAfterMs: 1000 }, { retryAfterMs: 4000 }],
 ] as const)(
