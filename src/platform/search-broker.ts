@@ -107,6 +107,8 @@ export class PanelSearchBroker {
       this.providers.set(scope.provider, bound);
     }
 
+    // Explicit verification owns this adapter until fresh readiness is established again.
+    bound.verified = false;
     const port = bound.port;
     const raw = await port.inspectSession({ signal });
     const result = validate(SessionOutcomeSchema, raw);
