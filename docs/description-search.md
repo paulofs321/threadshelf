@@ -71,8 +71,9 @@ with a last-turn fallback; messages absent from that rendered document remain un
 small selected windows and unchanged titles/native
 excerpts reach ranking. Missing, timed-out, unsupported or omitted context retains an explicit
 `missing-evidence` coverage reason. Native results survive nonterminal context errors; login,
-permission or account/scope changes discard that provider's evidence. Context rate limits retain retry
-hints and cooldowns. Keyword searches do not trigger message reads.
+permission or account/scope changes discard that provider's evidence. A context rate limit preserves
+the native inventory and already-read message evidence, reports `provider-failure` alongside
+`missing-evidence`, and retains its retry hint. Keyword searches do not trigger message reads.
 
 Google message reads require the existing connected Google page. They load verified saved threads in
 owned hidden frames, then remove those frames on completion, cancellation or failure. Search does not
