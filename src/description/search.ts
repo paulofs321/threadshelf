@@ -285,7 +285,7 @@ export class DescriptionSearch implements SearchPort {
         );
         collected.set(outcome.scope.provider, next);
 
-        if (outcome.status !== 'success' || next.status !== 'success')
+        if (outcome.status !== 'success' || next.status !== 'success' || next.rateLimit)
           stopped.add(outcome.scope.provider);
       }
     }

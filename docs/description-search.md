@@ -74,6 +74,9 @@ excerpts reach ranking. Missing, timed-out, unsupported or omitted context retai
 permission or account/scope changes discard that provider's evidence. A context rate limit preserves
 the native inventory and already-read message evidence, reports `provider-failure` alongside
 `missing-evidence`, and retains its retry hint. Keyword searches do not trigger message reads.
+Successful reads carrying a context rate limit stop further retrieval for that provider within the
+description and start its bounded cooldown. Other providers continue; collected evidence and the
+strongest available retry hint are retained for the panel.
 
 Google message reads require the existing connected Google page. They load verified saved threads in
 owned hidden frames, then remove those frames on completion, cancellation or failure. Search does not

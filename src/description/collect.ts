@@ -141,5 +141,17 @@ export function collect(
     }
   }
 
-  return { ...next, candidates, coverage };
+  const retryAfterMs = Math.max(
+    previous.rateLimit?.retryAfterMs ?? 0,
+    next.rateLimit?.retryAfterMs ?? 0,
+  );
+
+  return {
+    ...next,
+    candidates,
+    coverage,
+    ...(previous.rateLimit || next.rateLimit
+      ? { rateLimit: retryAfterMs > 0 ? { retryAfterMs } : {} }
+      : {}),
+  };
 }
