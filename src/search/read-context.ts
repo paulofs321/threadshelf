@@ -88,11 +88,15 @@ export async function readProviderContext(
         if (['scope-changed', 'login-expired', 'permission-needed'].includes(outcome.status))
           return outcome;
 
-        if (outcome.status === 'rate-limited')
+        if (outcome.status === 'rate-limited') {
           result.rateLimit =
             outcome.retryAfterMs === undefined ? {} : { retryAfterMs: outcome.retryAfterMs };
+          result.coverage.reasons = [
+            ...new Set([...result.coverage.reasons, 'provider-failure' as const]),
+          ];
 
-        if (outcome.status === 'rate-limited') break;
+          break;
+        }
 
         continue;
       }

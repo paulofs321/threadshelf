@@ -239,6 +239,7 @@ describe('retrieved-inventory context boundary', () => {
     }));
     const result = await run({ readContext });
     expect(result).toMatchObject({ status: 'success', candidates: [first, second] });
+    expect(validate(providerOutcomeSchemaFor(query, linkVerifiers), result).ok).toBe(true);
     expect(readContext).toHaveBeenCalledTimes(status === 'rate-limited' ? 1 : 2);
 
     if (status === 'rate-limited') expect(result).toHaveProperty('rateLimit', {});

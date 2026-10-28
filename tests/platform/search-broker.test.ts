@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PanelSearchBroker } from '../../src/platform/search-broker';
+import { SearchReplySchema } from '../../src/platform/search-protocol';
 import type { SearchReply } from '../../src/platform/search-protocol';
 import { maximumRequestsPerPort } from '../../src/platform/protocol';
 import { CandidateSchema, SearchRequestSchema, requireValid } from '../../src/contracts';
@@ -261,6 +262,135 @@ describe('trusted panel search composition and document binding', () => {
     dispatch();
     await vi.waitFor(() => expect(messages).toHaveLength(1));
     expect(readContext).not.toHaveBeenCalled();
+  });
+  it.each([
+    { hint: undefined, coverage: { extent: 'complete', reasons: [] }, extent: 'partial' },
+    { hint: 1234, coverage: { extent: 'unknown', reasons: ['unknown-reach'] }, extent: 'unknown' },
+    { hint: 0, coverage: { extent: 'partial', reasons: ['provider-failure'] }, extent: 'partial' },
+  ])(
+    'retains validated native results and a context rate limit ($hint, $extent)',
+    async ({ hint, coverage, extent }) => {
+      const f = await harness();
+      f.provider.search.mockImplementation(async (request) => ({
+        requestId: request.requestId,
+        scope: request.scope,
+        status: 'success',
+        candidates: [f.candidate],
+        coverage,
+      }));
+      const readContext = vi.fn<ConversationContextPort['readContext']>(async (request) => ({
+        requestId: request.requestId,
+        scope: request.scope,
+        status: 'rate-limited',
+        ...(hint === undefined ? {} : { retryAfterMs: hint }),
+      }));
+      Object.assign(f.provider, { readContext });
+      f.search.receive({
+        operation: 'description-retrieval',
+        request: f.request,
+        description: 'library',
+      });
+      await vi.waitFor(() => expect(f.messages).toHaveLength(1));
+      const reply = requireValid(SearchReplySchema, f.messages[0]);
+      expect(reply.outcome).toMatchObject({
+        state: 'success',
+        results: [f.candidate.id],
+        outcomes: [
+          {
+            status: 'success',
+            candidates: [f.candidate],
+            rateLimit: hint === undefined ? {} : { retryAfterMs: hint },
+            coverage: { extent },
+          },
+        ],
+        coverage: { extent },
+      });
+
+      for (const result of [reply.outcome, ...reply.outcome.outcomes]) {
+        if (!('coverage' in result)) throw new Error('Expected retained successful result.');
+
+        expect(result.coverage.reasons).toEqual(
+          expect.arrayContaining([...coverage.reasons, 'missing-evidence', 'provider-failure']),
+        );
+        expect(
+          result.coverage.reasons.filter((reason) => reason === 'provider-failure'),
+        ).toHaveLength(1);
+      }
+
+      expect(readContext).toHaveBeenCalledOnce();
+      expect(f.provider.search).toHaveBeenCalledOnce();
+    },
+  );
+  it('retains earlier message enrichment and unread native candidates when a later context read is rate-limited', async () => {
+    const f = await harness();
+    const candidates = [
+      f.candidate,
+      ...[2, 3].map((n) => {
+        const id = `${n}1111111-1111-1111-1111-111111111111`;
+
+        return {
+          ...f.candidate,
+          id: `candidate-${n}`,
+          conversationId: id,
+          originalUrl: `https://chatgpt.com/c/${id}`,
+        };
+      }),
+    ];
+    const enriched = {
+      ...f.candidate,
+      evidence: [
+        ...f.candidate.evidence,
+        { id: 'context:0', source: 'provider-message', text: 'An exact library discussion.' },
+      ],
+    };
+    f.provider.search.mockImplementation(async (request) => ({
+      requestId: request.requestId,
+      scope: request.scope,
+      status: 'success',
+      candidates,
+      coverage: { extent: 'unknown', reasons: ['unknown-reach'] },
+    }));
+    const readContext = vi
+      .fn<ConversationContextPort['readContext']>()
+      .mockImplementationOnce(async (request) => ({
+        requestId: request.requestId,
+        scope: request.scope,
+        status: 'success',
+        candidates: [enriched],
+        coverage: { extent: 'partial', reasons: ['missing-evidence'] },
+      }))
+      .mockImplementation(async (request) => ({
+        requestId: request.requestId,
+        scope: request.scope,
+        status: 'rate-limited',
+        retryAfterMs: 2500,
+      }));
+    Object.assign(f.provider, { readContext });
+    f.search.receive({
+      operation: 'description-retrieval',
+      request: f.request,
+      description: 'library',
+    });
+    await vi.waitFor(() => expect(f.messages).toHaveLength(1));
+    const reply = requireValid(SearchReplySchema, f.messages[0]);
+    expect(reply.outcome).toMatchObject({
+      state: 'success',
+      results: candidates.map((candidate) => candidate.id),
+      outcomes: [
+        {
+          status: 'success',
+          candidates: [enriched, ...candidates.slice(1)],
+          rateLimit: { retryAfterMs: 2500 },
+          coverage: {
+            extent: 'unknown',
+            reasons: ['unknown-reach', 'missing-evidence', 'provider-failure'],
+          },
+        },
+      ],
+    });
+    expect(readContext.mock.calls.map((call) => call[1])).toEqual(
+      candidates.slice(0, 2).map((candidate) => candidate.conversationId),
+    );
   });
   it.each(['cancel', 'scope-change'] as const)(
     'discards messages after context %s',
