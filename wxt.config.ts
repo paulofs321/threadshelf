@@ -11,6 +11,11 @@ const privateFiles = [
   '**/*.har',
   '**/*.log',
   '**/*.map',
+  'demo/**',
+  'tests/**',
+  '**/*.png',
+  '**/*.webm',
+  '**/*.heapsnapshot',
 ];
 
 export default defineConfig({
@@ -31,17 +36,8 @@ export default defineConfig({
   vite: () => ({ plugins: [tailwindcss()], build: { sourcemap: false } }),
   zip: {
     zipSources: false,
+    artifactTemplate: 'threadshelf-{{version}}-chrome.zip',
     exclude: privateFiles,
     excludeSources: privateFiles,
-    includeSources: [
-      'src/**',
-      'public/**',
-      'package.json',
-      'package-lock.json',
-      'tsconfig.json',
-      'wxt.config.ts',
-      'README.md',
-      'docs/**',
-    ],
   },
 });

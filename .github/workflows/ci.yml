@@ -64,3 +64,9 @@ jobs:
         env:
           DEMO_BASE: /threadshelf/
         run: npm run demo:build && npm run verify:builds && npm run test:demo
+
+      - name: Package and inspect local Chrome ZIP
+        run: npm run package:chrome
+
+      - name: Load the extracted package in isolated Chromium
+        run: npm run test:package

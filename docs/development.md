@@ -55,8 +55,8 @@ boundary behavior using handwritten fictional metadata and injected/mocked Chrom
 not establish actual installed-extension behavior or authenticated provider access. GitHub Actions
 runs the locked install, tests, lint, type/format checks, and Chrome extension build on pull requests
 and pushes to `main`. It also enforces coverage, separately builds the extension and root/nested demo,
-checks output boundaries/public links, and runs isolated synthetic browser suites. It uploads no artifacts. ZIP commands remain
-planned.
+checks output boundaries/public links, and runs isolated synthetic browser suites. It uploads no artifacts. Local ZIP packaging and extracted installation checks also run; see
+[installation](install.md) and the [acceptance matrix](acceptance.md).
 See [testing](testing.md) for the complete defective-scenario matrix, coverage thresholds and ignored
 reports, and [technical foundation](foundation.md) for the implemented data and request flow.
 
@@ -480,7 +480,8 @@ or live response bodies into tracked files. Report errors using bounded safe met
 
 Build assets are explicitly rooted in source entrypoints and `public/`. Keep local agent material
 out of both. WXT source ZIP generation is disabled and explicit archive exclusions are configured.
-Future release checks must inspect archive contents; do not archive the repository root. Static demo
+The ZIP verifier checks exact production entries/bytes and rejects private/agent/demo/test content;
+do not archive the repository root. See [privacy](privacy.md) for data boundaries. Static demo
 publishing must use only its dedicated build directory and must not import provider/storage code.
 
 No distribution license has been selected. Keep publishing and store submission as separate later

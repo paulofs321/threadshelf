@@ -2,7 +2,7 @@
   "name": "threadshelf",
   "version": "0.0.0",
   "private": true,
-  "description": "Chrome side panel scaffold with normalized search contracts and synthetic validation tests.",
+  "description": "Chrome side panel for bounded search across saved ChatGPT and Google Search AI Mode conversations.",
   "type": "module",
   "engines": {
     "node": ">=22.12.0 <23"
@@ -25,7 +25,10 @@
     "demo:preview": "vite preview --config vite.demo.config.ts --host 127.0.0.1",
     "test:demo": "PLAYWRIGHT_BROWSERS_PATH=./node_modules/.cache/ms-playwright node tests/browser/demo.mjs",
     "verify:builds": "node scripts/verify-builds.mjs",
-    "check:docs": "node scripts/check-docs.mjs"
+    "check:docs": "node scripts/check-docs.mjs",
+    "package:chrome": "node scripts/package-chrome.mjs",
+    "verify:artifacts": "node scripts/verify-artifacts.mjs",
+    "test:package": "PLAYWRIGHT_BROWSERS_PATH=./node_modules/.cache/ms-playwright node tests/browser/package.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "1.5.0",
@@ -55,6 +58,7 @@
     "@vitest/coverage-v8": "5.0.4",
     "@wxt-dev/module-react": "1.2.2",
     "eslint": "9.39.5",
+    "fflate": "0.8.3",
     "jsdom": "26.1.0",
     "prettier": "3.9.10",
     "tailwindcss": "4.3.3",
