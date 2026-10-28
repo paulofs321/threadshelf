@@ -142,8 +142,8 @@ export function collect(
   }
 
   const retryAfterMs = Math.max(
-    previous.rateLimit?.retryAfterMs ?? 0,
-    next.rateLimit?.retryAfterMs ?? 0,
+    previous.rateLimit?.retryAfterMs ?? -1,
+    next.rateLimit?.retryAfterMs ?? -1,
   );
 
   return {
@@ -151,7 +151,7 @@ export function collect(
     candidates,
     coverage,
     ...(previous.rateLimit || next.rateLimit
-      ? { rateLimit: retryAfterMs > 0 ? { retryAfterMs } : {} }
+      ? { rateLimit: retryAfterMs >= 0 ? { retryAfterMs } : {} }
       : {}),
   };
 }
