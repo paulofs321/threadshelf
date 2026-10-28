@@ -26,6 +26,7 @@ import { Alert } from './components/alert';
 import { Button } from './components/button';
 import { Card, CardContent } from './components/card';
 import { Input } from './components/input';
+import type { Preferences } from '../storage/preferences';
 
 export interface SearchScreenProps extends SetupScreenProps {
   scopes: readonly SessionScope[];
@@ -34,6 +35,7 @@ export interface SearchScreenProps extends SetupScreenProps {
   freshId(): string;
   timeZone: string;
   ai?: LocalAiControls;
+  preferences?: { read(): Preferences; write(value: Preferences): void; clear(): void };
 }
 type Phase = 'idle' | 'loading' | 'cancelling' | 'cancelled' | 'finished' | 'error';
 interface View {
@@ -69,7 +71,9 @@ function outcomeStatus(outcome: SearchOutcome): string {
 /** Capability-independent presentation; browser/session composition belongs to the entrypoint. */
 export function SearchScreen(props: SearchScreenProps) {
   const [text, setText] = useState('');
-  const [mode, setMode] = useState<'keyword' | 'description'>('keyword');
+  const [mode, setMode] = useState<'keyword' | 'description'>(
+    () => props.preferences?.read().mode ?? 'keyword',
+  );
   const [page, setPage] = useState<'search' | 'connections'>(
     props.scopes.length === 0 ? 'connections' : 'search',
   );
@@ -86,7 +90,14 @@ export function SearchScreen(props: SearchScreenProps) {
   const [view, setView] = useState<View>({ key, phase: 'idle' });
   const [retryUntil, setRetryUntil] = useState(0);
   const cooldown = retryUntil > Date.now();
-  const [retired, setRetired] = useState<Partial<Record<ProviderId, SessionScope>>>({});
+  const [retired, setRetired] = useState<
+    Partial<
+      Record<
+        ProviderId,
+        { scope: SessionScope; status: 'login-expired' | 'permission-needed' | 'scope-changed' }
+      >
+    >
+  >({});
   const active = useRef<{ controller: AbortController; key: string } | null>(null);
   const queryInput = useRef<HTMLInputElement>(null);
   const searchButton = useRef<HTMLButtonElement>(null);
@@ -99,7 +110,9 @@ export function SearchScreen(props: SearchScreenProps) {
     const previous = retired[scope.provider];
 
     return (
-      selected.includes(scope.provider) && previous !== undefined && sameScope(previous, scope)
+      selected.includes(scope.provider) &&
+      previous !== undefined &&
+      sameScope(previous.scope, scope)
     );
   });
 
@@ -113,6 +126,8 @@ export function SearchScreen(props: SearchScreenProps) {
   }, [page]);
 
   useEffect(() => {
+    // Release obsolete evidence from state as well as hiding it immediately on scope changes.
+    setView({ key, phase: 'idle' });
     setSelected(props.scopes.map((scope) => scope.provider));
     setRetired((previous) =>
       Object.fromEntries(
@@ -120,9 +135,9 @@ export function SearchScreen(props: SearchScreenProps) {
           .filter((scope) => {
             const retiredScope = previous[scope.provider];
 
-            return retiredScope !== undefined && sameScope(retiredScope, scope);
+            return retiredScope !== undefined && sameScope(retiredScope.scope, scope);
           })
-          .map((scope) => [scope.provider, scope]),
+          .map((scope) => [scope.provider, previous[scope.provider]]),
       ),
     );
 
@@ -212,14 +227,18 @@ export function SearchScreen(props: SearchScreenProps) {
           setRetryUntil((previous) => Math.max(previous, deadline));
         }
 
-        const terminal = result.value.outcomes.filter((item) =>
-          ['login-expired', 'permission-needed', 'scope-changed'].includes(item.status),
+        const terminal = result.value.outcomes.flatMap((item) =>
+          item.status === 'login-expired' ||
+          item.status === 'permission-needed' ||
+          item.status === 'scope-changed'
+            ? [{ scope: item.scope, status: item.status }]
+            : [],
         );
 
         if (terminal.length)
           setRetired((previous) => ({
             ...previous,
-            ...Object.fromEntries(terminal.map((item) => [item.scope.provider, item.scope])),
+            ...Object.fromEntries(terminal.map((item) => [item.scope.provider, item])),
           }));
       }
 
@@ -322,7 +341,11 @@ export function SearchScreen(props: SearchScreenProps) {
       <section hidden={page !== 'connections'} aria-labelledby="connections-heading">
         <div className="space-y-6 px-6 py-8">
           <SetupScreen
-            providers={props.providers}
+            providers={props.providers.map((item) => {
+              const retirement = retired[item.provider];
+
+              return retirement ? { ...item, selected: false, status: retirement.status } : item;
+            })}
             onConnect={props.onConnect}
             onInspect={props.onInspect}
             onDisconnect={props.onDisconnect}
@@ -347,10 +370,11 @@ export function SearchScreen(props: SearchScreenProps) {
           <details className="max-w-full">
             <summary className="w-fit cursor-pointer rounded-sm text-primary">Need help?</summary>
             <p className="mt-3 max-w-xs leading-relaxed">
-              Sign in on the provider site first, then connect here. ThreadShelf uses your existing
-              browser session and never asks for your password. A background provider tab may open.
-              ChatGPT supports personal accounts; Google AI Mode supports the default account.
-              Connections stay available while you browse other tabs.
+              Connect verifies your browser session. Confirmed sign-out opens a foreground provider
+              sign-in tab with a 5-minute wait and Cancel action. ThreadShelf never asks for
+              passwords or MFA. A background provider tab may open for the initial check. ChatGPT
+              supports personal accounts; Google AI Mode supports the default account. Connections
+              stay available while you browse other tabs.
             </p>
           </details>
         </footer>
@@ -444,6 +468,10 @@ export function SearchScreen(props: SearchScreenProps) {
                   onChange={(event) => {
                     edit();
                     setMode(event.target.value === 'description' ? 'description' : 'keyword');
+                    props.preferences?.write({
+                      version: 1,
+                      mode: event.target.value === 'description' ? 'description' : 'keyword',
+                    });
                   }}
                   aria-describedby="mode-help"
                 >
@@ -477,6 +505,32 @@ export function SearchScreen(props: SearchScreenProps) {
                   }}
                 />
               )}
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Queries and excerpts stay in memory. Only search mode is saved locally. No excerpt
+                  cache or account consent is stored.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    edit();
+                    setText('');
+                    setStart('');
+                    setEnd('');
+                    setMode('keyword');
+                    setRetryUntil(0);
+                    setRetired({});
+                    setSettingsOpen(false);
+                    props.preferences?.clear();
+                    props.ai?.disable();
+                    props.onClearLocalData?.();
+                    setPage('connections');
+                  }}
+                >
+                  Clear local data and preferences
+                </Button>
+              </div>
               <fieldset className="space-y-1">
                 <legend className="mb-1 font-medium">Providers to search</legend>
                 {(['chatgpt', 'google-ai-mode'] as const).map((provider) => {

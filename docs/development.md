@@ -2,23 +2,23 @@
 
 ## Current layout
 
-| Path                            | Role                                                                       |
-| ------------------------------- | -------------------------------------------------------------------------- |
-| `src/entrypoints/`              | WXT background and side panel entrypoints                                  |
-| `src/ui/`                       | Shared shadcn/ui keyword/description search, results and connections       |
-| `src/contracts/`                | Normalized runtime schemas, validation helpers and ports                   |
-| `src/platform/`                 | Selected-tab broker, context validation and access lifecycle               |
-| `src/providers/chatgpt/`        | Verified personal-account ChatGPT reads, normalization and identity checks |
-| `src/providers/google-ai-mode/` | Verified Google read adapter, wire parsing and document reader             |
-| `src/search/`                   | Keyword orchestration, scoped deduplication, cancellation and date filters |
-| `src/description/`              | Bounded topic retrieval, interpretation, ranking and evidence validation   |
-| `src/storage/`                  | Reserved for isolated optional local storage                               |
-| `tests/contracts/`              | Synthetic contract and boundary regression tests                           |
-| `tests/platform/`               | Synthetic broker, panel client and Chrome API wiring tests                 |
-| `tests/providers/chatgpt/`      | Synthetic ChatGPT parser, transport, identity and scope tests              |
-| `tests/fixtures/`               | Handwritten fictional normalized data and link policies                    |
-| `demo/`                         | Reserved for the future synthetic static demo                              |
-| `public/`                       | Only deliberately public extension assets                                  |
+| Path                            | Role                                                                         |
+| ------------------------------- | ---------------------------------------------------------------------------- |
+| `src/entrypoints/`              | WXT background and side panel entrypoints                                    |
+| `src/ui/`                       | Shared shadcn/ui keyword/description search, results and connections         |
+| `src/contracts/`                | Normalized runtime schemas, validation helpers and ports                     |
+| `src/platform/`                 | Selected-tab broker, context validation and access lifecycle                 |
+| `src/providers/chatgpt/`        | Verified personal-account ChatGPT reads, normalization and identity checks   |
+| `src/providers/google-ai-mode/` | Verified Google read adapter, wire parsing and document reader               |
+| `src/search/`                   | Keyword orchestration, scoped deduplication, cancellation and date filters   |
+| `src/description/`              | Bounded topic retrieval, interpretation, ranking and evidence validation     |
+| `src/storage/`                  | Strict versioned local search-mode preferences; private data stays in memory |
+| `tests/contracts/`              | Synthetic contract and boundary regression tests                             |
+| `tests/platform/`               | Synthetic broker, panel client and Chrome API wiring tests                   |
+| `tests/providers/chatgpt/`      | Synthetic ChatGPT parser, transport, identity and scope tests                |
+| `tests/fixtures/`               | Handwritten fictional normalized data and link policies                      |
+| `demo/`                         | Reserved for the future synthetic static demo                                |
+| `public/`                       | Only deliberately public extension assets                                    |
 
 Empty directories contain `.gitkeep` files. They do not implement the reserved capability. Keep
 shared contracts, orchestration, and presentation independent of authenticated adapters so a future
@@ -187,8 +187,8 @@ browser window with cancellation and a 12-second deadline. `client.ts` owns pane
 deadlines and interruption handling. `document-probe.ts` contains the self-contained serialized isolated-world
 function. It reads only origin/top-level status; it reads no page text, cookies, tokens, or identity.
 The side panel composition owns browser interactions; shared React presentation imports no browser
-or authenticated transport implementation. The current native connection controls extend the
-development view; shadcn/ui configuration and the full search UI remain planned.
+or authenticated transport implementation. The shadcn/ui connection views expose authenticated checking, sign-in waiting, verification,
+cancellation, expiry and interruption states without browser capabilities in shared presentation.
 
 | Permission                 | Purpose and activation                                                                       |
 | -------------------------- | -------------------------------------------------------------------------------------------- |
@@ -225,12 +225,13 @@ profile and Chrome document ID; they fail closed if that source disappears. Prov
 remain inactive. Provider operation messages cannot supply a window, tab, URL, header, body, or
 executable argument.
 
-| Operation         | Allowed payload and result                                                                     |
-| ----------------- | ---------------------------------------------------------------------------------------------- |
-| `connect`         | Bounded request ID and provider; selects the current document, with a fresh ephemeral scope    |
-| `inspect-context` | Request ID/provider/current ephemeral scope; checks the pinned document and replaces its scope |
-| `disconnect`      | Request ID/provider/current scope; clears the in-memory selection                              |
-| `cancel`          | Existing request ID; aborts/discards pending work in that port                                 |
+| Operation         | Allowed payload and result                                                                       |
+| ----------------- | ------------------------------------------------------------------------------------------------ |
+| `connect`         | Bounded request ID and provider; selects the current document, with a fresh ephemeral scope      |
+| `inspect-context` | Request ID/provider/current ephemeral scope; checks the pinned document and replaces its scope   |
+| `disconnect`      | Request ID/provider/current scope; clears the in-memory selection                                |
+| `verify-session`  | Current ephemeral scope; verifies the pinned identity without rotating scope or starting sign-in |
+| `cancel`          | Existing request ID; aborts/discards pending work in that port                                   |
 
 The same trusted connection also accepts `keyword-search` with a bounded normalized keyword
 request, and `cancel-search` with its request ID. The worker composes the keyword engine with
@@ -238,9 +239,20 @@ current broker document bindings and the real provider factories. There is no UR
 operation in this runtime bridge. Search replies undergo structural and request/scope/link/date
 validation in the panel. Access and search each cap unique request IDs at 256 per connection. Search
 has a separate 27-second panel deadline covering the engine’s 25-second deadline.
-A `selected` reply always carries `session: 'unverified'`; it is neither a
-`SessionOutcome` with authenticated readiness nor a successful provider search. Failures report
-permission-needed, unavailable, scope-changed, timeout, cancelled, interrupted, or busy, without
+`SessionCheckedSearch` wraps keyword/description orchestration in the panel. Before delivering a
+completed outcome, parallel short `verify-session` operations recheck each successful provider using
+the same adapter identity pin. `verified` replies must match the original scope exactly; intervening
+invalidation, logout, changed identity, timeout or cancellation rejects the result. There is no login
+redirect in this operation. This final check is separate from the retrieval/ranking deadline and
+bounded by the existing 10-second worker/12-second panel watchdogs. Only the versioned search-mode
+preference persists in extension-origin local storage; private content and consent stay in memory.
+
+Production `connect`/`inspect-context` calls use the provider's `inspectSession` before issuing
+`connected` with `session: 'authenticated'`. The adapter instance retains its identity pin for the
+next read. The lower-level access foundation can still produce `selected` / `unverified`, which the
+panel never promotes to Connected or a searchable scope. Correlated strict `connection-progress`
+messages announce checking/waiting/verifying. Failures additionally distinguish login-expired,
+schema-changed, rate-limited and expired-wait, without
 private exception text or fabricated results. Panel reply validation checks provider/request IDs
 and refuses reused partitions/generations, malformed output, and success after invalidation.
 
@@ -259,7 +271,14 @@ recheck the tab, permission, and owning panel before returning. Both checks run 
 no main-world or extension-origin fetch is implemented. No authentication behavior is inferred from
 the document marker. The broker allows one pending operation per provider per panel, at most four
 panel brokers, and 256 unique operation IDs per port. Duplicate IDs or malformed requests close the
-port. Requests expire after 10 seconds in the worker and 12 seconds independently in the panel.
+port. Ordinary checks expire after 10 seconds in the worker and 12 seconds independently in the panel.
+Confirmed logout during an explicit connection operation gets a separate 5-minute sign-in wait,
+followed by a fresh short verification deadline. `SignInTabs` tracks at most one ephemeral login
+attempt per provider across panel connections, uses fixed provider-owned entry/return URLs and
+event-driven tab checks, and never scripts login hosts. Permission and navigation still invalidate
+old bindings; only the pending intent survives expected login navigation. No login redirect is
+triggered by searches or generic errors. Foreground sign-in pages are preserved on teardown.
+See [side-panel lifecycle and live verification limits](sidepanel.md).
 There are no retries. Cancellation cannot undo an already dispatched Chrome injection, but it
 aborts the operation signal, prevents further checks, and discards later output.
 
@@ -271,8 +290,10 @@ the shared `scripting` permission invalidates both. Invalidation reaches the pan
 terminal worker replies. Panel-owned timers cover a suspended/unresponsive worker; reconnect is
 explicit through the Connect action. Incognito is disabled. Listeners for disconnected ports,
 timers, abort subscriptions, and scopes are released. A strict empty `keepalive`/`alive` exchange
-every 20 seconds keeps the worker active while the panel has connected scopes, without provider
-reads or consuming request IDs. It stops when connections/panel close; unexpected worker loss still
+every 20 seconds keeps the worker active while the panel has connected scopes or pending attempts,
+without consuming request IDs. During idle connected periods it also triggers bounded provider
+identity rechecks. Checks are skipped during searches and cancelled before replacement reads;
+failed or changed identities retire scopes and model/result state without opening sign-in. It stops when connections/panel close; unexpected worker loss still
 fails closed. Only unchanged inactive connection-owned tabs are removed during cleanup.
 Invalidation events carry generations; delayed cancellation/navigation events cannot clear a newer
 selection or cause its fresh reply to be discarded.

@@ -72,9 +72,7 @@ export class ChatGptProvider implements ProviderPort {
     if (result.status === 'success') return { status: 'ready', scope: { ...this.selectedScope } };
 
     return {
-      status: ['login-expired', 'permission-needed', 'scope-changed'].includes(result.status)
-        ? (result.status as 'login-expired' | 'permission-needed' | 'scope-changed')
-        : 'unavailable',
+      status: result.status,
       provider: this.provider,
       generation: this.selectedScope.generation,
     };

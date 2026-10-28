@@ -113,11 +113,7 @@ describe('connected ChatGPT provider', () => {
   ] as const)('maps inspection failure %s to the session contract', async (status) => {
     const { provider, port } = harness();
     port.read.mockResolvedValueOnce({ status });
-    expect((await provider.inspectSession(context())).status).toBe(
-      ['login-expired', 'permission-needed', 'scope-changed'].includes(status)
-        ? status
-        : 'unavailable',
-    );
+    expect((await provider.inspectSession(context())).status).toBe(status);
   });
   it.each([
     {},
@@ -359,7 +355,7 @@ it.each([
 it('does not treat a malformed inspection body as a ready session', async () => {
   const { provider, port } = harness();
   port.read.mockResolvedValueOnce(readResult({ unexpected: true }));
-  expect((await provider.inspectSession(context())).status).toBe('unavailable');
+  expect((await provider.inspectSession(context())).status).toBe('schema-changed');
 });
 it('stops new message reads when the total evidence budget is exhausted', async () => {
   const { provider, port, request } = harness();

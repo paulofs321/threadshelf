@@ -91,6 +91,11 @@ header’s **Connect** button returns to that page; connected providers show “
 any tab. ThreadShelf reuses a suitable provider page in this window or opens its fixed landing page in a background tab
 when needed, including when several provider tabs are open but inactive.
 Chrome requests optional `scripting` and either `https://chatgpt.com/*` or `https://www.google.com/*`.
+Connected appears only after fresh provider session checks. Confirmed sign-out opens native sign-in
+in a separate foreground tab with a cancellable five-minute wait; return is rebound and verified.
+Generic failures do not redirect. Real user-completed login/return remains unverified; see
+[connection behavior and limitations](docs/sidepanel.md). Only search mode is saved locally;
+**Search settings → Clear local data and preferences** clears the panel's data, connections and AI.
 After connecting, enter keywords or select **Description** to describe a conversation, then search
 the checked providers. The date interval uses local calendar boundaries; **Before** is exclusive. Each provider stays connected while you browse other
 tabs. Closing/navigating its source page or losing account/site access can require reconnecting.

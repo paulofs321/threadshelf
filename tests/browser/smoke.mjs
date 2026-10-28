@@ -211,11 +211,39 @@ try {
   let keywordReads = 0;
   let chatSearchReads = 0;
   let messageReads = 0;
+  const signedOut = new Set();
   let googleResultThread = googleFixtures.googleThread('fictional-unopened-thread');
   googleResultThread[5] = [Date.parse('2026-10-13T12:00:00.000Z') / 1000, 0];
   await context.unroute(/^https?:/);
   await context.route(/^https?:/, async (route) => {
     const url = new URL(route.request().url());
+
+    if (
+      (url.origin === 'https://chatgpt.com' && url.pathname === '/auth/login') ||
+      url.origin === 'https://accounts.google.com'
+    )
+      return route.fulfill({
+        contentType: 'text/html',
+        body: '<h1>Synthetic provider-managed sign-in</h1>',
+      });
+
+    if (
+      signedOut.has('chatgpt') &&
+      url.origin === 'https://chatgpt.com' &&
+      url.pathname === '/' &&
+      !route.request().isNavigationRequest()
+    )
+      return route.fulfill({ status: 401, body: '' });
+
+    if (
+      signedOut.has('google-ai-mode') &&
+      url.origin === 'https://www.google.com' &&
+      ['/', '/search'].includes(url.pathname)
+    )
+      return route.fulfill({
+        contentType: 'text/html',
+        body: '<a href="https://accounts.google.com/ServiceLogin">Sign in</a>',
+      });
 
     if (url.origin === 'https://chatgpt.com' && url.pathname === '/')
       return route.fulfill({ contentType: 'text/html', body: chatFixtures.bootstrapHtml() });
@@ -441,8 +469,63 @@ try {
   assert.deepEqual(externalRequests, []);
   assert.deepEqual(errors, []);
 
+  // Real production worker/client/isolated readers, with entirely synthetic sign-in pages and
+  // user-completed return simulated by navigation. No credentials, login-host scripting or accounts.
+  await drive('disable-ai');
+  await drive('show-connections');
+
+  for (const [provider, source, command, entry, destination, index] of [
+    [
+      'chatgpt',
+      chatPage,
+      'connect-chat',
+      'https://chatgpt.com/auth/login',
+      'https://chatgpt.com/',
+      0,
+    ],
+    [
+      'google-ai-mode',
+      googlePage,
+      'connect-google',
+      'https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fwww.google.com%2Fsearch%3Fudm%3D50',
+      'https://www.google.com/search?udm=50',
+      1,
+    ],
+  ]) {
+    signedOut.add(provider);
+    await source.reload();
+    await expect.poll(async () => (await drive('snapshot')).statuses[index]).toContain('changed');
+    const originalUrl = source.url();
+    const loginCreated = context.waitForEvent('page');
+    await drive(command);
+    const login = await loginCreated;
+    // Reissue after Playwright attaches so its isolated synthetic route owns the initial request.
+    await login.goto(entry);
+    await expect
+      .poll(async () => (await drive('snapshot')).statuses[index])
+      .toContain('Waiting for sign-in');
+    assert.equal(source.url(), originalUrl);
+    assert.equal((await drive('snapshot')).results, 0);
+    assert.equal(
+      await worker.evaluate(() =>
+        chrome.permissions.contains({ origins: ['https://accounts.google.com/*'] }),
+      ),
+      false,
+    );
+    signedOut.delete(provider);
+    await login.goto(destination);
+    await expect
+      .poll(async () => (await drive('snapshot')).statuses[index])
+      .toContain('already connected');
+    assert.equal(source.url(), originalUrl);
+    assert.equal(login.isClosed(), false);
+  }
+
+  assert.deepEqual(externalRequests, []);
+  assert.deepEqual(errors, []);
+
   process.stdout.write(
-    'Chromium MV3 UI smoke passed: production mount/theme; real native-panel runtime/providers with synthetic transport; zero keyword message reads/tabs; description reads late ChatGPT subtopics and an unopened Google thread through an owned same-origin frame, preserving source URL and cleaning frames; zero new search tabs; synthetic on-device interpretation/ranking; synthetic cancellation/reconnect; compact previews; keyboard/focus; 240–400px; no external requests or CSP errors.\n',
+    'Chromium MV3 UI smoke passed: production native-panel runtime/providers with synthetic transport; authenticated Connect and foreground sign-in/return for both providers without login-host access; old results cleared and user source pages preserved; zero new search tabs; bounded description context and synthetic local AI; cancellation/reconnect; keyboard/focus; 240–400px; no external requests or CSP errors.\n',
   );
 } finally {
   await context?.close();

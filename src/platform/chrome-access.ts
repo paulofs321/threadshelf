@@ -2,6 +2,7 @@ import { browser } from 'wxt/browser';
 import { AccessBroker } from './broker';
 import { PanelSearchBroker } from './search-broker';
 import { createChatGptProvider } from './chatgpt';
+import { SignInTabs } from './sign-in';
 import { createGoogleAiModeProvider } from './google-ai-mode';
 import { ProviderTabs } from './provider-tabs';
 import { HeartbeatCommandSchema } from './protocol';
@@ -19,6 +20,7 @@ import {
 
 export function registerChromeAccess(): void {
   const brokers = new Set<AccessBroker>();
+  const signIn = new SignInTabs();
   browser.runtime.onConnect.addListener((connection) => {
     const sender = validatePanelSource(connection.sender, browser.runtime.id);
     let documentId = sender?.documentId;
@@ -107,6 +109,10 @@ export function registerChromeAccess(): void {
         connection.disconnect();
       },
       () => crypto.randomUUID(),
+      {
+        inspect: (scope, signal) => search.inspectSession(scope, signal),
+        signIn: (provider, windowId, signal) => signIn.wait(provider, windowId, signal),
+      },
     );
     const search = new PanelSearchBroker(
       broker,
@@ -127,6 +133,7 @@ export function registerChromeAccess(): void {
       if (validate(HeartbeatCommandSchema, message).ok) {
         try {
           connection.postMessage({ kind: 'alive' });
+          void search.recheckSessions();
         } catch {
           broker.close();
         }

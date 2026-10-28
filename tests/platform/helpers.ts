@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import { AccessBroker } from '../../src/platform/broker';
-import type { SelectedTabAccessPort } from '../../src/platform/broker';
+import type { SelectedTabAccessPort, SessionAccessPort } from '../../src/platform/broker';
 import type { AccessMessage, AccessReply } from '../../src/platform/protocol';
 
 // Handwritten browser metadata only. No provider wire schemas, sessions, or captures.
@@ -35,7 +35,7 @@ export function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-export function brokerHarness(panel = 'one') {
+export function brokerHarness(panel = 'one', sessions?: SessionAccessPort) {
   let counter = 0;
   const messages: AccessMessage[] = [];
   const replies = new Map<string, (reply: AccessReply) => void>();
@@ -55,6 +55,7 @@ export function brokerHarness(panel = 'one') {
     },
     close,
     () => `fiction-panel-${panel}-partition-${++counter}`,
+    sessions,
   );
 
   function replyFor(requestId: string) {

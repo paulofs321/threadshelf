@@ -19,12 +19,24 @@ const chrome = vi.hoisted(() => ({
 vi.mock('wxt/browser', () => ({ browser: chrome }));
 
 function connection() {
-  return {
+  const port = {
     postMessage: vi.fn<(input: AccessRequest | SearchCommand) => void>(),
     disconnect: vi.fn(),
     onMessage: event<[unknown]>(),
     onDisconnect: event<[]>(),
   };
+  port.postMessage.mockImplementation((command) => {
+    if (command.operation === 'verify-session')
+      port.onMessage.emit({
+        kind: 'reply',
+        requestId: command.requestId,
+        status: 'verified',
+        session: 'authenticated',
+        scope: command.scope,
+      });
+  });
+
+  return port;
 }
 
 const ports: ReturnType<typeof connection>[] = [];
@@ -38,7 +50,7 @@ function google() {
 }
 
 function connectButton(region = chat()) {
-  return within(region).getByRole('button', { name: /^Connect/ });
+  return within(region).getByRole('button', { name: /^(?:Connect|Reconnect)/ });
 }
 
 function lastRequest(port = ports[0]): AccessOperation {
@@ -73,8 +85,8 @@ function replySelected(port = ports[0], generation = 1, partition = 'fiction-pan
     port.onMessage.emit({
       kind: 'reply',
       requestId: request.requestId,
-      status: 'selected',
-      session: 'unverified',
+      status: 'connected',
+      session: 'authenticated',
       scope: { kind: 'ephemeral', provider: request.provider, generation, partition },
     });
   });
@@ -89,6 +101,7 @@ async function select(region = chat(), generation = 1, partition = 'fiction-pane
 
 beforeEach(() => {
   vi.resetAllMocks();
+  localStorage.clear();
   chrome.permissions.request.mockResolvedValue(true);
   chrome.windows.getCurrent.mockResolvedValue({ id: 3, incognito: false });
   chrome.runtime.connect.mockImplementation(() => {
@@ -106,6 +119,85 @@ afterEach(() => {
 });
 
 describe('side-panel permission and operation flow with real AccessClient', () => {
+  it('never treats an unverified document selection as Connected or exposes a search scope', async () => {
+    render(<AccessPanel />);
+    const request = await start();
+    await act(async () =>
+      ports[0]?.onMessage.emit({
+        kind: 'reply',
+        requestId: request.requestId,
+        status: 'selected',
+        session: 'unverified',
+        scope: {
+          kind: 'ephemeral',
+          provider: 'chatgpt',
+          partition: 'fiction-unverified',
+          generation: 1,
+        },
+      }),
+    );
+    expect(within(chat()).getByRole('status').textContent).toContain('unverified');
+    expect(screen.queryByRole('button', { name: 'Continue to search' })).toBeNull();
+    expect(document.body.textContent).not.toContain('is already connected');
+  });
+  it('announces human sign-in and verification, permits cancellation beyond the short timeout, and preserves provider independence', async () => {
+    vi.useFakeTimers();
+    render(<AccessPanel />);
+    const request = await start();
+    await act(async () =>
+      ports[0]?.onMessage.emit({
+        kind: 'connection-progress',
+        requestId: request.requestId,
+        provider: 'chatgpt',
+        status: 'waiting-for-sign-in',
+      }),
+    );
+    expect(within(chat()).getByRole('status').textContent).toContain('5 minutes');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(clientTimeoutMs * 2);
+    });
+    expect(within(chat()).getByRole('button', { name: 'Cancel' })).toBeTruthy();
+    await select(google(), 1, 'fiction-google');
+    await act(async () =>
+      ports[0]?.onMessage.emit({
+        kind: 'connection-progress',
+        requestId: request.requestId,
+        provider: 'chatgpt',
+        status: 'verifying-session',
+      }),
+    );
+    expect(within(chat()).getByRole('status').textContent).toContain('Verifying');
+    await act(async () => fireEvent.click(within(chat()).getByRole('button', { name: 'Cancel' })));
+    expect(within(chat()).getByRole('status').textContent).toContain('cancelled');
+    expect(within(google()).getByRole('status').textContent).toContain('is already connected');
+  });
+  it('clears local queries, filters, preferences, scopes, transport and optional AI from one action', async () => {
+    render(<AccessPanel />);
+    await select();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to search' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Search settings' }));
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'fiction-private-query' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search mode' }), {
+      target: { value: 'description' },
+    });
+    fireEvent.change(screen.getByLabelText('From date'), { target: { value: '2026-10-01' } });
+    expect(localStorage.getItem('threadshelf:preferences:v1')).toBe(
+      '{"version":1,"mode":"description"}',
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'Clear local data and preferences' })),
+    );
+    expect(localStorage.getItem('threadshelf:preferences:v1')).toBeNull();
+    expect(ports[0]?.disconnect).toHaveBeenCalledOnce();
+    expect(within(chat()).queryByText(/already connected/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to search' }));
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'Search settings' }));
+    expect((screen.getByLabelText('From date') as HTMLInputElement).value).toBe('');
+    expect((screen.getByRole('combobox', { name: 'Search mode' }) as HTMLSelectElement).value).toBe(
+      'keyword',
+    );
+  });
   it('retains both provider connections and worker keepalive across connection/search page navigation', async () => {
     vi.useFakeTimers();
     render(<AccessPanel />);
@@ -268,7 +360,7 @@ describe('side-panel permission and operation flow with real AccessClient', () =
       await act(async () => {
         fireEvent.click(connectButton());
       });
-      expect(within(chat()).getByRole('status').textContent).toContain('unavailable');
+      expect(within(chat()).getByRole('status').textContent).toContain('could not be verified');
       expect(document.body.textContent).not.toContain('fiction-private-detail');
       expect((connectButton() as HTMLButtonElement).disabled).toBe(false);
     },
@@ -402,7 +494,7 @@ describe('side-panel permission and operation flow with real AccessClient', () =
     });
     expect(within(chat()).queryByRole('button', { name: 'Recheck connection' })).toBeNull();
     expect(within(google()).getByRole('status').textContent).toContain('is already connected.');
-    expect(within(google()).queryByRole('button', { name: /^Connect/ })).toBeNull();
+    expect(within(google()).queryByRole('button', { name: /^(?:Connect|Reconnect)/ })).toBeNull();
   });
   it('clears both provider selections on worker disconnect and opens a fresh port only on explicit reconnect', async () => {
     render(<AccessPanel />);
@@ -565,6 +657,18 @@ it('composes description retrieval locally over real validated keyword messages 
   if (!port) throw new Error('Missing synthetic connection');
 
   port.postMessage.mockImplementation((command) => {
+    if (command.operation === 'verify-session') {
+      port.onMessage.emit({
+        kind: 'reply',
+        requestId: command.requestId,
+        status: 'verified',
+        session: 'authenticated',
+        scope: command.scope,
+      });
+
+      return;
+    }
+
     if (command.operation !== 'keyword-search' && command.operation !== 'description-retrieval')
       return;
 
@@ -632,6 +736,18 @@ it('enables optional local inference only after a user action and clears session
   if (!port) throw new Error('Fixture port');
 
   port.postMessage.mockImplementation((command) => {
+    if (command.operation === 'verify-session') {
+      port.onMessage.emit({
+        kind: 'reply',
+        requestId: command.requestId,
+        status: 'verified',
+        session: 'authenticated',
+        scope: command.scope,
+      });
+
+      return;
+    }
+
     if (command.operation !== 'keyword-search' && command.operation !== 'description-retrieval')
       return;
 

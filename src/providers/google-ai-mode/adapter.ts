@@ -60,11 +60,7 @@ export class GoogleAiModeProvider implements ProviderPort {
       )
         return { status: 'ready', scope: { ...this.selectedScope } };
 
-      if (
-        result.status === 'login-expired' ||
-        result.status === 'permission-needed' ||
-        result.status === 'scope-changed'
-      )
+      if (result.status !== 'success')
         return {
           status: result.status,
           provider: this.provider,
