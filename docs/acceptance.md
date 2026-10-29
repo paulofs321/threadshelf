@@ -13,7 +13,7 @@ read personal conversation history, or establish the stability of undocumented p
 | Keyword/description search                                              | Runtime validation, provider-independent orchestration, literal fallback, synthetic model output/evidence rejection, date and failure matrices | Recall is bounded by retrieved excerpts; literal fallback does not understand paraphrases                                  |
 | Optional on-device AI                                                   | Lifecycle/budget/error tests and synthetic native-panel model flows                                                                            | Actual tested Chromium exposes the API but reports unavailable; no real inference or quality benchmark                     |
 | Fictional static demo                                                   | Root and nested-path production previews; filters, exact evidence, cancellation, partial/empty states; 240–1200px rendering                    | Simulation only; no authenticated or model capabilities                                                                    |
-| Production outputs                                                      | Exact path allowlists, manifest permissions, local HTML references, privileged-import negative builds and public local-link checks             | ZIP verification is a separate packaging check                                                                             |
+| Production outputs                                                      | Exact path allowlists, manifest permissions, local HTML references, privileged-import negative builds and public local-link checks             | ZIP checks compare exact bytes to the fresh build; extracted Chromium installation is checked separately                   |
 
 ## Repeat the automated checks
 
@@ -34,6 +34,8 @@ npm run test:demo
 DEMO_BASE=/threadshelf/ npm run demo:build
 DEMO_BASE=/threadshelf/ npm run verify:builds
 DEMO_BASE=/threadshelf/ npm run test:demo
+npm run package:chrome
+npm run test:package
 ```
 
 The extension harness copies the production build into a temporary directory, pregrants only the
@@ -41,6 +43,10 @@ existing optional origins/scripting there, adds a test-only driver and intercept
 with synthetic responses. Permission gesture behavior has separate component tests. The source
 extension, production manifest and personal browser profile remain untouched. Temporary profiles,
 copies and local preview servers close in `finally`; demo screenshots contain only fiction.
+
+The package suite extracts the verified ZIP without changing its manifest/assets, loads it in a fresh
+Chromium profile and checks the connection UI, native panel context and no pregranted optional
+permissions. This demonstrates local installation, not real-account acceptance.
 
 CI runs the same checks on Ubuntu with read-only repository permissions. It uploads no files and
 has no deployment, publication, store submission, provider credentials or personal sessions.

@@ -1,130 +1,92 @@
 # ThreadShelf
 
-ThreadShelf is a Chrome side panel for searching conversations already saved in your
-currently logged-in **ChatGPT** and **Google Search AI Mode** accounts. Google Search AI Mode is a
-separate integration from the Gemini app at `gemini.google.com`.
+ThreadShelf is a Chrome side panel for searching conversations already saved in your selected
+**ChatGPT** and **Google Search AI Mode** accounts. Google Search AI Mode is separate from the
+Gemini app. No manual export or per-conversation saving is required.
 
-The goal is to find sessions by keyword or description without manually saving or exporting each
-conversation. Examples include “Where did I compare deployment options for my portfolio?” and
-“Which sessions did I discuss authentication last month?” Keyword results show their provider, title,
-available date, exact excerpts and validated original links. The shadcn/ui panel supports provider/date
-filters, per-provider result tabs, compact expandable previews, cancellation, retry/reconnect and
-explicit empty, partial and failed outcomes. [Description search](docs/description-search.md) adds
-bounded keyword/topic retrieval, evidence ranking and exact supporting quotations. The fictional
-demo is available as a [separate static build](docs/demo.md), with seven invented conversations and
-no accounts, backend or original navigation.
+Search by keyword, or describe a conversation using literal fallback or optional on-device AI.
+The shared shadcn/ui panel provides provider/date filters, source tabs, exact expandable excerpts,
+validated original links, evidence-backed explanations, cancellation and explicit partial/failure
+states. Search is bounded; complete account history is never promised.
 
-## Current status
+## Try it
 
-This repository contains the extension scaffold, **shared contracts**, and a **selected-site access
-foundation**: WXT, React, strict TypeScript, Chrome Manifest V3, Valibot schemas, normalized ports,
-synthetic tests, and ESLint. The toolbar opens the side panel. Connect requests optional permission
-for one provider site and scripting, then checks its selected top-level document. The broker validates
-the sending panel, correlates requests, and clears access on navigation, revocation, cancellation,
-timeout, or worker interruption. Unknown identity receives a fresh ephemeral scope on every check.
-
-Selecting a site checks browser context only. Both provider adapters now support authenticated
-reads through trusted selected-document bindings. The panel now connects the
-[keyword search engine](docs/keyword-search.md) to both adapters through a validated runtime bridge.
-Shared views receive capability ports and have no Chrome/provider imports. See the
-[side panel reference](docs/sidepanel.md) for controls, states and current limitations.
-
-The ChatGPT adapter implements personal-account keyword/list/API-message reads, exact evidence,
-original links, UTC updated dates and identity checks around reads. Actual unpacked-extension
-verification passed with five native-matching results, API message evidence, a genuine empty search
-and a bounded 50-conversation list. Workspaces, pagination and complete-history coverage remain
-unsupported or unverified. See the [ChatGPT adapter](docs/chatgpt-adapter.md) for details.
-
-Google Search AI Mode implements default-account search/list reads, exact snippets, verified original
-links, native record and visible message dates, bounded rendered-thread evidence, HTTP failures and
-fresh identity checks. On October 15, 2026, native and actual unpacked-extension reads returned three snippet-only matches, a genuine
-empty search, a capped partial list and a rendered excerpt from an owned background tab that closed
-afterward. Google uses the native record timestamp as an available **Provider date**, without claiming
-creation/update semantics. An already-visible matching message date takes priority; time-only labels
-use the local day when read. Keyword search creates no tabs or per-conversation date reads. Missing
-or malformed dates remain unknown. Nondefault accounts, timestamp creation/update meanings,
-continuation and complete-message/history coverage remain unresolved. Unknown dates are omitted;
-complete-history coverage is never claimed. Live checks are separate from synthetic tests. See the
-[Google Search AI Mode adapter](docs/google-ai-mode-adapter.md) for the technical reference.
-
-Without a selected-document binding, either adapter remains unavailable. Optional local AI is
-available through the side-panel document when Chrome supports it. Private conversation storage and
-release packaging remain unimplemented. The fictional static demo shares the panel and pure search
-engines with isolated in-memory state. GitHub Actions runs locked
-installation, enforced coverage, lint, type/format checks, separate extension/demo builds, artifact
-boundaries, public links and isolated synthetic Chromium suites on pull requests and pushes to
-`main`. Internal provider website interfaces are undocumented and may change.
-
-## Development
-
-The extension requires Chrome 116 or later.
-
-Use Node.js 22.12 or later within the Node 22 release line and npm. Dependencies are pinned in
-`package.json` and `package-lock.json`.
+Use a regular Chrome 116+ profile. With Node 22.12+ within Node 22 and npm:
 
 ```sh
 npm ci
-npm test
+npm run demo:build
+npm run package:chrome
+```
+
+The verified local archive is `.output/threadshelf-0.0.0-chrome.zip`. **Extract it**, open
+`chrome://extensions`, enable Developer mode and choose **Load unpacked** on the directory containing
+`manifest.json`. Click ThreadShelf’s toolbar icon to open the side panel. See the complete
+[installation and recovery guide](docs/install.md).
+
+Connect requests optional scripting and access to only the chosen provider origin, then verifies
+the session. Confirmed sign-out opens a separate provider-managed login tab with a cancellable
+five-minute wait. Connected requires fresh return verification. Passwords and MFA stay on the
+provider page; generic failures do not trigger login redirects. Search expiry requires explicit
+Reconnect. See [connection controls](docs/sidepanel.md).
+
+For an account-free preview, run `npm run demo:preview` after building the demo. Seven fictional
+conversations use the actual shared UI/search pipeline with no provider, model or storage
+capabilities. Try **floating library**, or choose Description and ask **Where did I discuss login
+security?** Root/nested build instructions and simulation controls are in the [demo guide](docs/demo.md).
+
+## Support and limits
+
+- **ChatGPT:** personal accounts, bounded native search/list and API-message excerpts. Workspaces,
+  pagination, complete-history and entirely tab-free access are unsupported/unverified.
+- **Google Search AI Mode:** default `www.google.com` account, bounded search/list/snippets and
+  rendered evidence. Nondefault accounts, locale hosts, continuation beyond the bounded list and
+  complete-message/history coverage are unsupported/unverified. Provider dates retain their actual
+  provenance; missing dates stay unknown.
+- **Description search:** literal fallback requires matching content words together. Optional local
+  AI needs compatible Chrome/device/language support and may require a separate model download.
+  Hosted processing is disabled. Models select validated evidence references; application code owns
+  links, dates and quotations. See [description search](docs/description-search.md) and
+  [local AI](docs/on-device-ai.md).
+- **Verification:** historical authenticated reads and current synthetic native-panel/browser tests
+  are separate evidence. Real user-completed login/MFA/return remains unverified for both providers;
+  real on-device inference was unavailable in the tested configuration. See the
+  [acceptance matrix](docs/acceptance.md). Provider website interfaces are undocumented and may change.
+
+## Privacy
+
+Private queries, excerpts, identities and results remain in memory. Only a versioned search-mode
+preference persists locally; there is no excerpt cache, sync, application backend or telemetry.
+**Search settings → Clear local data and preferences** cancels work, clears results/filters,
+releases connections, disables AI and removes the saved setting. Revoke Chrome site grants separately
+in extension settings. Incognito is disabled. See [privacy and data handling](docs/privacy.md).
+
+## Development and verification
+
+```sh
+npm ci
 npm run test:coverage
 npm run lint
 npm run check
 npm run build
+npm run demo:build
+npm run verify:builds
+npm run check:docs
+PLAYWRIGHT_BROWSERS_PATH=./node_modules/.cache/ms-playwright npx playwright install --with-deps chromium
+npm run test:browser
+npm run test:demo
+npm run package:chrome
+npm run test:package
 ```
 
-| Command                 | Available behavior                                    |
-| ----------------------- | ----------------------------------------------------- |
-| `npm run dev`           | Start WXT's Chrome development build/browser workflow |
-| `npm run prepare`       | Generate WXT TypeScript configuration                 |
-| `npm run typecheck`     | Prepare and check TypeScript without emitting files   |
-| `npm test`              | Run synthetic TypeScript tests once                   |
-| `npm run test:coverage` | Run all tests and enforce runtime source coverage     |
-| `npm run test:browser`  | Run isolated Chromium UI/CSP smoke after building     |
-| `npm run test:watch`    | Watch and rerun synthetic tests                       |
-| `npm run lint`          | Run ESLint with zero warnings allowed                 |
-| `npm run format`        | Format public/source project files                    |
-| `npm run format:check`  | Check formatting                                      |
-| `npm run check`         | Run type checking and formatting checks               |
-| `npm run build`         | Build the extension to `.output/chrome-mv3/`          |
+`npm run dev` starts WXT development, `npm test` runs tests without coverage, and `npm run test:watch`
+watches them. `npm run demo:dev` starts the isolated static demo; `npm run verify:artifacts` repeats
+ZIP inspection. `DEMO_BASE=/threadshelf/` configures a project-site base; use the same base for demo
+build, preview, output verification and browser tests. See [developer notes](docs/development.md),
+[regression tests](docs/testing.md), [architecture](docs/foundation.md),
+[ChatGPT adapter](docs/chatgpt-adapter.md) and [Google adapter](docs/google-ai-mode-adapter.md).
 
-For manual inspection, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**,
-and select `.output/chrome-mv3/`. Click the ThreadShelf toolbar action or select it in Chrome's side
-panel menu. The welcome page provides connection buttons for each provider. The conversation
-header’s **Connect** button returns to that page; connected providers show “already connected.”
-**Search settings** contains the search mode and provider/date filters. Connect either provider from
-any tab. ThreadShelf reuses a suitable provider page in this window or opens its fixed landing page in a background tab
-when needed, including when several provider tabs are open but inactive.
-Chrome requests optional `scripting` and either `https://chatgpt.com/*` or `https://www.google.com/*`.
-Connected appears only after fresh provider session checks. Confirmed sign-out opens native sign-in
-in a separate foreground tab with a cancellable five-minute wait; return is rebound and verified.
-Generic failures do not redirect. Real user-completed login/return remains unverified; see
-[connection behavior and limitations](docs/sidepanel.md). Only search mode is saved locally;
-**Search settings → Clear local data and preferences** clears the panel's data, connections and AI.
-After connecting, enter keywords or select **Description** to describe a conversation, then search
-the checked providers. The date interval uses local calendar boundaries; **Before** is exclusive. Each provider stays connected while you browse other
-tabs. Closing/navigating its source page or losing account/site access can require reconnecting.
-Only `sidePanel` is required at installation. Google locale hosts and the Gemini app are unsupported.
-**Connection options → Disconnect** releases the in-memory context; revoke granted site access in
-Chrome’s extension settings. After rebuilding/updating the unpacked extension, click **Reload** in `chrome://extensions`
-and reopen the panel so its UI and worker use the same build. Incognito is disabled. Actual-account
-acceptance is separate from synthetic native-panel transport checks. See
-[developer notes](docs/development.md) for permissions, protocol, and remaining verification.
-See the [technical foundation](docs/foundation.md) for the implemented architecture and
-[regression test matrix](docs/testing.md) for comprehensive failure coverage and its limits.
-
-## Planned boundaries
-
-Provider adapters will use permitted browser contexts and existing logged-in sessions. The product
-will not collect passwords, export browser credentials, or require “Allow JavaScript from Apple
-Events.” Private sessions and messages must stay out of logs, fixtures, Git, demos, and packages.
-
-Description search supports optional on-device AI interpretation and evidence ranking for arbitrary
-topics. Enable it under **Search settings → AI description search**; Chrome may need a model download.
-The fallback extracts literal keywords without topic dictionaries. Explicit filters remain authoritative;
-“last month” uses the browser timezone. Model references and exact evidence are validated before display.
-See [local AI setup and limits](docs/on-device-ai.md) for device support and verification status.
-Hosted processing is disabled; private excerpts are never silently uploaded.
-
-The [static demo](docs/demo.md) shares UI/search code using fictional ports and memory-only state.
-It supports root and nested hosting paths; deployment and store submission remain future actions.
-Extension ZIP packaging remains planned. See the [acceptance matrix](docs/acceptance.md) for current
-synthetic proof, historical live evidence and real sign-in/model gaps.
+CI uses the lockfile, enforced coverage, lint/types/format, separate extension/demo builds, output
+and public-link checks, synthetic Chromium suites and extracted-ZIP installation checks. It uploads
+nothing. No Pages deployment, release upload, store submission, automatic update service or hosted
+processing is configured. Distribution license/store policies remain separate decisions.
