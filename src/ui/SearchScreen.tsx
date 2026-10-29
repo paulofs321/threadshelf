@@ -18,6 +18,8 @@ import { availableDateDisclosure, calendarDateRange } from '../search';
 import { Icon } from './Icon';
 import { ResultTabs } from './ResultTabs';
 import { DescriptionSummary } from './DescriptionSummary';
+import { LocalAiSettings } from './LocalAiSettings';
+import type { LocalAiControls } from '../description/on-device/types';
 import { SetupScreen, providerLabels } from './SetupScreen';
 import type { SetupScreenProps } from './SetupScreen';
 import { Alert } from './components/alert';
@@ -31,6 +33,7 @@ export interface SearchScreenProps extends SetupScreenProps {
   verifiers: LinkVerifiers;
   freshId(): string;
   timeZone: string;
+  ai?: LocalAiControls;
 }
 type Phase = 'idle' | 'loading' | 'cancelling' | 'cancelled' | 'finished' | 'error';
 interface View {
@@ -448,10 +451,32 @@ export function SearchScreen(props: SearchScreenProps) {
                   <option value="description">Description</option>
                 </select>
                 <p id="mode-help" className="text-xs text-muted-foreground">
-                  Description uses keyword/topic fallback matching. Optional model support is
-                  unavailable.
+                  {props.ai
+                    ? 'Description uses optional local AI with a keyword/topic fallback.'
+                    : 'Description uses keyword/topic fallback matching. Optional model support is unavailable.'}
+                  {mode === 'description' &&
+                    ' Searches read limited conversation excerpts to find matching subtopics. Google reads saved threads in a hidden frame within its connected page, without opening tabs.'}
                 </p>
               </div>
+              {props.ai && (
+                <LocalAiSettings
+                  controls={{
+                    ...props.ai,
+                    enable: () => {
+                      edit();
+                      props.ai?.enable();
+                    },
+                    disable: () => {
+                      edit();
+                      props.ai?.disable();
+                    },
+                    check: () => {
+                      edit();
+                      props.ai?.check();
+                    },
+                  }}
+                />
+              )}
               <fieldset className="space-y-1">
                 <legend className="mb-1 font-medium">Providers to search</legend>
                 {(['chatgpt', 'google-ai-mode'] as const).map((provider) => {
@@ -545,7 +570,11 @@ export function SearchScreen(props: SearchScreenProps) {
               {status}
             </Alert>
             {outcome?.description && (
-              <DescriptionSummary report={outcome.description} timeZone={props.timeZone} />
+              <DescriptionSummary
+                report={outcome.description}
+                timeZone={props.timeZone}
+                outcomes={outcome.outcomes}
+              />
             )}
             {outcome && (
               <p className="mt-2 text-xs leading-relaxed text-muted-foreground">

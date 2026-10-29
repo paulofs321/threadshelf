@@ -8,7 +8,11 @@ const identity = v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/));
 export const GoogleReadOperationSchema = v.variant('kind', [
   v.strictObject({ kind: v.picklist(['inspect', 'list']) }),
   v.strictObject({ kind: v.literal('search'), query: boundedText(1024) }),
-  v.strictObject({ kind: v.literal('messages'), conversationId: boundedText(256) }),
+  v.strictObject({
+    kind: v.literal('messages'),
+    conversationId: boundedText(256),
+    query: v.exactOptional(boundedText(1024)),
+  }),
 ]);
 export type GoogleReadOperation = v.InferOutput<typeof GoogleReadOperationSchema>;
 
@@ -25,7 +29,13 @@ export const GoogleReadResultSchema = v.variant('status', [
         observedAt: TimestampSchema,
       }),
     ),
-    rendered: v.exactOptional(v.pipe(boundedArray(boundedText(2000), 4), v.minLength(1))),
+    rendered: v.exactOptional(
+      v.pipe(
+        boundedArray(boundedText(3_000_000), 2048),
+        v.minLength(1),
+        v.check((parts) => parts.reduce((sum, part) => sum + part.length, 0) <= 3_000_000),
+      ),
+    ),
   }),
   v.strictObject({
     status: v.picklist([
@@ -54,5 +64,6 @@ export interface GoogleAiModeReadPort {
     candidate: Candidate,
     expectedIdentity: string,
     context: OperationContext,
+    description?: string,
   ): Promise<unknown>;
 }

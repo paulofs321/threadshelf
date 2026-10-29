@@ -1,13 +1,20 @@
 import { sameScope, validate } from '../contracts';
-import type { ProviderId, ProviderPort, SearchRequest, SessionScope } from '../contracts';
+import type {
+  ConversationContextPort,
+  ProviderId,
+  ProviderPort,
+  SearchRequest,
+  SessionScope,
+} from '../contracts';
 import { KeywordSearch } from '../search';
 import type { AccessBroker, SelectedDocumentBinding } from './broker';
 import { providerLinkVerifiers } from './link-verifiers';
 import { maximumRequestsPerPort } from './protocol';
 import { SearchCommandSchema } from './search-protocol';
 import type { SearchReply } from './search-protocol';
+import { readProviderContext } from '../search/read-context';
 
-interface BoundProvider extends ProviderPort {
+interface BoundProvider extends ProviderPort, Partial<ConversationContextPort> {
   invalidate(): void;
 }
 type ProviderFactory = (binding: SelectedDocumentBinding) => BoundProvider;
@@ -17,7 +24,9 @@ export class PanelSearchBroker {
   private readonly engine: KeywordSearch;
   private readonly providers = new Map<ProviderId, { scope: SessionScope; port: BoundProvider }>();
   private readonly seen = new Set<string>();
-  private active: { request: SearchRequest; controller: AbortController } | undefined;
+  private group: { id: string; key: string; visited: Map<ProviderId, Set<string>> } | undefined;
+  private active:
+    { request: SearchRequest; controller: AbortController; description?: string } | undefined;
   private closed = false;
 
   constructor(
@@ -27,10 +36,12 @@ export class PanelSearchBroker {
   ) {
     this.engine = new KeywordSearch({
       linkVerifiers: providerLinkVerifiers,
+      policy: { providerTimeoutMs: 24_000 },
       providers: (['chatgpt', 'google-ai-mode'] as const).map(
         (provider): Pick<ProviderPort, 'provider' | 'search'> => ({
           provider,
           search: async (request, context) => {
+            const run = this.active;
             const binding = access.bindSelectedDocument(request.scope);
 
             if (!binding)
@@ -48,7 +59,27 @@ export class PanelSearchBroker {
               this.providers.set(provider, bound);
             }
 
-            return bound.port.search(request, context);
+            const outcome = await bound.port.search(request, context);
+
+            if (!run?.description || this.active !== run || context.signal.aborted) return outcome;
+
+            const enriched = await readProviderContext(
+              bound.port,
+              request,
+              outcome,
+              run.description,
+              providerLinkVerifiers,
+              context,
+              this.group?.visited.get(provider),
+            );
+
+            return access.bindSelectedDocument(request.scope)
+              ? enriched
+              : {
+                  requestId: request.requestId,
+                  scope: request.scope,
+                  status: 'scope-changed',
+                };
           },
         }),
       ),
@@ -64,6 +95,12 @@ export class PanelSearchBroker {
 
     const command = parsed.value;
 
+    if (command.operation === 'finish-description') {
+      if (this.group?.id === command.groupId) this.group = undefined;
+
+      return true;
+    }
+
     if (command.operation === 'cancel-search') {
       if (this.active?.request.requestId === command.requestId) this.active.controller.abort();
 
@@ -71,6 +108,20 @@ export class PanelSearchBroker {
     }
 
     const request = command.request;
+
+    if (command.operation === 'description-retrieval' && command.groupId !== undefined) {
+      const key = JSON.stringify([command.description, request.scopes, request.query.dateRange]);
+
+      if (this.group?.id !== command.groupId || this.group.key !== key)
+        this.group = {
+          id: command.groupId,
+          key,
+          visited: new Map([
+            ['chatgpt', new Set()],
+            ['google-ai-mode', new Set()],
+          ]),
+        };
+    } else this.group = undefined;
 
     if (this.seen.has(request.requestId) || this.seen.size >= maximumRequestsPerPort) {
       this.access.close();
@@ -80,7 +131,13 @@ export class PanelSearchBroker {
 
     this.seen.add(request.requestId);
     this.active?.controller.abort();
-    const run = { request, controller: new AbortController() };
+    const run = {
+      request,
+      controller: new AbortController(),
+      ...(command.operation === 'description-retrieval'
+        ? { description: command.description }
+        : {}),
+    };
     this.active = run;
     void this.engine
       .search(request, { signal: run.controller.signal })
@@ -96,6 +153,7 @@ export class PanelSearchBroker {
   }
 
   invalidate(provider: ProviderId): void {
+    this.group?.visited.delete(provider);
     const bound = this.providers.get(provider);
 
     if (bound) {
@@ -117,5 +175,6 @@ export class PanelSearchBroker {
     for (const provider of ['chatgpt', 'google-ai-mode'] as const) this.invalidate(provider);
 
     this.seen.clear();
+    this.group = undefined;
   }
 }

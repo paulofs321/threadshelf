@@ -271,8 +271,15 @@ export class KeywordSearch implements SearchPort {
 
       task.outcome = normalized;
 
-      if (task.outcome.status === 'rate-limited')
-        this.cooldowns.set(scope.provider, Date.now() + (task.outcome.retryAfterMs ?? 1_000));
+      const rateLimit =
+        task.outcome.status === 'rate-limited'
+          ? task.outcome
+          : task.outcome.status === 'success'
+            ? task.outcome.rateLimit
+            : undefined;
+
+      if (rateLimit)
+        this.cooldowns.set(scope.provider, Date.now() + (rateLimit.retryAfterMs ?? 1_000));
 
       if (['login-expired', 'scope-changed', 'permission-needed'].includes(normalized.status)) {
         this.invalidate(scope);

@@ -54,6 +54,53 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe('panel-owned validated keyword transport', () => {
+  it('scopes candidate coverage to the original request and explicitly releases it', async () => {
+    const { client, request, connection, controller } = harness();
+    const pending = client.searchWithContext(
+      request,
+      'jobs Switzerland',
+      { signal: controller.signal },
+      request.requestId,
+    );
+    expect(connection.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'description-retrieval', groupId: request.requestId }),
+    );
+    connection.onMessage.emit({ kind: 'search-result', outcome: await success(request) });
+    await pending;
+    client.releaseContext(request.requestId);
+    expect(connection.postMessage).toHaveBeenLastCalledWith({
+      operation: 'finish-description',
+      groupId: request.requestId,
+    });
+    connection.postMessage.mockImplementation(() => {
+      throw new Error('Synthetic closed connection');
+    });
+    expect(() => client.releaseContext(request.requestId)).not.toThrow();
+  });
+  it('sends the original description with a narrow context-retrieval operation', async () => {
+    const { connection, client, request, controller } = harness();
+    const pending = client.searchWithContext(request, '  Food without dairy  ', {
+      signal: controller.signal,
+    });
+    expect(connection.postMessage).toHaveBeenCalledWith({
+      operation: 'description-retrieval',
+      request,
+      description: 'Food without dairy',
+    });
+    const output = await success(request);
+    connection.onMessage.emit({ kind: 'search-result', outcome: output });
+    expect(await pending).toEqual(output);
+  });
+  it.each(['', 'x'.repeat(1025), 'private\u0000control'])(
+    'rejects an invalid context description before dispatch: %s',
+    (description) => {
+      const { client, request, controller, connection } = harness();
+      expect(() =>
+        client.searchWithContext(request, description, { signal: controller.signal }),
+      ).toThrow();
+      expect(connection.postMessage).not.toHaveBeenCalled();
+    },
+  );
   it('keeps a connected panel worker alive with local messages, without provider reads or request IDs', async () => {
     vi.useFakeTimers();
     const { client, connection } = harness();

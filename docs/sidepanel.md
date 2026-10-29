@@ -48,9 +48,13 @@ one provider does not block the other.
 
 Selection validates the document; authenticated identity is checked around each search. Enter
 keywords or select **Description** in Search settings to describe a conversation. Description
-search labels its keyword/topic fallback, terms, inferred dates and ambiguity. **Why this matched**
+search labels model-assisted matching or its literal keyword fallback, terms, inferred dates and ambiguity. **Why this matched**
 quotes only the selected candidate’s exact evidence. See the [description reference](description-search.md)
-for vocabulary and retrieval limits.
+for bounded message-context reads and supported subtopic matching. Google reads saved-thread content
+inside hidden frames within its connected page, without creating or navigating tabs. Frames are
+removed after reading or cancellation. Ordinary keyword searches do not read messages. **AI description search**
+in settings provides local model support checks,
+explicit enable/download, progress, cancellation and disable controls; see [local AI](on-device-ai.md).
 ChatGPT supports personal accounts; Google Search AI Mode supports the default account in the
 verified `www.google.com/search?udm=50` context. Login or browser challenges can still require action
 on the provider site; no credentials are collected. After updating/rebuilding, reload the unpacked

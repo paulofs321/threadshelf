@@ -151,19 +151,28 @@ replacement retrieval clears that inventory, and mutations to returned results c
 The read port must supply the optional trusted `openEvidence` capability; otherwise evidence is
 explicitly unavailable. The host's generic `read` method rejects direct conversation operations.
 
-The concrete host rechecks source identity, reuses an already-open matching conversation or opens
-the retrieved original link in an owned passive background tab, validates its URL/document and reads
-only the observed visible `[data-last-turn]` blocks. It extracts at most four exact excerpts of 2,000 UTF-16 code units each, subject to the shared
-eight-item candidate evidence bound. Provenance is `rendered-message`, with `unknown-reach` and
-`missing-evidence` coverage. This is partial rendered evidence, not a complete transcript.
+The concrete host pins the existing source document and loads the verified saved link in a temporary
+same-origin iframe within that Google page. No conversation tabs are created, navigated or closed.
+The reader validates the destination, child origin/thread/account and source identity before/after
+reading. Frames are removed in `finally`, including cancellation, timeout and failed reads. A missing
+source or blocked frame is an explicit failure; search has no automatic new-tab fallback.
 
-The host verifies the conversation URL/document after extraction and rechecks the original source
-context/account. It preserves reused user tabs and closes only its owned tab in `finally`, including
-cleanup when tab creation finishes after cancellation. The source binding is preserved; opening evidence does not activate or
-navigate its tab. Evidence enrichment is available through the adapter, outside the current keyword
-panel UI.
+Supported visible conversation turn containers supply question/answer context, with the observed
+`[data-last-turn]` blocks as a fallback. Nested duplicate containers are excluded. The internal read
+is bounded to 2,048 parts and 3,000,000 UTF-16 units total before adapter passage selection. Description
+ranking receives at most five exact 1,000-unit windows, including relevant and adjacent messages,
+subject to the shared eight-item candidate bound. Provenance is `rendered-message`, with
+`unknown-reach` and `missing-evidence` coverage. Unrendered or lazily omitted history remains
+unavailable; this is partial rendered evidence, not a complete transcript.
 
 ## Bounds and failures
+
+A bounded read-only check on 19 October 2026 ran the current self-contained reader in an existing
+Google page and retrieved saved-thread message parts through its frame. Account identity matched,
+source URL/tab count stayed unchanged and frame/probe state was removed; private text was not saved.
+The Chromium test separately verifies the real extension's isolated reader and host with synthetic
+HTTP, including an unopened thread and zero new search tabs. This separates native live-read evidence
+from extension transport tests; complete historical coverage and real AI relevance remain unverified.
 
 Each isolated document operation has an eight-second deadline, a 3,000,000-byte streaming response
 cap, strict UTF-8 decoding, MIME checks and at most four concurrent document controllers. The wire
@@ -253,7 +262,7 @@ permission revocation and every Chrome lifecycle race were not induced; syntheti
 paths separately. Tests also cover rendered dates, time-only today fallback, timezone/day precision,
 native timestamp validation, zero new tabs during search, annotated account labels, account-address
 extraction when display names resemble addresses, scope/request isolation, malformed envelopes, unsafe links, evidence budgets, replacement/late replies,
-temporary-tab cleanup and unrelated permission changes. These are recorded checks; synthetic
+owned-frame cleanup and unrelated permission changes. These are recorded checks; synthetic
 failure cases do not establish live provider behavior.
 
 Production requires a pinned permitted Google AI Mode tab and its existing browser login; the panel
@@ -261,7 +270,7 @@ can create that tab in the background. Login or browser challenges can still req
 interaction. After rebuilding the unpacked extension, reload it in `chrome://extensions` and reopen
 the panel so the UI and worker use the same build.
 Nondefault selectors, locale hosts, native timestamp creation/update semantics, continuation beyond 300
-records, tab-free operation and complete-message/history coverage remain unresolved. No Gemini-app or public Google
+records, operation without any connected Google page and complete-message/history coverage remain unresolved. No Gemini-app or public Google
 API fallback is substituted for the saved Search AI Mode account.
 
 See the [side panel reference](sidepanel.md), [development notes](development.md), [test coverage](testing.md) and the

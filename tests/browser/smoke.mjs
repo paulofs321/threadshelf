@@ -209,6 +209,8 @@ try {
   const chatFixtures = await fixtureModule('chatgpt');
   const googleFixtures = await fixtureModule('google-ai-mode');
   let keywordReads = 0;
+  let chatSearchReads = 0;
+  let messageReads = 0;
   let googleResultThread = googleFixtures.googleThread('fictional-unopened-thread');
   googleResultThread[5] = [Date.parse('2026-10-13T12:00:00.000Z') / 1000, 0];
   await context.unroute(/^https?:/);
@@ -220,11 +222,33 @@ try {
 
     if (url.origin === 'https://chatgpt.com' && url.pathname === '/backend-api/global/search') {
       keywordReads++;
+      chatSearchReads++;
+      const body = chatFixtures.searchBody();
 
-      return route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify(chatFixtures.searchBody()),
-      });
+      // Distinct conversations reuse chatgpt:0 in separate native responses. Description
+      // collection must allocate independent references instead of failing the provider.
+      if (chatSearchReads === 5) {
+        body.items[0].payload.conversation_id = chatFixtures.otherConversationId;
+        body.items[0].snippet = 'A second fictional orchard excerpt.';
+      }
+
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
+    }
+
+    if (
+      url.origin === 'https://chatgpt.com' &&
+      url.pathname.startsWith('/backend-api/conversation/')
+    ) {
+      messageReads++;
+      const id = url.pathname.split('/').at(-1);
+      const body = chatFixtures.messagesBody(id);
+      body.mapping.answer.message.content.parts = [
+        ...Array.from({ length: 12 }, (_, i) => `General fictional life discussion ${i}.`),
+        'A fictional orchard subtopic covers gate maintenance.',
+        'Other life plans.',
+      ];
+
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
     }
 
     if (url.origin === 'https://www.google.com' && url.pathname === '/')
@@ -236,8 +260,9 @@ try {
     if (url.origin === 'https://www.google.com' && url.pathname === '/search')
       return route.fulfill({
         contentType: 'text/html',
+        headers: { 'x-frame-options': 'SAMEORIGIN' },
         body: route.request().isNavigationRequest()
-          ? `<a href="https://accounts.google.com/SignOutOptions?hl=en" aria-label="Google Account: Fiction (orchard@example.invalid), Opens account menu">Account</a>${url.searchParams.has('mtid') ? '<div class="UYpEO"><div class="kwdzO">13 October 2026</div></div>' : ''}`
+          ? `<a href="https://accounts.google.com/SignOutOptions?hl=en" aria-label="Google Account: Fiction (orchard@example.invalid), Opens account menu">Account</a>${url.searchParams.has('mtid') ? '<div class="UYpEO"><div class="kwdzO">13 October 2026</div></div><div class="CKgc1d"><div class="pWvJNd">General planning notes. A fictional orchard subtopic covers gate maintenance.</div></div><div class="CKgc1d" data-last-turn><div class="pWvJNd">Later unrelated life plans.</div></div>' : ''}`
           : '<p>Fictional AI Mode response without account metadata.</p>',
       });
 
@@ -342,15 +367,74 @@ try {
     .toMatchObject({ results: 2, dates: expect.arrayContaining([today]) });
   assert.deepEqual(await tabIds(), beforeSearchTabs);
   assert.equal(searchCreatedPages, 0);
+  assert.equal(messageReads, 0);
+  // A previously unopened saved thread must load inside an owned frame, without a new tab.
+  googleResultThread = googleFixtures.googleThread('fictional-background-context');
+  const googleSourceUrl = googlePage.url();
   await drive('description-mode');
   await drive('search');
   await expect.poll(() => keywordReads).toBe(10);
   await expect
     .poll(async () => await drive('snapshot'))
     .toMatchObject({
-      results: 2,
-      explanations: 2,
-      notes: expect.arrayContaining([expect.stringContaining('Keyword/topic fallback matching')]),
+      // Broad titles/native previews now qualify through actual bounded message evidence.
+      results: 3,
+      resultLinks: expect.arrayContaining([
+        `https://chatgpt.com/c/${chatFixtures.conversationId}`,
+        `https://chatgpt.com/c/${chatFixtures.otherConversationId}`,
+      ]),
+      explanations: 3,
+      notes: expect.arrayContaining([
+        expect.stringContaining('Literal keyword fallback'),
+        expect.stringContaining('AI prompts sent: interpretation 0; matching 0.'),
+      ]),
+    });
+  assert.deepEqual(await tabIds(), beforeSearchTabs);
+  assert.equal(searchCreatedPages, 0);
+  assert.equal(messageReads, 2);
+  assert.equal(googlePage.url(), googleSourceUrl);
+  await expect.poll(() => googlePage.locator('iframe').count()).toBe(0);
+  await drive('check-ai');
+  await expect.poll(async () => (await drive('snapshot')).aiStatus).not.toContain('Checking');
+  const nativeAi = await drive('snapshot');
+  process.stdout.write(
+    `Native-panel local AI capability (before synthetic injection): ${JSON.stringify({ api: nativeAi.aiApi, status: nativeAi.aiStatus })}\n`,
+  );
+  await drive('synthetic-ai');
+  await expect
+    .poll(async () => (await drive('snapshot')).aiStatus)
+    .toContain('Local AI is available');
+  await drive('enable-ai');
+  await expect.poll(async () => (await drive('snapshot')).aiStatus).toContain('Local AI enabled');
+  await drive('search');
+  await expect
+    .poll(async () => await drive('snapshot'))
+    .toMatchObject({
+      results: 1,
+      explanations: 1,
+      notes: expect.arrayContaining([
+        expect.stringContaining('Model-assisted matching with verified evidence'),
+        expect.stringContaining('AI prompts sent: interpretation 1; matching 1.'),
+      ]),
+    });
+  assert.deepEqual(await tabIds(), beforeSearchTabs);
+  assert.equal(searchCreatedPages, 0);
+  await drive('disable-ai');
+  await drive('synthetic-ai-unsupported');
+  await expect
+    .poll(async () => (await drive('snapshot')).aiStatus)
+    .toContain('Local AI is available');
+  await drive('enable-ai');
+  await expect.poll(async () => (await drive('snapshot')).aiStatus).toContain('Local AI enabled');
+  await drive('search');
+  await expect
+    .poll(async () => await drive('snapshot'))
+    .toMatchObject({
+      results: 1,
+      notes: expect.arrayContaining([
+        expect.stringContaining('Model-assisted matching with verified evidence'),
+        expect.stringContaining('AI prompts sent: interpretation 2; matching 2.'),
+      ]),
     });
   assert.deepEqual(await tabIds(), beforeSearchTabs);
   assert.equal(searchCreatedPages, 0);
@@ -358,7 +442,7 @@ try {
   assert.deepEqual(errors, []);
 
   process.stdout.write(
-    'Chromium MV3 UI smoke passed: production mount/theme; real native-panel runtime/providers with synthetic transport; zero new tabs across native/visible/time-only date and grounded description searches; synthetic cancellation/reconnect; compact previews; keyboard/focus; 240–400px; no external requests or CSP errors.\n',
+    'Chromium MV3 UI smoke passed: production mount/theme; real native-panel runtime/providers with synthetic transport; zero keyword message reads/tabs; description reads late ChatGPT subtopics and an unopened Google thread through an owned same-origin frame, preserving source URL and cleaning frames; zero new search tabs; synthetic on-device interpretation/ranking; synthetic cancellation/reconnect; compact previews; keyboard/focus; 240–400px; no external requests or CSP errors.\n',
   );
 } finally {
   await context?.close();

@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import type { LocalSession } from '../../src/description/on-device/types';
 
 // Compiled only into the temporary synthetic smoke extension. Permissions are pregranted there;
 // component tests separately prove the production Connect gesture requests the exact origins.
@@ -26,6 +27,48 @@ browser.runtime.onMessage.addListener((input: unknown, _sender, sendResponse) =>
 
   if (input.command === 'connect-google') button('Connect Google Search AI Mode')?.click();
 
+  if (input.command === 'check-ai') button('Check AI support')?.click();
+
+  if (input.command === 'disable-ai') button('Disable local AI')?.click();
+
+  if (input.command === 'synthetic-ai' || input.command === 'synthetic-ai-unsupported') {
+    const unsupported = input.command === 'synthetic-ai-unsupported';
+    const session = (): LocalSession => ({
+      contextUsage: 20,
+      contextWindow: 8192,
+      measureContextUsage: async () => 200,
+      prompt: async (prompt, options) => {
+        if (unsupported && options?.responseConstraint)
+          throw new DOMException('Synthetic unsupported constraint', 'NotSupportedError');
+
+        if (String(prompt).startsWith('Interpret'))
+          return JSON.stringify({ topics: ['fictional orchard'], keywords: [] });
+
+        const data = JSON.parse(String(prompt).split('Untrusted input JSON:\n')[1] ?? '{}') as {
+          candidates: { candidateId: string; evidence: { evidenceId: string }[] }[];
+        };
+
+        return JSON.stringify({
+          selections: data.candidates.slice(0, 1).map((item) => ({
+            candidateId: item.candidateId,
+            score: 0.9,
+            evidenceIds: item.evidence.slice(0, 1).map((part) => part.evidenceId),
+          })),
+        });
+      },
+      clone: async () => session(),
+      destroy: () => {},
+    });
+    Object.defineProperty(globalThis, 'LanguageModel', {
+      configurable: true,
+      value: { availability: async () => 'available', create: async () => session() },
+    });
+    button('Search settings')?.click();
+    button('Check AI support')?.click();
+  }
+
+  if (input.command === 'enable-ai') button('Enable local AI')?.click();
+
   if (input.command === 'description-mode') {
     const mode = document.querySelector<HTMLSelectElement>('#mode');
 
@@ -51,8 +94,13 @@ browser.runtime.onMessage.addListener((input: unknown, _sender, sendResponse) =>
 
   sendResponse({
     ready: document.querySelector('h1')?.textContent === 'ThreadShelf',
+    aiApi: typeof LanguageModel !== 'undefined',
+    aiStatus: document.querySelector('[aria-label="Local AI"] [role="status"]')?.textContent,
     statuses: [...document.querySelectorAll('[role="status"]')].map((item) => item.textContent),
     results: document.querySelectorAll('[role="article"]').length,
+    resultLinks: [...document.querySelectorAll<HTMLAnchorElement>('[role="article"] a')].map(
+      (item) => item.href,
+    ),
     dates: [...document.querySelectorAll<HTMLTimeElement>('[role="article"] time')].map(
       (item) => item.dateTime,
     ),

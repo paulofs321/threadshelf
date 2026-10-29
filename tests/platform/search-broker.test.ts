@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PanelSearchBroker } from '../../src/platform/search-broker';
+import { SearchReplySchema } from '../../src/platform/search-protocol';
 import type { SearchReply } from '../../src/platform/search-protocol';
 import { maximumRequestsPerPort } from '../../src/platform/protocol';
 import { CandidateSchema, SearchRequestSchema, requireValid } from '../../src/contracts';
-import type { ProviderId, ProviderPort, SearchRequest } from '../../src/contracts';
+import type {
+  ConversationContextPort,
+  ProviderId,
+  ProviderPort,
+  SearchRequest,
+} from '../../src/contracts';
 import type { SelectedDocumentBinding } from '../../src/platform/broker';
 import { chatCandidate, deferred } from '../fixtures/search/providers';
 import { brokerHarness, selected } from './helpers';
@@ -64,6 +70,271 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe('trusted panel search composition and document binding', () => {
+  it('visits distinct candidates across terms and releases request-local coverage state', async () => {
+    const f = await harness();
+    const candidates = Array.from({ length: 12 }, (_, i) => {
+      const id = `11111111-1111-1111-1111-${String(i).padStart(12, '0')}`;
+
+      return {
+        ...f.candidate,
+        id: `candidate-${i}`,
+        conversationId: id,
+        originalUrl: `https://chatgpt.com/c/${id}`,
+      };
+    });
+    f.provider.search.mockImplementation(async (request) => ({
+      requestId: request.requestId,
+      scope: request.scope,
+      status: 'success',
+      candidates,
+      coverage: { extent: 'complete', reasons: [] },
+    }));
+    const readContext = vi.fn<ConversationContextPort['readContext']>(async (request, id) => ({
+      requestId: request.requestId,
+      scope: request.scope,
+      status: 'success',
+      candidates: [candidates.find((item) => item.conversationId === id)],
+      coverage: { extent: 'partial', reasons: ['missing-evidence'] },
+    }));
+    Object.assign(f.provider, { readContext });
+    const dispatch = (id: string, text: string) =>
+      f.search.receive({
+        operation: 'description-retrieval',
+        groupId: 'original-description',
+        description: 'jobs Switzerland',
+        request: { ...f.request, requestId: id, query: { ...f.request.query, text } },
+      });
+    dispatch('first-term', 'jobs');
+    await vi.waitFor(() => expect(f.messages).toHaveLength(1));
+    dispatch('second-term', 'Switzerland');
+    await vi.waitFor(() => expect(f.messages).toHaveLength(2));
+    expect(readContext).toHaveBeenCalledTimes(12);
+    expect(new Set(readContext.mock.calls.map((call) => call[1])).size).toBe(12);
+    expect(f.search.receive({ operation: 'finish-description', groupId: 'unrelated' })).toBe(true);
+    dispatch('third-term', 'jobs');
+    await vi.waitFor(() => expect(f.messages).toHaveLength(3));
+    expect(readContext).toHaveBeenCalledTimes(12);
+    expect(
+      f.search.receive({ operation: 'finish-description', groupId: 'original-description' }),
+    ).toBe(true);
+    dispatch('new-description', 'jobs');
+    await vi.waitFor(() => expect(f.messages).toHaveLength(4));
+    expect(readContext).toHaveBeenCalledTimes(20);
+  });
+  it('retrieves before reading context, preserving native metadata and the original description', async () => {
+    const { search, provider, candidate, request, messages } = await harness();
+    const readContext = vi.fn(async () => ({
+      requestId: request.requestId,
+      scope: request.scopes[0],
+      status: 'success',
+      candidates: [
+        {
+          ...candidate,
+          evidence: [
+            ...candidate.evidence,
+            { id: 'context:0', source: 'provider-message', text: 'Food without dairy.' },
+          ],
+        },
+      ],
+      coverage: { extent: 'partial', reasons: ['missing-evidence'] },
+    }));
+    Object.assign(provider, { readContext });
+    search.receive({
+      operation: 'description-retrieval',
+      request,
+      description: 'food without dairy',
+    });
+    await vi.waitFor(() => expect(messages).toHaveLength(1));
+    expect(readContext).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: request.requestId }),
+      candidate.conversationId,
+      'food without dairy',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(provider.search.mock.invocationCallOrder[0]).toBeLessThan(
+      readContext.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(JSON.stringify(messages[0])).toContain('Food without dairy.');
+    expect(messages[0]?.outcome.outcomes[0]).toMatchObject({
+      candidates: [expect.objectContaining({ originalUrl: candidate.originalUrl })],
+    });
+  });
+  it('does not invoke a context reader for ordinary keyword searches', async () => {
+    const { dispatch, provider, messages } = await harness();
+    const readContext = vi.fn();
+    Object.assign(provider, { readContext });
+    dispatch();
+    await vi.waitFor(() => expect(messages).toHaveLength(1));
+    expect(readContext).not.toHaveBeenCalled();
+  });
+  it.each([
+    { hint: undefined, coverage: { extent: 'complete', reasons: [] }, extent: 'partial' },
+    { hint: 1234, coverage: { extent: 'unknown', reasons: ['unknown-reach'] }, extent: 'unknown' },
+    { hint: 0, coverage: { extent: 'partial', reasons: ['provider-failure'] }, extent: 'partial' },
+  ])(
+    'retains validated native results and a context rate limit ($hint, $extent)',
+    async ({ hint, coverage, extent }) => {
+      const f = await harness();
+      f.provider.search.mockImplementation(async (request) => ({
+        requestId: request.requestId,
+        scope: request.scope,
+        status: 'success',
+        candidates: [f.candidate],
+        coverage,
+      }));
+      const readContext = vi.fn<ConversationContextPort['readContext']>(async (request) => ({
+        requestId: request.requestId,
+        scope: request.scope,
+        status: 'rate-limited',
+        ...(hint === undefined ? {} : { retryAfterMs: hint }),
+      }));
+      Object.assign(f.provider, { readContext });
+      f.search.receive({
+        operation: 'description-retrieval',
+        request: f.request,
+        description: 'library',
+      });
+      await vi.waitFor(() => expect(f.messages).toHaveLength(1));
+      const reply = requireValid(SearchReplySchema, f.messages[0]);
+      expect(reply.outcome).toMatchObject({
+        state: 'success',
+        results: [f.candidate.id],
+        outcomes: [
+          {
+            status: 'success',
+            candidates: [f.candidate],
+            rateLimit: hint === undefined ? {} : { retryAfterMs: hint },
+            coverage: { extent },
+          },
+        ],
+        coverage: { extent },
+      });
+
+      for (const result of [reply.outcome, ...reply.outcome.outcomes]) {
+        if (!('coverage' in result)) throw new Error('Expected retained successful result.');
+
+        expect(result.coverage.reasons).toEqual(
+          expect.arrayContaining([...coverage.reasons, 'missing-evidence', 'provider-failure']),
+        );
+        expect(
+          result.coverage.reasons.filter((reason) => reason === 'provider-failure'),
+        ).toHaveLength(1);
+      }
+
+      expect(readContext).toHaveBeenCalledOnce();
+      expect(f.provider.search).toHaveBeenCalledOnce();
+    },
+  );
+  it('retains earlier message enrichment and unread native candidates when a later context read is rate-limited', async () => {
+    const f = await harness();
+    const candidates = [
+      f.candidate,
+      ...[2, 3].map((n) => {
+        const id = `${n}1111111-1111-1111-1111-111111111111`;
+
+        return {
+          ...f.candidate,
+          id: `candidate-${n}`,
+          conversationId: id,
+          originalUrl: `https://chatgpt.com/c/${id}`,
+        };
+      }),
+    ];
+    const enriched = {
+      ...f.candidate,
+      evidence: [
+        ...f.candidate.evidence,
+        { id: 'context:0', source: 'provider-message', text: 'An exact library discussion.' },
+      ],
+    };
+    f.provider.search.mockImplementation(async (request) => ({
+      requestId: request.requestId,
+      scope: request.scope,
+      status: 'success',
+      candidates,
+      coverage: { extent: 'unknown', reasons: ['unknown-reach'] },
+    }));
+    const readContext = vi
+      .fn<ConversationContextPort['readContext']>()
+      .mockImplementationOnce(async (request) => ({
+        requestId: request.requestId,
+        scope: request.scope,
+        status: 'success',
+        candidates: [enriched],
+        coverage: { extent: 'partial', reasons: ['missing-evidence'] },
+      }))
+      .mockImplementation(async (request) => ({
+        requestId: request.requestId,
+        scope: request.scope,
+        status: 'rate-limited',
+        retryAfterMs: 2500,
+      }));
+    Object.assign(f.provider, { readContext });
+    f.search.receive({
+      operation: 'description-retrieval',
+      request: f.request,
+      description: 'library',
+    });
+    await vi.waitFor(() => expect(f.messages).toHaveLength(1));
+    const reply = requireValid(SearchReplySchema, f.messages[0]);
+    expect(reply.outcome).toMatchObject({
+      state: 'success',
+      results: candidates.map((candidate) => candidate.id),
+      outcomes: [
+        {
+          status: 'success',
+          candidates: [enriched, ...candidates.slice(1)],
+          rateLimit: { retryAfterMs: 2500 },
+          coverage: {
+            extent: 'unknown',
+            reasons: ['unknown-reach', 'missing-evidence', 'provider-failure'],
+          },
+        },
+      ],
+    });
+    expect(readContext.mock.calls.map((call) => call[1])).toEqual(
+      candidates.slice(0, 2).map((candidate) => candidate.conversationId),
+    );
+  });
+  it.each(['cancel', 'scope-change'] as const)(
+    'discards messages after context %s',
+    async (stop) => {
+      const { search, access, provider, request, messages, candidate } = await harness();
+      const pending = deferred<unknown>();
+      const readContext = vi.fn(() => pending.promise);
+      Object.assign(provider, { readContext });
+      search.receive({ operation: 'description-retrieval', request, description: 'food' });
+      await vi.waitFor(() => expect(readContext).toHaveBeenCalledOnce());
+
+      if (stop === 'cancel')
+        search.receive({ operation: 'cancel-search', requestId: request.requestId });
+      else access.broker.invalidate('chatgpt', 'scope-changed');
+
+      pending.resolve({
+        requestId: request.requestId,
+        scope: request.scopes[0],
+        status: 'success',
+        candidates: [candidate],
+        coverage: { extent: 'complete', reasons: [] },
+      });
+      await vi.waitFor(() => expect(messages).toHaveLength(1));
+      expect(messages[0]?.outcome.results).toEqual([]);
+      expect(messages[0]?.outcome.outcomes[0]?.status).toBe(
+        stop === 'cancel' ? 'cancelled' : 'scope-changed',
+      );
+    },
+  );
+  it.each([
+    { description: '' },
+    { description: 'x'.repeat(1025) },
+    { description: 'x\u0000' },
+    { description: 'food', url: 'https://evil.invalid' },
+    { description: 'food', conversationId: 'unretrieved' },
+  ])('rejects forged context commands before provider access: %j', async (patch) => {
+    const { search, request, factory } = await harness();
+    expect(search.receive({ operation: 'description-retrieval', request, ...patch })).toBe(false);
+    expect(factory).not.toHaveBeenCalled();
+  });
   it('binds existing selections to real orchestration, reuses adapters in the same scope, and never inspects a fake session', async () => {
     const { dispatch, messages, provider, factory, request } = await harness();
     expect(dispatch()).toBe(true);

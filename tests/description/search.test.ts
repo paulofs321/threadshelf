@@ -69,7 +69,7 @@ describe('grounded description retrieval', () => {
           candidates: [matching],
           coverage: { extent: 'complete', reasons: [] },
         }));
-      const input = request('authentication last month');
+      const input = request('authentication login last month');
       input.query.providers = ['chatgpt'];
       input.scopes = [chatScope];
 
@@ -119,7 +119,9 @@ describe('grounded description retrieval', () => {
       expect(result.description?.ranking.selections[0]?.evidenceIds).toContain(evidence);
       expect(result.description?.strategy).toBe('keyword-topic-fallback');
       expect(result.description?.notices).toContain('model-unavailable');
-      expect(result.coverage.reasons).toContain('query-budget');
+      expect(result.coverage.reasons.includes('query-budget')).toBe(
+        interpretDescription(input, now).plan.topics.length > 3,
+      );
       expect(chat.search.mock.calls.length).toBeLessThanOrEqual(3);
       expect(google.search.mock.calls.length).toBeLessThanOrEqual(3);
       expect(validate(searchOutcomeSchemaFor(input, linkVerifiers), result).ok).toBe(true);
@@ -228,7 +230,7 @@ describe('grounded description retrieval', () => {
       candidate('body', 'Pets', 'A cat sleeps'),
       candidate('body2', 'Pets', 'A cat rests'),
     ];
-    const result = rankKeywords(input, items, interpretDescription(input, now).plan);
+    const result = rankKeywords(input, items);
     expect(result.selections.map((item) => item.candidateId)).toEqual(['body', 'body2', 'title']);
     expect(validate(modelRankingSchemaFor(input, items), result).ok).toBe(true);
     expect(result.selections[0]?.spans).toEqual([{ evidenceId: 'body-excerpt', start: 2, end: 5 }]);
@@ -246,10 +248,7 @@ describe('grounded description retrieval', () => {
     const result = await engine.search(input, context());
     expect(result.results).toEqual(['hostile']);
     expect(google.search).not.toHaveBeenCalled();
-    expect(result.description?.ranking.selections[0]?.evidenceIds).toEqual([
-      'hostile-title',
-      'hostile-excerpt',
-    ]);
+    expect(result.description?.ranking.selections[0]?.evidenceIds).toEqual(['hostile-title']);
   });
   it('keeps partial-provider matches and precise failures', async () => {
     const { engine, google } = setup();
@@ -288,7 +287,7 @@ describe('grounded description retrieval', () => {
           scope: input.scope,
           status,
         }));
-      const result = await engine.search(request(), context());
+      const result = await engine.search(request('authentication login'), context());
       expect(result.results).toContain('old-auth');
       expect(result.coverage.reasons).toContain('provider-failure');
       expect(google.search).toHaveBeenCalledTimes(2);
@@ -377,12 +376,32 @@ describe('grounded description retrieval', () => {
   });
 });
 
-it('deduplicates after term truncation and normalizes sign-in vocabulary', () => {
+it('deduplicates after term truncation without topic-specific expansion', () => {
   const long = 'x'.repeat(128);
   const plan = interpretDescription(request(`${long}a ${long}b`), now).plan;
   expect(plan.topics).toEqual([long]);
-  expect(interpretDescription(request('where did I sign in'), now).plan.topics).toEqual([
-    'authentication',
+  expect(interpretDescription(request('where did I talk about origami'), now).plan.topics).toEqual([
+    'origami',
   ]);
   expect(interpretDescription(request('???\n!!!'), now).plan.topics).toEqual(['??? !!!']);
+});
+
+it('keeps arbitrary literal topics and bounded overflow keywords without a category vocabulary', () => {
+  const result = interpretDescription(
+    request(
+      'origami galaxies ceramics sailing recipes fossils textiles robotics volcanoes music optics',
+    ),
+    now,
+  );
+  expect(result.plan.topics).toEqual([
+    'origami',
+    'galaxies',
+    'ceramics',
+    'sailing',
+    'recipes',
+    'fossils',
+    'textiles',
+    'robotics',
+  ]);
+  expect(result.plan.keywords).toEqual(['volcanoes', 'music', 'optics']);
 });

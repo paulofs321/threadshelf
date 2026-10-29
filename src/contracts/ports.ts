@@ -9,6 +9,13 @@ export interface OperationContext {
   readonly signal: AbortSignal;
 }
 
+export interface ModelOperationContext extends OperationContext {
+  /** Notify immediately before each actual model prompt, including failed calls. No prompt text. */
+  readonly onPrompt?: () => void;
+  /** Untrusted until validated; never send exception messages or model output. */
+  readonly onFailure?: (failure: unknown) => void;
+}
+
 // Boundary outputs remain unknown until the caller applies the contextual runtime schema.
 // Interfaces do not implement transport, cancellation, model consent, or storage opt-in policy.
 export interface ProviderPort {
@@ -22,15 +29,34 @@ export interface SearchPort {
   invalidate(scope: SessionScope): void;
 }
 
+export interface ContextRetrievalPort {
+  searchWithContext(
+    request: SearchRequest,
+    description: string,
+    context: OperationContext,
+    groupId?: SearchRequest['requestId'],
+  ): Promise<SearchOutcome>;
+  releaseContext?(groupId: SearchRequest['requestId']): void;
+}
+
+export interface ConversationContextPort {
+  readContext(
+    request: ProviderRequest,
+    conversationId: string,
+    description: string,
+    context: OperationContext,
+  ): Promise<unknown>;
+}
+
 export interface InterpreterPort {
-  interpret(request: SearchRequest, context: OperationContext): Promise<unknown>;
+  interpret(request: SearchRequest, context: ModelOperationContext): Promise<unknown>;
 }
 
 export interface RankerPort {
   rank(
     request: SearchRequest,
     candidates: readonly Candidate[],
-    context: OperationContext,
+    context: ModelOperationContext,
   ): Promise<unknown>;
 }
 

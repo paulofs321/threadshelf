@@ -12,6 +12,8 @@ import { SearchScreen } from '../../ui/SearchScreen';
 import { PanelSearchClient } from '../../platform/search-client';
 import { providerLinkVerifiers } from '../../platform/link-verifiers';
 import { DescriptionSearch, SearchModes } from '../../description';
+import { browserLanguageModel, OnDeviceModel } from '../../description/on-device/model';
+import type { LocalAiState } from '../../description/on-device/types';
 
 interface ProviderState {
   status: AccessReply['status'] | 'idle' | 'connecting';
@@ -30,6 +32,13 @@ export function AccessPanel() {
   const client = useRef<AccessClient | null>(null);
   const active = useRef(new Map<ProviderId, AbortController>());
   const mounted = useRef(false);
+  const [aiState, setAiState] = useState<LocalAiState>({ status: 'checking' });
+  const [ai] = useState(
+    () =>
+      new OnDeviceModel(browserLanguageModel, (state) => {
+        if (mounted.current) setAiState(state);
+      }),
+  );
 
   function update(provider: ProviderId, state: ProviderState) {
     if (mounted.current) setStates((previous) => ({ ...previous, [provider]: state }));
@@ -54,6 +63,8 @@ export function AccessPanel() {
         linkVerifiers: providerLinkVerifiers,
         now: () => new Date().toISOString(),
         freshId: () => crypto.randomUUID(),
+        model: () => (ai.enabled ? ai : undefined),
+        policy: { modelTimeoutMs: 10_000, rankingTimeoutMs: 40_000, requestTimeoutMs: 60_000 },
       });
       setSearch(new SearchModes(searchClient.current, description));
       client.current = new AccessClient(connection, () => crypto.randomUUID());
@@ -61,6 +72,8 @@ export function AccessPanel() {
         // Interruption is published inside the port callback; consume Chrome's error there.
         // Keeping this on the client's subscription lets close remove every port listener.
         if (event.status === 'interrupted') void browser.runtime.lastError;
+
+        ai.disable();
 
         if (mounted.current)
           setStates((previous) => ({
@@ -87,10 +100,12 @@ export function AccessPanel() {
 
   useEffect(() => {
     mounted.current = true;
+    void ai.check();
     const operations = active.current;
 
     return () => {
       mounted.current = false;
+      ai.disable();
 
       for (const controller of operations.values()) controller.abort();
 
@@ -110,6 +125,7 @@ export function AccessPanel() {
     if (operation !== 'connect' && !scope) return;
 
     const controller = new AbortController();
+    ai.disable();
     active.current.set(provider, controller);
     update(provider, { status: 'connecting', pending: true });
 
@@ -180,6 +196,16 @@ export function AccessPanel() {
   return (
     <SearchScreen
       search={search}
+      ai={{
+        state: aiState,
+        enable: () => {
+          void ai.enable();
+        },
+        disable: () => ai.disable(),
+        check: () => {
+          void ai.check();
+        },
+      }}
       scopes={(['chatgpt', 'google-ai-mode'] as const).flatMap((provider) =>
         states[provider].scope ? [states[provider].scope] : [],
       )}

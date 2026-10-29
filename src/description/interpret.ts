@@ -1,31 +1,10 @@
 import { modelPlanSchemaFor, requireValid } from '../contracts';
 import type { ModelPlan, SearchRequest } from '../contracts';
 import { previousCalendarMonth } from '../search/dates';
+import { descriptionWords } from '../search/terms';
 
-const stopWords = new Set(
-  'a an and are about can compare compared comparison too conversation conversations did discuss discussed do find for from help how i in is it me my of on or options sessions show that the this to was were what when where which with your'.split(
-    ' ',
-  ),
-);
-const vocabulary = [
-  ['authentication', 'login', 'security', 'password', 'oauth', 'credentials', 'signin'],
-  ['deployment', 'deploy', 'hosting', 'portfolio', 'vercel', 'netlify'],
-  [
-    'database',
-    'sql',
-    'postgres',
-    'postgresql',
-    'query',
-    'queries',
-    'indexing',
-    'indexes',
-    'performance',
-    'slow',
-    'optimization',
-  ],
-];
 export type DescriptionNotice =
-  | 'limited-vocabulary'
+  | 'literal-keywords'
   | 'ambiguous-date'
   | 'explicit-date-precedence'
   | 'model-unavailable'
@@ -37,25 +16,15 @@ export interface Interpretation {
 }
 
 export function interpretDescription(request: SearchRequest, now: string): Interpretation {
-  const notices: DescriptionNotice[] = ['limited-vocabulary'];
+  const notices: DescriptionNotice[] = ['literal-keywords'];
   const relative = /\blast month\b/iu.test(request.query.text);
   const ambiguous =
     /\b(last (?:week|year)|recent(?:ly)?|earlier|yesterday|today|this (?:week|month|year)|\d{1,2}[/-]\d{1,2})\b/iu.test(
       request.query.text,
     );
-  const text = request.query.text
-    .replace(/\blast month\b/giu, '')
-    .replace(/\b(?:log|sign)[ -]in\b/giu, 'login');
-  const words = [
-    ...new Set(
-      (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((word) => !stopWords.has(word)),
-    ),
-  ];
-  const groups = vocabulary.filter((group) => group.some((word) => words.includes(word)));
-  const topics = groups.length ? groups.flatMap((group) => group.slice(0, 1)) : words;
-  const keywords = [...new Set([...words, ...groups.flat()])].filter(
-    (word) => !topics.includes(word),
-  );
+  const words = [...new Set(descriptionWords(request.query.text))];
+  const topics = words;
+  const keywords = words.slice(8, 16);
 
   if (ambiguous) notices.push('ambiguous-date');
 

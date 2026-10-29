@@ -1,4 +1,12 @@
-import { limits, requireValid, sameScope, searchOutcomeSchemaFor, validate } from '../contracts';
+import {
+  limits,
+  requireValid,
+  sameScope,
+  searchOutcomeSchemaFor,
+  validate,
+  QuerySchema,
+  RequestIdSchema,
+} from '../contracts';
 import type {
   LinkVerifiers,
   SearchOutcome,
@@ -45,7 +53,41 @@ export class PanelSearchClient implements SearchPort {
     connection.onDisconnect.addListener(this.close);
   }
 
-  search(input: SearchRequest, { signal }: { signal: AbortSignal }): Promise<SearchOutcome> {
+  search(input: SearchRequest, context: { signal: AbortSignal }): Promise<SearchOutcome> {
+    return this.retrieve(input, context);
+  }
+
+  searchWithContext(
+    input: SearchRequest,
+    description: string,
+    context: { signal: AbortSignal },
+    groupId?: SearchRequest['requestId'],
+  ): Promise<SearchOutcome> {
+    return this.retrieve(
+      input,
+      context,
+      requireValid(QuerySchema.entries.text, description),
+      groupId === undefined ? undefined : requireValid(RequestIdSchema, groupId),
+    );
+  }
+
+  releaseContext(groupId: SearchRequest['requestId']): void {
+    try {
+      this.connection.postMessage({
+        operation: 'finish-description',
+        groupId: requireValid(RequestIdSchema, groupId),
+      });
+    } catch {
+      this.close();
+    }
+  }
+
+  private retrieve(
+    input: SearchRequest,
+    { signal }: { signal: AbortSignal },
+    description?: string,
+    groupId?: SearchRequest['requestId'],
+  ): Promise<SearchOutcome> {
     const request = requireValid(KeywordRequestSchema, input);
 
     if (this.seen.size >= maximumRequestsPerPort) {
@@ -106,7 +148,16 @@ export class PanelSearchClient implements SearchPort {
       }
 
       try {
-        this.connection.postMessage({ operation: 'keyword-search', request });
+        this.connection.postMessage(
+          description === undefined
+            ? { operation: 'keyword-search', request }
+            : {
+                operation: 'description-retrieval',
+                request,
+                description,
+                ...(groupId === undefined ? {} : { groupId }),
+              },
+        );
       } catch {
         this.close();
         this.closeTransport();

@@ -82,8 +82,9 @@ context, not complete-history access or universal account/browser support.
 
 `tests/platform/google-ai-mode.test.ts` covers the concrete host with mocked Chrome APIs: scoped
 candidate membership/link validation, pinned document/frame IDs, owning context and permission
-checks, source/temporary-tab changes, account rechecks, stalled reads, abort-injection rejection,
-late tab creation and listener/timer/tab cleanup. Permission-removal tests distinguish the Google
+checks, source changes, account rechecks, stalled reads, abort-injection rejection and listener/timer
+cleanup, with zero tab creation/removal assertions. `tests/providers/google-ai-mode/frame-read.test.ts`
+covers the owned frame's message and cleanup lifecycle. Permission-removal tests distinguish the Google
 origin/shared scripting permission from unrelated removals and verify an unaffected session stays ready.
 Broker tests cover selected-document capabilities, replacement/closure and conservative context lookup.
 
@@ -200,7 +201,7 @@ reconnect, coalesce repeated releases, preserve cancellation/closure and isolate
 `npm test -- tests/description tests/ui/description.test.tsx` exercises a fictional login-security,
 portfolio-deployment, database-performance and last-month corpus, including native keyword retrieval,
 expected first matches and exact supporting evidence. These cases evaluate the limited deterministic
-vocabulary, without claiming general semantic recall or live-provider/model quality.
+literal fallback, without claiming general semantic recall or live-provider/model quality.
 
 Regressions cover explicit provider/date precedence, browser timezone month boundaries, unknown and
 ambiguous dates, scoped cross-query deduplication, conflicting metadata, candidate/excerpt/query/result
@@ -215,3 +216,45 @@ and stale-result clearing. Real panel/client composition proves only normalized 
 cross the bridge. The isolated native-panel Chromium smoke repeats description retrieval over both
 real adapters with synthetic HTTP, requiring evidence explanations and unchanged tabs. It does not
 use personal accounts or prove live description recall or model availability.
+
+## On-device description AI and cross-query references
+
+`npm test -- tests/description/on-device tests/ui/local-ai-settings.test.tsx` covers availability,
+explicit download/enable, monotonic progress, cancellation/deadlines, obsolete availability/creation,
+fresh cloned sessions, context/output budgets, strict output validation and cleanup on account change.
+Synthetic interpretation/ranking tests include unrelated topics without fixed category dictionaries.
+They prove the ports and grounding behavior, not Gemini Nano semantic quality or latency.
+
+Real ChatGPT adapter regression fixtures reorder conversations across keyword responses, reuse row
+IDs and supply different exact snippets for the same thread. Before the collection fix this produces
+`schema-changed`; after it, links/text remain bound to the correct scoped conversation and aggregate
+candidate/evidence references remain distinct. Native-panel smoke also makes separate ChatGPT keyword
+responses reuse row zero for different conversations, requiring both matches without provider failure.
+
+The Chromium smoke records real local API availability before injecting a synthetic model. In the
+verified test configuration the API exists but reports unavailable; actual inference/quality is not
+verified. A synthetic model then exercises opt-in, interpretation and evidence ranking through the
+native panel and provider runtime with intercepted HTTP. Profiles/copies are temporary; no personal
+account data, model download or hosted upload enters automated tests.
+
+## Bounded description message context
+
+Description tests now retrieve broad native candidates, read bounded context through the real
+adapters, and rank subtopics absent from the native preview. Authored examples cover locations,
+food restrictions, TV plots and unrelated craft topics, including later messages and paraphrases.
+They separately reject unrelated co-occurrences, stale/unretrieved IDs, metadata changes and
+invented native snippets. Tests cover read/scan/window budgets, Unicode and whole-word clipping,
+account/permission loss, cancellation, late replies, failed reads, rate-limit hints and evidence
+ownership. Larger local ranking inputs use at most four isolated batches, with per-batch membership
+checks before merging selections.
+
+The native Chromium smoke intercepts message HTTP as well as native searches. It verifies that keyword
+search makes no message reads, then description mode finds a later ChatGPT subtopic and reads Google
+context from a previously unopened saved thread through a hidden same-origin frame. Browser checks
+assert unchanged source URL, removed frames and zero new search tabs. Unit tests cover pinned source
+and child account/thread checks, redirected or blocked frames, delayed content, cancellation, timeout,
+message budgets, nested turn deduplication and source changes.
+These are synthetic integration checks; they do not establish current live-account coverage or
+Gemini Nano semantic accuracy. Google context remains bounded to supported rendered turns. Candidate
+coverage tests exercise distinctive qualifiers beyond the former first-two results, distinct reads
+across terms, request-state release and later messages beyond the former text-prefix limit.

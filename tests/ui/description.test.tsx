@@ -9,6 +9,7 @@ import { ResultTabs } from '../../src/ui/ResultTabs';
 import { SearchModes } from '../../src/description';
 import type {
   DescriptionReport,
+  ModelFailure,
   ProviderOutcome,
   SearchPort,
   SearchRequest,
@@ -67,11 +68,58 @@ async function submit(text = 'authentication last month') {
 }
 
 describe('shared description presentation', () => {
+  it.each([
+    { phase: 'prompt', code: 'api-error', apiError: 'NotSupportedError' },
+    { phase: 'prompt', code: 'timeout' },
+    { phase: 'parse', code: 'invalid-json' },
+    { phase: 'validate', code: 'invalid-output' },
+  ] satisfies ModelFailure[])(
+    'explains an actual AI failure $code without raw output',
+    (failure) => {
+      const report: DescriptionReport = {
+        strategy: 'keyword-topic-fallback',
+        terms: ['origami'],
+        notices: [],
+        ranking: { requestId: request().requestId, selections: [] },
+        execution: {
+          interpretation: { status: 'failed', promptCalls: 1, failure },
+          matching: { status: 'failed', promptCalls: 1, failure },
+          candidates: 3,
+          messageCandidates: 1,
+        },
+      };
+      render(<DescriptionSummary report={report} timeZone="UTC" />);
+      fireEvent.click(screen.getByText('AI and retrieval details'));
+      expect(screen.getByText(/Interpretation failure:/)).toBeTruthy();
+      expect(screen.getByText(/Matching failure:/)).toBeTruthy();
+
+      if (failure.code === 'api-error')
+        expect(screen.getAllByText(/NotSupportedError/)).toHaveLength(2);
+      else expect(screen.queryByText(/NotSupportedError/)).toBeNull();
+    },
+  );
+  it('shows only the complete description match from broad native results', async () => {
+    const items = [
+      candidate('complete', 'Space series', 'A TV show about space travel.'),
+      candidate('one', 'Cooking series', 'A TV show about cooking.'),
+      candidate('two', 'Science notes', 'Space travel research.'),
+      candidate('separate', 'Mixed notes', 'A TV show about cooking. Space travel research.'),
+    ];
+    const { native, engine } = setup({}, items);
+    panel({ search: new SearchModes(native, engine) });
+    await submit('What TV show was I looking for about space travel before?');
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(screen.getByText('Space series')).toBeTruthy();
+    expect(screen.queryByText('Cooking series')).toBeNull();
+    expect(screen.queryByText('Mixed notes')).toBeNull();
+    fireEvent.click(screen.getByText('Why this matched'));
+    expect(screen.getByText('TV show about space travel', { exact: true })).toBeTruthy();
+  });
   it('searches in description mode, labels the fallback, date inference and exact evidence', async () => {
     const user = userEvent.setup();
     const { retrieval } = panel();
     await submit();
-    expect(screen.getByText('Keyword/topic fallback matching')).toBeTruthy();
+    expect(screen.getByText('Literal keyword fallback')).toBeTruthy();
     expect(screen.getByText(/Available date: Sep 1, 2026/)).toBeTruthy();
     expect(screen.getByRole('combobox', { name: 'Sort results' })).toHaveProperty(
       'value',
@@ -81,11 +129,94 @@ describe('shared description presentation', () => {
     await user.click(screen.getByText('Why this matched'));
     expect(screen.getByText('Selected evidence from this conversation:')).toBeTruthy();
     expect(screen.getByRole('link').getAttribute('href')).toContain('/threads/security');
-    expect(retrieval.search.mock.calls).toHaveLength(3);
+    expect(retrieval.search.mock.calls).toHaveLength(1);
     expect(retrieval.search.mock.calls.every(([input]) => input.query.mode === 'keyword')).toBe(
       true,
     );
   });
+  it('distinguishes retrieved candidates from final matches when AI is off', async () => {
+    const items = [
+      candidate('other', 'Notes', 'Jobs in Canada. Holidays in Switzerland.'),
+      candidate('match', 'Notes', 'Jobs in Switzerland.', googleScope),
+    ];
+    const { native, engine } = setup({}, items);
+    panel({ search: new SearchModes(native, engine) });
+    await submit('jobs in Switzerland');
+    fireEvent.click(screen.getByText('AI and retrieval details'));
+    expect(screen.getByText('AI prompts sent: interpretation 0; matching 0.')).toBeTruthy();
+    expect(screen.getByText('ChatGPT: 1 retrieved; 0 matched.')).toBeTruthy();
+    expect(screen.getByText('Google Search AI Mode: 1 retrieved; 1 matched.')).toBeTruthy();
+    expect(
+      screen.getByText(/Conversations supplied for matching: 2; with message context: 0/),
+    ).toBeTruthy();
+    expect(screen.getByText(/Paraphrases and longer explanations can be missed/)).toBeTruthy();
+  });
+  it.each(['completed', 'failed', 'timeout', 'no-candidates'] as const)(
+    'shows the actual matching stage outcome %s and prompt counts separately from readiness',
+    (status) => {
+      const report: DescriptionReport = {
+        strategy: status === 'completed' ? 'model-assisted' : 'keyword-topic-fallback',
+        terms: ['origami'],
+        notices: [],
+        ranking: { requestId: request().requestId, selections: [] },
+        execution: {
+          interpretation: { status: 'completed', promptCalls: 1 },
+          matching: { status, promptCalls: status === 'no-candidates' ? 0 : 2 },
+          candidates: 3,
+          messageCandidates: 2,
+        },
+      };
+      render(
+        <DescriptionSummary
+          report={report}
+          timeZone="UTC"
+          outcomes={[
+            { requestId: request().requestId, scope: chatScope, status: 'schema-changed' },
+          ]}
+        />,
+      );
+      fireEvent.click(screen.getByText('AI and retrieval details'));
+      expect(screen.getByText('AI interpretation: completed.')).toBeTruthy();
+      expect(
+        screen.getByText(/ChatGPT: retrieval failed \(schema-changed\).*Provider response changed/),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(
+          `AI prompts sent: interpretation 1; matching ${report.execution?.matching.promptCalls}.`,
+        ),
+      ).toBeTruthy();
+      expect(screen.getByText(/AI can judge only the retrieved excerpts/)).toBeTruthy();
+    },
+  );
+  it.each([
+    ['schema-changed', 'Provider response changed.'],
+    ['timeout', 'Search timed out.'],
+    ['unavailable', 'Provider unavailable.'],
+  ] as const)(
+    'explains Google %s in global details even when the ChatGPT tab is selected',
+    async (status, message) => {
+      const user = userEvent.setup();
+      const { native, engine, google } = setup({}, [
+        candidate('match', 'Notes', 'Jobs in Switzerland.'),
+      ]);
+      google.search.mockImplementation(async (input) => ({
+        requestId: input.requestId,
+        scope: input.scope,
+        status,
+      }));
+      panel({ search: new SearchModes(native, engine) });
+      await submit('jobs in Switzerland');
+      await user.click(screen.getByRole('tab', { name: /ChatGPT/ }));
+      await user.click(screen.getByText('AI and retrieval details'));
+      const details = screen.getByRole('note', { name: 'Description search details' });
+      expect(details.textContent).toContain(
+        `Google Search AI Mode: retrieval failed (${status}). ${message}`,
+      );
+      expect(
+        within(screen.getByRole('tabpanel')).queryByText(message, { exact: false }),
+      ).toBeNull();
+    },
+  );
   it('keeps explicit controls authoritative and discloses ambiguity', async () => {
     panel();
     fireEvent.change(screen.getByLabelText('From date'), { target: { value: '2026-08-01' } });
@@ -119,7 +250,7 @@ describe('shared description presentation', () => {
           ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
         }));
       panel({ search: new SearchModes(native, engine) });
-      await submit('authentication');
+      await submit('authentication login');
       expect(screen.getByText('Old authentication notebook')).toBeTruthy();
       expect(screen.getByText(/Rate limited. Earlier matches are retained/)).toBeTruthy();
       const refresh = screen.getByRole('button', { name: 'Refresh search' });
@@ -180,9 +311,9 @@ describe('shared description presentation', () => {
     });
     await act(async () => pending.resolve({}));
     expect(screen.queryByRole('article')).toBeNull();
-    expect(screen.queryByText('Keyword/topic fallback matching')).toBeNull();
+    expect(screen.queryByText('Literal keyword fallback')).toBeNull();
     await submit('authentication');
-    expect(screen.queryByText('Keyword/topic fallback matching')).toBeNull();
+    expect(screen.queryByText('Literal keyword fallback')).toBeNull();
   });
   it('cancels description retrieval with accessible status and no evidence leakage', async () => {
     const pending = deferred();
@@ -232,13 +363,13 @@ describe('shared description presentation', () => {
         'ambiguous-date',
         'explicit-date-precedence',
         'model-unavailable',
-        'limited-vocabulary',
+        'literal-keywords',
       ],
       ranking: { requestId: request().requestId, selections: [] },
     };
     render(<DescriptionSummary report={report} timeZone="UTC" />);
     expect(screen.getByText('Model-assisted matching with verified evidence')).toBeTruthy();
-    expect(screen.getByText(/Invalid model output was discarded/)).toBeTruthy();
+    expect(screen.getByText(/AI stage failed or returned unusable output/)).toBeTruthy();
     expect(screen.getByText(/model did not finish/)).toBeTruthy();
   });
   it('defaults to ranking order and permits date sorting and independent provider tabs', async () => {
@@ -250,7 +381,7 @@ describe('shared description presentation', () => {
       </ResultTabs>,
     );
     const articles = () => within(screen.getByRole('tabpanel')).getAllByRole('article');
-    expect(articles()[0]?.textContent).toContain('Lighthouse');
+    expect(articles()[0]?.textContent).toContain('Old authentication notebook');
     await user.selectOptions(screen.getByRole('combobox', { name: 'Sort results' }), 'recent');
     await user.click(screen.getByRole('tab', { name: /Google AI Mode/ }));
     expect(articles()).toHaveLength(2);

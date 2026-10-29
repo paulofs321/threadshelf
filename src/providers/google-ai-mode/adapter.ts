@@ -16,6 +16,7 @@ import { googleAiModeAvailability } from './availability';
 import { GoogleReadResultSchema } from './transport';
 import type { GoogleAiModeReadPort, GoogleReadOperation } from './transport';
 import { googleHttpFailure, parseGoogleRecords, verifyGoogleOriginalLink } from './wire';
+import { attachMessageContext, selectMessageContext } from '../../search/context';
 
 const GoogleAiModeScopeSchema = v.pipe(
   SessionScopeSchema,
@@ -173,6 +174,7 @@ export class GoogleAiModeProvider implements ProviderPort {
     input: ProviderRequest,
     conversationId: string,
     context: OperationContext,
+    description?: string,
   ): Promise<ProviderOutcome> {
     const request = requireValid(GoogleAiModeRequestSchema, input);
 
@@ -191,20 +193,44 @@ export class GoogleAiModeProvider implements ProviderPort {
     )
       return this.failure(request, 'unavailable');
 
-    const result = await this.read({ kind: 'messages', conversationId }, context, candidate);
+    const result = await this.read(
+      {
+        kind: 'messages',
+        conversationId,
+        ...(description === undefined ? {} : { query: description }),
+      },
+      context,
+      candidate,
+    );
 
     if (result.status !== 'success') return this.failure(request, result.status);
 
     if (!result.rendered || result.response !== undefined || result.dateLabel !== undefined)
       return this.failure(request, 'schema-changed');
 
-    const enriched = requireValid(CandidateSchema, candidate);
+    const enriched =
+      description === undefined
+        ? requireValid(CandidateSchema, candidate)
+        : attachMessageContext(
+            candidate,
+            selectMessageContext(result.rendered, description),
+            'rendered-message',
+          );
 
-    for (const [index, text] of result.rendered.entries()) {
+    for (const [index, text] of (description === undefined ? result.rendered : []).entries()) {
       if (enriched.evidence.length >= limits.evidencePerCandidate) break;
 
       enriched.evidence.push(
-        requireValid(EvidenceSchema, { id: `rendered-${index}`, text, source: 'rendered-message' }),
+        requireValid(EvidenceSchema, {
+          id: `rendered-${index}`,
+          text: text.slice(
+            0,
+            /[\uD800-\uDBFF]/u.test(text.charAt(limits.excerpt - 1))
+              ? limits.excerpt - 1
+              : limits.excerpt,
+          ),
+          source: 'rendered-message',
+        }),
       );
     }
 
@@ -225,6 +251,15 @@ export class GoogleAiModeProvider implements ProviderPort {
         },
       },
     );
+  }
+
+  readContext(
+    input: ProviderRequest,
+    conversationId: string,
+    description: string,
+    context: OperationContext,
+  ): Promise<ProviderOutcome> {
+    return this.messages(input, conversationId, context, description);
   }
 
   private failure(
@@ -270,9 +305,17 @@ export class GoogleAiModeProvider implements ProviderPort {
       const open = this.readPort?.openEvidence;
       const pending =
         candidate && open && this.identity
-          ? open.call(this.readPort, requireValid(CandidateSchema, candidate), this.identity, {
-              signal: controller.signal,
-            })
+          ? operation.kind === 'messages' && operation.query !== undefined
+            ? open.call(
+                this.readPort,
+                requireValid(CandidateSchema, candidate),
+                this.identity,
+                { signal: controller.signal },
+                operation.query,
+              )
+            : open.call(this.readPort, requireValid(CandidateSchema, candidate), this.identity, {
+                signal: controller.signal,
+              })
           : this.readPort?.read(operation, this.identity, { signal: controller.signal });
       const raw = await Promise.race([pending, cancelled]);
 
