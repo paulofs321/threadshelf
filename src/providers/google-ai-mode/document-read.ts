@@ -105,6 +105,19 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
     );
   }
 
+  function signedOut(doc: Document): boolean {
+    // Observed public signed-out AI Mode control. Missing account markup alone is ambiguous.
+    return [...doc.querySelectorAll<HTMLAnchorElement>('a[href]')].some((anchor) => {
+      try {
+        const url = new URL(anchor.href);
+
+        return url.origin === 'https://accounts.google.com' && url.pathname === '/ServiceLogin';
+      } catch {
+        return false;
+      }
+    });
+  }
+
   async function messageDocument(): Promise<Document> {
     if (!destination) return document;
 
@@ -212,7 +225,7 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
   async function inspect(): Promise<string> {
     const renderedAccount = account(document);
 
-    if (!renderedAccount) fail('unavailable');
+    if (!renderedAccount && !signedOut(document)) fail('unavailable');
 
     // AI Mode HTML can be a successful response without an account header. The fixed homepage
     // supplies the observed default-account control; compare it afresh around every operation.
@@ -230,7 +243,9 @@ export async function readGoogleDocument(input: GoogleDocumentRead): Promise<unk
     const freshDocument = new DOMParser().parseFromString(await body(response), 'text/html');
     const freshAccount = account(freshDocument);
 
-    if (!freshAccount) fail('unavailable');
+    if (!renderedAccount && !freshAccount && signedOut(freshDocument)) fail('login-expired');
+
+    if (!freshAccount || !renderedAccount) fail('unavailable');
 
     if (freshAccount !== renderedAccount) fail('scope-changed');
 

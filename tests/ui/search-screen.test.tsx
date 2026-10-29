@@ -30,7 +30,7 @@ function setup(overrides: Partial<SearchScreenProps> = {}, openSettings = true) 
   const props: SearchScreenProps = {
     providers: [chatScope, googleScope].map((scope) => ({
       provider: scope.provider,
-      status: 'selected',
+      status: 'connected',
       selected: true,
       pending: false,
     })),
@@ -105,7 +105,7 @@ describe('shared search panel with real keyword orchestration', () => {
     expect(screen.queryByRole('tablist')).toBeNull();
     expect(screen.getByText('ChatGPT is already connected.')).toBeTruthy();
     expect(screen.getByText('Google Search AI Mode is already connected.')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Connect ChatGPT' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reconnect ChatGPT' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Connect Google Search AI Mode' })).toBeNull();
     expect(document.activeElement).toBe(
       screen.getByRole('heading', { name: 'Welcome to ThreadShelf' }),
@@ -134,7 +134,7 @@ describe('shared search panel with real keyword orchestration', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Google Search AI Mode' }));
     await user.click(screen.getByRole('button', { name: 'Connect' }));
     await user.click(screen.getByText('Need help?'));
-    expect(screen.getByText(/ThreadShelf uses your existing/)).toBeTruthy();
+    expect(screen.getByText(/Connect verifies your browser session/)).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Continue to search' }));
     expect((screen.getByLabelText('From date') as HTMLInputElement).value).toBe('2026-03-29');
     expect((screen.getByLabelText('Before date (exclusive)') as HTMLInputElement).value).toBe(
@@ -183,7 +183,7 @@ describe('shared search panel with real keyword orchestration', () => {
       />,
     );
     expect(screen.queryByText('ChatGPT is already connected.')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Connect ChatGPT' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reconnect ChatGPT' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Continue to search' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Back to search' }));
     expect(results().queryAllByRole('article')).toHaveLength(0);

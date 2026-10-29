@@ -23,7 +23,11 @@ describe('injected setup view', () => {
     rerender(
       <SetupScreen
         {...props}
-        providers={props.providers.map((item) => ({ ...item, status: 'selected', selected: true }))}
+        providers={props.providers.map((item) => ({
+          ...item,
+          status: 'connected',
+          selected: true,
+        }))}
       />,
     );
     expect(
@@ -45,7 +49,7 @@ describe('injected setup view', () => {
       />,
     );
     expect(screen.getByRole('status').textContent).toBe('Connecting…');
-    expect(screen.getByRole('button', { name: 'Connect ChatGPT' }).hasAttribute('disabled')).toBe(
+    expect(screen.getByRole('button', { name: 'Reconnect ChatGPT' }).hasAttribute('disabled')).toBe(
       true,
     );
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
@@ -53,7 +57,7 @@ describe('injected setup view', () => {
   it('routes each labeled action to its selected provider and exposes live statuses', () => {
     const props = {
       providers: [
-        { provider: 'chatgpt' as const, status: 'selected', pending: false, selected: true },
+        { provider: 'chatgpt' as const, status: 'connected', pending: false, selected: true },
         {
           provider: 'google-ai-mode' as const,
           status: 'connecting',
@@ -80,7 +84,7 @@ describe('injected setup view', () => {
     expect(props.onDisconnect).toHaveBeenCalledWith('chatgpt');
     expect(props.onCancel).toHaveBeenCalledWith('google-ai-mode');
     expect(
-      (google.getByRole('button', { name: 'Connect Google Search AI Mode' }) as HTMLButtonElement)
+      (google.getByRole('button', { name: 'Reconnect Google Search AI Mode' }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
     expect(google.getByRole('status').textContent).toContain('Connecting');
@@ -105,7 +109,7 @@ describe('injected setup view', () => {
           onCancel={() => {}}
         />,
       );
-      expect(screen.getByRole('status').textContent).toContain('unavailable');
+      expect(screen.getByRole('status').textContent).toContain('could not be verified');
       expect(document.querySelector('img')).toBeNull();
       expect(screen.queryByRole('button', { name: 'Disconnect' })).toBeNull();
     },

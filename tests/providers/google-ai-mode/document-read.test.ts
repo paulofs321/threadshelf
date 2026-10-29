@@ -52,6 +52,35 @@ afterEach(() => {
 });
 
 describe('self-contained Google document reads', () => {
+  it('confirms signed out from the rendered and fresh native login controls without exporting their URLs', async () => {
+    document.body.innerHTML =
+      '<a href="https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fwww.google.com%2Fsearch%3Fudm%3D50">Sign in</a>';
+    fetchMock.mockResolvedValue(
+      new Response(document.body.innerHTML, { headers: { 'content-type': 'text/html' } }),
+    );
+    expect(await readGoogleDocument(input('inspect'))).toEqual({ status: 'login-expired' });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+  it.each(['missing', 'fresh-missing', 'fresh-signed-in', 'spoof-host', 'invalid-href'] as const)(
+    'never infers signed out from %s account evidence',
+    async (kind) => {
+      const link = '<a href="https://accounts.google.com/ServiceLogin">Sign in</a>';
+      document.body.innerHTML =
+        kind === 'missing'
+          ? ''
+          : kind === 'spoof-host'
+            ? '<a href="https://accounts.google.com.evil.invalid/ServiceLogin">Sign in</a>'
+            : kind === 'invalid-href'
+              ? '<a href="http://[invalid">Sign in</a>'
+              : link;
+      fetchMock.mockResolvedValue(
+        new Response(kind === 'fresh-signed-in' ? html() : '', {
+          headers: { 'content-type': 'text/html' },
+        }),
+      );
+      expect(await readGoogleDocument(input('inspect'))).toEqual({ status: 'unavailable' });
+    },
+  );
   it('keeps word boundaries when selecting rendered context windows', async () => {
     vi.stubGlobal(
       'location',

@@ -14,6 +14,7 @@ export interface SetupScreenProps {
   onInspect(provider: ProviderId): void;
   onDisconnect(provider: ProviderId): void;
   onCancel(provider: ProviderId): void;
+  onClearLocalData?(): void;
 }
 export const providerLabels: Record<ProviderId, string> = {
   chatgpt: 'ChatGPT',
@@ -22,10 +23,20 @@ export const providerLabels: Record<ProviderId, string> = {
 const statuses: Record<string, string> = {
   idle: 'Not connected.',
   connecting: 'Connecting…',
-  selected: 'Connected.',
+  selected: 'Document selected. Session is unverified.',
+  connected: 'Connected.',
+  'checking-session': 'Checking session…',
+  'waiting-for-sign-in':
+    'Waiting for sign-in. Complete sign-in in the provider tab within 5 minutes. Passwords and MFA stay there.',
+  'verifying-session': 'Verifying the returned session…',
+  'expired-wait': 'Sign-in wait expired. Reconnect to start a new attempt.',
+  'login-expired': 'Sign-in is required. Reconnect to open the provider sign-in page.',
+  'schema-changed': 'Provider response changed. Connection cannot be verified.',
+  'rate-limited': 'Provider rate limited the session check. Wait before reconnecting.',
   disconnected: 'Disconnected.',
   'permission-needed': 'Site permission is required. Connect to request it.',
-  unavailable: 'Site access is unavailable. Sign in on the provider page, then connect again.',
+  unavailable:
+    'Session could not be verified. Check the provider page and supported account, then reconnect.',
   'scope-changed': 'The selected context changed. Connect again.',
   timeout: 'The site check timed out. Connect again.',
   cancelled: 'Site check cancelled.',
@@ -67,7 +78,8 @@ export function SetupScreen(props: SetupScreenProps) {
       </div>
       <div className="space-y-4 pt-2">
         {props.providers.map((item) => {
-          const connected = item.selected && !item.pending;
+          const connected = item.selected && item.status === 'connected' && !item.pending;
+          const reconnect = item.status !== 'idle' && item.status !== 'disconnected';
 
           return (
             <section key={item.provider} aria-labelledby={`${item.provider}-label`}>
@@ -103,7 +115,7 @@ export function SetupScreen(props: SetupScreenProps) {
                   <Button
                     variant={item.provider === 'chatgpt' ? 'default' : 'outline'}
                     type="button"
-                    aria-label={`Connect ${providerLabels[item.provider]}`}
+                    aria-label={`${reconnect ? 'Reconnect' : 'Connect'} ${providerLabels[item.provider]}`}
                     disabled={item.pending}
                     className="min-h-14 w-full gap-2 rounded-lg px-3 py-4 text-sm shadow-none"
                     onClick={() => action(item.provider, props.onConnect)}
@@ -115,7 +127,7 @@ export function SetupScreen(props: SetupScreenProps) {
                         G
                       </span>
                     )}
-                    Connect {providerLabels[item.provider]}
+                    {reconnect ? 'Reconnect' : 'Connect'} {providerLabels[item.provider]}
                   </Button>
                   {item.pending && (
                     <Button

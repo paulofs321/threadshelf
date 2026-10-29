@@ -212,7 +212,7 @@ describe('Google native read adapter', () => {
     );
   });
 
-  it('reports ready only after a valid inspection and hides unsupported session statuses', async () => {
+  it('reports ready only after a valid inspection and preserves session failures', async () => {
     const inspected = { status: 'success', identityBefore: identity, identityAfter: identity };
     const { provider, port, request } = fixture(inspected);
     const ready = await provider.inspectSession(context());
@@ -236,7 +236,7 @@ describe('Google native read adapter', () => {
     }
 
     port.read.mockResolvedValue({ status: 'timeout' });
-    expect(await provider.inspectSession(context())).toMatchObject({ status: 'unavailable' });
+    expect(await provider.inspectSession(context())).toMatchObject({ status: 'timeout' });
     port.read.mockResolvedValue(success());
     expect(await provider.inspectSession(context())).toMatchObject({ status: 'unavailable' });
   });

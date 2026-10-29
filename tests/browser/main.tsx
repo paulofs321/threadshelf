@@ -82,7 +82,7 @@ function Smoke() {
         timeZone="Europe/Zurich"
         providers={scopes.map((scope) => ({
           provider: scope.provider,
-          status: 'selected',
+          status: 'connected',
           selected: true,
           pending: false,
         }))}

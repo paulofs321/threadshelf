@@ -258,3 +258,31 @@ These are synthetic integration checks; they do not establish current live-accou
 Gemini Nano semantic accuracy. Google context remains bounded to supported rendered turns. Candidate
 coverage tests exercise distinctive qualifiers beyond the former first-two results, distinct reads
 across terms, request-state release and later messages beyond the former text-prefix limit.
+
+## Authentication, isolation and preferences
+
+The session lifecycle suites cover authenticated Connect, both confirmed sign-out paths, all session
+failure classes without generic-error redirects, waits exceeding the 10/12-second read deadlines,
+independent five-minute expiry, new document binding/generation on return, duplicate clicks/progress,
+no redirect loops, unknown or mismatched identity, cancellation, tab closure/replacement, revocation,
+panel closure, worker loss and obsolete completions. Heartbeat tests cover idle same-document logout,
+changed scope, malformed/throwing checks, overlap prevention and cancellation before new reads.
+Provider tests require fresh HTTP 401 or corroborated native signed-out evidence, never missing
+account controls alone. UI tests prohibit Connected/search scopes from unverified selection and
+exercise accessible waiting/verification/cancel states and complete local-data clearing.
+
+`tests/storage/preferences.test.ts` verifies strict versioned mode-only persistence, malformed/version
+rejection, private-key rejection, clearing and denied storage. There is no excerpt cache, sync writer
+or persistent identity/consent. Existing cross-account/workspace, in-flight retrieval/ranking and
+late-response suites continue to exercise private-state teardown. Final post-ranking identity checks
+cover both successful providers, mismatched/invalid scopes, logout after ranking, cancellation,
+malformed replies, out-of-order progress, late rejection after reconnect and worker timeouts. Three
+Google account-substitution regressions were observed failing before the selection fix and passing
+afterward; pinned default sources remain usable while browsing other account tabs.
+
+The Chromium harness additionally runs both providers through actual production worker/client
+composition and isolated readers with synthetic sign-out HTTP, foreground provider login tabs and
+simulated user return. It verifies fresh authenticated completion, old-result removal, source-page
+preservation and no login-host permission. These are browser lifecycle tests, not real account login
+or MFA acceptance. Public Google sign-in entry/return-parameter observation and ChatGPT's documented
+entry URL do not establish successful real sign-in. No live credentials or real accounts enter tests.

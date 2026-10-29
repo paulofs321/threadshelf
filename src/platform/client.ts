@@ -1,6 +1,7 @@
 import { RequestIdSchema } from '../contracts/primitives';
 import type { ProviderId, RequestId } from '../contracts/primitives';
 import type { SessionScope } from '../contracts/session';
+import { sameScope } from '../contracts/session';
 import { requireValid, validate } from '../contracts/validation';
 import {
   AccessMessageSchema,
@@ -8,8 +9,15 @@ import {
   clientTimeoutMs,
   maximumRequestsPerPort,
   HeartbeatReplySchema,
+  signInTimeoutMs,
 } from './protocol';
-import type { AccessEvent, AccessOperation, AccessReply, AccessRequest } from './protocol';
+import type {
+  AccessEvent,
+  AccessOperation,
+  AccessReply,
+  AccessRequest,
+  AccessProgress,
+} from './protocol';
 import { SearchReplySchema } from './search-protocol';
 
 interface Listener<T> {
@@ -25,12 +33,14 @@ export interface AccessConnection {
 interface Pending {
   request: AccessOperation;
   finish(reply: AccessReply): void;
+  progress(message: AccessProgress): void;
 }
 
 // Panel-owned timers guarantee interruption/timeout even when the MV3 worker stops running.
 export class AccessClient {
   private readonly pending = new Map<RequestId, Pending>();
   private readonly subscribers = new Set<(event: AccessEvent) => void>();
+  private readonly progressSubscribers = new Set<(event: AccessProgress) => void>();
   private readonly generations = new Map<ProviderId, number>();
   private count = 0;
   private closed = false;
@@ -55,6 +65,14 @@ export class AccessClient {
     };
   }
 
+  subscribeProgress(callback: (event: AccessProgress) => void): () => void {
+    this.progressSubscribers.add(callback);
+
+    return () => {
+      this.progressSubscribers.delete(callback);
+    };
+  }
+
   connect(provider: ProviderId, signal: AbortSignal): Promise<AccessReply> {
     return this.request({ operation: 'connect', requestId: this.requestId(), provider }, signal);
   }
@@ -65,6 +83,18 @@ export class AccessClient {
         operation: 'inspect-context',
         requestId: this.requestId(),
         provider,
+        scope,
+      }) as AccessOperation,
+      signal,
+    );
+  }
+
+  verify(scope: SessionScope, signal: AbortSignal): Promise<AccessReply> {
+    return this.request(
+      requireValid(AccessRequestSchema, {
+        operation: 'verify-session',
+        requestId: this.requestId(),
+        provider: scope.provider,
         scope,
       }) as AccessOperation,
       signal,
@@ -109,6 +139,7 @@ export class AccessClient {
 
     this.pending.clear();
     this.subscribers.clear();
+    this.progressSubscribers.clear();
     this.connection.disconnect();
   }
 
@@ -146,7 +177,7 @@ export class AccessClient {
         resolve(reply);
       };
 
-      const stop = (status: 'cancelled' | 'timeout') => {
+      const stop = (status: 'cancelled' | 'timeout' | 'expired-wait') => {
         this.publish({
           kind: 'invalidated',
           provider: request.provider,
@@ -163,8 +194,38 @@ export class AccessClient {
       };
 
       const cancel = () => stop('cancelled');
-      const timer = setTimeout(() => stop('timeout'), clientTimeoutMs);
-      this.pending.set(request.requestId, { request, finish });
+      let timer = setTimeout(() => stop('timeout'), clientTimeoutMs);
+      let signInDeadline: number | undefined;
+      let verificationStarted = false;
+
+      const progress = (message: AccessProgress) => {
+        if (
+          message.provider !== request.provider ||
+          request.operation === 'disconnect' ||
+          request.operation === 'verify-session'
+        )
+          return this.close();
+
+        if (message.status === 'waiting-for-sign-in') {
+          if (verificationStarted) return this.close();
+
+          signInDeadline ??= Date.now() + signInTimeoutMs;
+          clearTimeout(timer);
+          timer = setTimeout(() => stop('expired-wait'), Math.max(0, signInDeadline - Date.now()));
+        } else if (message.status === 'verifying-session') {
+          if (signInDeadline === undefined) return this.close();
+
+          if (!verificationStarted) {
+            verificationStarted = true;
+            clearTimeout(timer);
+            timer = setTimeout(() => stop('timeout'), clientTimeoutMs);
+          }
+        }
+
+        for (const callback of this.progressSubscribers) callback(message);
+      };
+
+      this.pending.set(request.requestId, { request, finish, progress });
       signal.addEventListener('abort', cancel, { once: true });
 
       try {
@@ -200,6 +261,12 @@ export class AccessClient {
 
     const message = result.value;
 
+    if (message.kind === 'connection-progress') {
+      this.pending.get(message.requestId)?.progress(message);
+
+      return;
+    }
+
     if (message.kind === 'invalidated') {
       if (message.generation <= (this.generations.get(message.provider) ?? 0)) return;
 
@@ -213,7 +280,21 @@ export class AccessClient {
 
     if (!item) return; // Obsolete/duplicate replies cannot restore a scope or UI result.
 
-    if (message.status === 'selected') {
+    if (message.status === 'verified') {
+      if (
+        item.request.operation !== 'verify-session' ||
+        !sameScope(item.request.scope, message.scope)
+      )
+        return this.close();
+
+      if (message.scope.generation < (this.generations.get(message.scope.provider) ?? 0)) {
+        item.finish({ kind: 'reply', requestId: message.requestId, status: 'scope-changed' });
+
+        return;
+      }
+    } else if (message.status === 'selected' || message.status === 'connected') {
+      if (item.request.operation === 'verify-session') return this.close();
+
       if (message.scope.generation <= (this.generations.get(item.request.provider) ?? 0)) {
         item.finish({ kind: 'reply', requestId: message.requestId, status: 'scope-changed' });
 

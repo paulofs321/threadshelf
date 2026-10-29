@@ -2,6 +2,7 @@ import { browser } from 'wxt/browser';
 import type { ProviderId } from '../contracts';
 import { permittedUrl, providerOrigins, SelectedTabSchema } from './policy';
 import { validate } from '../contracts';
+import { supportedReturn } from './sign-in';
 
 const landingUrls: Record<ProviderId, string> = {
   chatgpt: 'https://chatgpt.com/',
@@ -11,7 +12,7 @@ const landingUrls: Record<ProviderId, string> = {
 function supportedProviderUrl(provider: ProviderId, value: string): boolean {
   if (!permittedUrl(provider, value)) return false;
 
-  if (provider !== 'google-ai-mode') return true;
+  if (provider !== 'google-ai-mode') return supportedReturn(provider, value);
 
   const url = new URL(value);
 
@@ -55,6 +56,21 @@ export class ProviderTabs {
         supportedProviderUrl(provider, tab.url),
     );
     const active = matching.filter((tab) => tab.active);
+
+    // An explicitly selected unsupported account must never silently become the default account.
+    if (
+      provider === 'google-ai-mode' &&
+      pinned === undefined &&
+      tabs.some(
+        (tab) =>
+          tab.url &&
+          permittedUrl(provider, tab.url) &&
+          new URL(tab.url).searchParams.has('authuser') &&
+          (tab.active || matching.length === 0),
+      )
+    )
+      return null;
+
     const candidates =
       pinned !== undefined
         ? matching.filter((tab) => tab.id === pinned)

@@ -44,6 +44,13 @@ afterEach(() => {
 });
 
 describe('isolated ChatGPT session/read boundary', () => {
+  it('recognizes a fresh 401 after rendered bootstrap disappears, while missing bootstrap on 200 remains a schema failure', async () => {
+    document.body.innerHTML = '';
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 401 }));
+    expect(await read({ kind: 'inspect' })).toEqual({ status: 'login-expired' });
+    fetchMock.mockResolvedValueOnce(html());
+    expect(await read({ kind: 'inspect' })).toEqual({ status: 'schema-changed' });
+  });
   it.each([
     { kind: 'inspect' },
     { kind: 'list' },

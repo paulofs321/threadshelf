@@ -70,6 +70,121 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe('trusted panel search composition and document binding', () => {
+  it('pins the inspected identity in the same adapter used by the next read', async () => {
+    const f = await harness();
+    f.provider.inspectSession.mockResolvedValue({ status: 'ready', scope: f.scope });
+    expect(await f.search.inspectSession(f.scope, new AbortController().signal)).toEqual({
+      status: 'ready',
+      scope: f.scope,
+    });
+    await f.search.inspectSession(f.scope, new AbortController().signal);
+    f.dispatch();
+    await vi.waitFor(() => expect(f.messages).toHaveLength(1));
+    expect(f.factory).toHaveBeenCalledOnce();
+    expect(f.provider.search).toHaveBeenCalledOnce();
+    f.access.broker.close();
+  });
+  it.each(['login-expired', 'scope-changed', 'malformed', 'changed-scope', 'throw'] as const)(
+    'retires a connected session on heartbeat evidence %s',
+    async (kind) => {
+      const f = await harness();
+      f.provider.inspectSession.mockResolvedValueOnce({ status: 'ready', scope: f.scope });
+      await f.search.inspectSession(f.scope, new AbortController().signal);
+
+      if (kind === 'throw')
+        f.provider.inspectSession.mockRejectedValue(new Error('fiction-private'));
+      else
+        f.provider.inspectSession.mockResolvedValue(
+          kind === 'malformed'
+            ? {}
+            : kind === 'changed-scope'
+              ? { status: 'ready', scope: { ...f.scope, generation: 50 } }
+              : { status: kind, provider: 'chatgpt', generation: f.scope.generation },
+        );
+
+      await f.search.recheckSessions();
+      expect(f.access.broker.bindSelectedDocument(f.scope)).toBeNull();
+      expect(f.access.messages.at(-1)).toMatchObject({
+        kind: 'invalidated',
+        status: kind === 'login-expired' ? 'login-expired' : 'scope-changed',
+      });
+      f.access.broker.close();
+    },
+  );
+  it('never inspects an unknown selection, deduplicates slow heartbeat checks and ignores completion after invalidation', async () => {
+    const f = await harness();
+    await f.search.recheckSessions();
+    expect(f.provider.inspectSession).not.toHaveBeenCalled();
+    f.provider.inspectSession.mockResolvedValueOnce({ status: 'ready', scope: f.scope });
+    await f.search.inspectSession(f.scope, new AbortController().signal);
+    const pending = deferred<unknown>();
+    f.provider.inspectSession.mockReturnValue(pending.promise);
+    const check = f.search.recheckSessions();
+    await f.search.recheckSessions();
+    expect(f.provider.inspectSession).toHaveBeenCalledTimes(2);
+    f.search.invalidate('chatgpt');
+    pending.resolve({
+      status: 'login-expired',
+      provider: 'chatgpt',
+      generation: f.scope.generation,
+    });
+    await check;
+    expect(f.access.broker.bindSelectedDocument(f.scope)).not.toBeNull();
+    f.access.broker.close();
+  });
+  it('keeps a fresh session current and does not overlap a heartbeat with search', async () => {
+    const f = await harness();
+    f.provider.inspectSession.mockResolvedValue({ status: 'ready', scope: f.scope });
+    await f.search.inspectSession(f.scope, new AbortController().signal);
+    await f.search.recheckSessions();
+    expect(f.access.broker.bindSelectedDocument(f.scope)).not.toBeNull();
+    const pending = deferred<unknown>();
+    f.provider.search.mockReturnValue(pending.promise);
+    f.dispatch();
+    await f.search.recheckSessions();
+    expect(f.provider.inspectSession).toHaveBeenCalledTimes(2);
+    pending.resolve({ requestId: f.request.requestId, scope: f.scope, status: 'cancelled' });
+    await vi.waitFor(() => expect(f.messages).toHaveLength(1));
+    f.search.close();
+    await f.search.recheckSessions();
+    f.access.broker.close();
+  });
+  it('excludes final session verification from heartbeat inspections until it settles', async () => {
+    const f = await harness();
+    f.provider.inspectSession.mockResolvedValue({ status: 'ready', scope: f.scope });
+    await f.search.inspectSession(f.scope, new AbortController().signal);
+    f.dispatch();
+    await vi.waitFor(() => expect(f.messages).toHaveLength(1));
+    const pending = deferred<unknown>();
+    f.provider.inspectSession.mockReturnValueOnce(pending.promise);
+    const finalVerification = f.search.inspectSession(f.scope, new AbortController().signal);
+    await f.search.recheckSessions();
+    await f.search.recheckSessions();
+    expect(f.provider.inspectSession).toHaveBeenCalledTimes(2);
+    expect(f.access.broker.bindSelectedDocument(f.scope)).not.toBeNull();
+    pending.resolve({ status: 'ready', scope: f.scope });
+    expect(await finalVerification).toEqual({ status: 'ready', scope: f.scope });
+    await f.search.recheckSessions();
+    expect(f.provider.inspectSession).toHaveBeenCalledTimes(3);
+    f.access.broker.close();
+  });
+  it('rejects a retired scope before session reads and cancels checks before a new search', async () => {
+    const f = await harness();
+    f.provider.inspectSession.mockResolvedValueOnce({ status: 'ready', scope: f.scope });
+    await f.search.inspectSession(f.scope, new AbortController().signal);
+    const pending = deferred<unknown>();
+    f.provider.inspectSession.mockReturnValue(pending.promise);
+    const check = f.search.recheckSessions();
+    f.dispatch();
+    pending.resolve({ status: 'ready', scope: f.scope });
+    await check;
+    await vi.waitFor(() => expect(f.messages).toHaveLength(1));
+    f.access.broker.invalidate('chatgpt', 'scope-changed');
+    expect(await f.search.inspectSession(f.scope, new AbortController().signal)).toMatchObject({
+      status: 'scope-changed',
+    });
+    f.access.broker.close();
+  });
   it('visits distinct candidates across terms and releases request-local coverage state', async () => {
     const f = await harness();
     const candidates = Array.from({ length: 12 }, (_, i) => {

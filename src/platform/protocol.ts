@@ -10,6 +10,8 @@ export function panelPortName(windowId: number): string {
 
 export const operationTimeoutMs = 10_000;
 export const clientTimeoutMs = 12_000;
+// Human sign-in has a separate, absolute deadline; provider reads keep their short deadlines.
+export const signInTimeoutMs = 5 * 60_000;
 export const maximumRequestsPerPort = 256;
 export const heartbeatIntervalMs = 20_000;
 export const HeartbeatCommandSchema = v.strictObject({ operation: v.literal('keepalive') });
@@ -18,6 +20,11 @@ export const HeartbeatReplySchema = v.strictObject({ kind: v.literal('alive') })
 const requestEntries = { requestId: RequestIdSchema, provider: ProviderIdSchema };
 export const AccessRequestSchema = v.variant('operation', [
   v.strictObject({ operation: v.literal('connect'), ...requestEntries }),
+  v.strictObject({
+    operation: v.literal('verify-session'),
+    ...requestEntries,
+    scope: EphemeralScopeSchema,
+  }),
   v.strictObject({
     operation: v.literal('inspect-context'),
     ...requestEntries,
@@ -41,10 +48,28 @@ export const FailureStatusSchema = v.picklist([
   'cancelled',
   'interrupted',
   'busy',
+  'login-expired',
+  'schema-changed',
+  'rate-limited',
+  'expired-wait',
 ]);
 export type FailureStatus = v.InferOutput<typeof FailureStatusSchema>;
 
 export const AccessReplySchema = v.variant('status', [
+  v.strictObject({
+    kind: v.literal('reply'),
+    requestId: RequestIdSchema,
+    status: v.literal('verified'),
+    scope: EphemeralScopeSchema,
+    session: v.literal('authenticated'),
+  }),
+  v.strictObject({
+    kind: v.literal('reply'),
+    requestId: RequestIdSchema,
+    status: v.literal('connected'),
+    scope: EphemeralScopeSchema,
+    session: v.literal('authenticated'),
+  }),
   v.strictObject({
     kind: v.literal('reply'),
     requestId: RequestIdSchema,
@@ -70,8 +95,28 @@ export const AccessEventSchema = v.strictObject({
   kind: v.literal('invalidated'),
   provider: ProviderIdSchema,
   generation: GenerationSchema,
-  status: v.picklist(['scope-changed', 'permission-needed', 'interrupted']),
+  status: v.picklist([
+    'scope-changed',
+    'permission-needed',
+    'interrupted',
+    'login-expired',
+    'unavailable',
+    'schema-changed',
+    'rate-limited',
+    'timeout',
+  ]),
 });
 export type AccessEvent = v.InferOutput<typeof AccessEventSchema>;
-export const AccessMessageSchema = v.variant('kind', [AccessReplySchema, AccessEventSchema]);
+export const AccessProgressSchema = v.strictObject({
+  kind: v.literal('connection-progress'),
+  requestId: RequestIdSchema,
+  provider: ProviderIdSchema,
+  status: v.picklist(['checking-session', 'waiting-for-sign-in', 'verifying-session']),
+});
+export type AccessProgress = v.InferOutput<typeof AccessProgressSchema>;
+export const AccessMessageSchema = v.variant('kind', [
+  AccessReplySchema,
+  AccessEventSchema,
+  AccessProgressSchema,
+]);
 export type AccessMessage = v.InferOutput<typeof AccessMessageSchema>;

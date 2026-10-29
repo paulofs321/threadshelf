@@ -14,9 +14,17 @@ import { providerLinkVerifiers } from '../../platform/link-verifiers';
 import { DescriptionSearch, SearchModes } from '../../description';
 import { browserLanguageModel, OnDeviceModel } from '../../description/on-device/model';
 import type { LocalAiState } from '../../description/on-device/types';
+import { LocalPreferences } from '../../storage/preferences';
+import { SessionCheckedSearch } from '../../platform/session-checked-search';
 
 interface ProviderState {
-  status: AccessReply['status'] | 'idle' | 'connecting';
+  status:
+    | AccessReply['status']
+    | 'idle'
+    | 'connecting'
+    | 'checking-session'
+    | 'waiting-for-sign-in'
+    | 'verifying-session';
   pending: boolean;
   scope?: SessionScope;
 }
@@ -27,6 +35,7 @@ const initialState: Record<ProviderId, ProviderState> = {
 
 export function AccessPanel() {
   const [states, setStates] = useState(initialState);
+  const [preferences] = useState(() => new LocalPreferences(localStorage));
   const [search, setSearch] = useState<SearchPort | null>(null);
   const searchClient = useRef<PanelSearchClient | null>(null);
   const client = useRef<AccessClient | null>(null);
@@ -66,8 +75,16 @@ export function AccessPanel() {
         model: () => (ai.enabled ? ai : undefined),
         policy: { modelTimeoutMs: 10_000, rankingTimeoutMs: 40_000, requestTimeoutMs: 60_000 },
       });
-      setSearch(new SearchModes(searchClient.current, description));
       client.current = new AccessClient(connection, () => crypto.randomUUID());
+      setSearch(
+        new SessionCheckedSearch(
+          new SearchModes(searchClient.current, description),
+          client.current,
+        ),
+      );
+      client.current.subscribeProgress((event) => {
+        update(event.provider, { status: event.status, pending: true });
+      });
       client.current.subscribe((event: AccessEvent) => {
         // Interruption is published inside the port callback; consume Chrome's error there.
         // Keeping this on the client's subscription lets close remove every port listener.
@@ -94,7 +111,7 @@ export function AccessPanel() {
 
   useEffect(() => {
     searchClient.current?.keepAlive(
-      Object.values(states).some((state) => state.scope !== undefined),
+      Object.values(states).some((state) => state.scope !== undefined || state.pending),
     );
   }, [states, search]);
 
@@ -127,7 +144,7 @@ export function AccessPanel() {
     const controller = new AbortController();
     ai.disable();
     active.current.set(provider, controller);
-    update(provider, { status: 'connecting', pending: true });
+    update(provider, { status: 'checking-session', pending: true });
 
     try {
       // This call happens synchronously in the click handler, before any await loses the gesture.
@@ -168,7 +185,7 @@ export function AccessPanel() {
 
       update(
         provider,
-        reply.status === 'selected'
+        reply.status === 'connected'
           ? { status: reply.status, pending: false, scope: reply.scope }
           : { status: reply.status, pending: false },
       );
@@ -196,6 +213,7 @@ export function AccessPanel() {
   return (
     <SearchScreen
       search={search}
+      preferences={preferences}
       ai={{
         state: aiState,
         enable: () => {
@@ -228,6 +246,16 @@ export function AccessPanel() {
         void perform(provider, 'disconnect');
       }}
       onCancel={cancel}
+      onClearLocalData={() => {
+        for (const controller of active.current.values()) controller.abort();
+
+        ai.disable();
+        client.current?.close();
+        searchClient.current?.close();
+        setStates(initialState);
+        setSearch(null);
+        preferences.clear();
+      }}
     />
   );
 }

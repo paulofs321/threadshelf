@@ -43,7 +43,17 @@ export function sameScope(left: SessionScope, right: SessionScope): boolean {
 export const SessionOutcomeSchema = v.variant('status', [
   v.strictObject({ status: v.literal('ready'), scope: SessionScopeSchema }),
   v.strictObject({
-    status: v.picklist(['login-expired', 'permission-needed', 'unavailable', 'scope-changed']),
+    status: v.picklist([
+      'login-expired',
+      'permission-needed',
+      'unavailable',
+      'scope-changed',
+      'schema-changed',
+      'rate-limited',
+      'timeout',
+      'cancelled',
+      'interrupted',
+    ]),
     ...scopeEntries,
   }),
 ]);

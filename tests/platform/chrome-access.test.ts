@@ -102,7 +102,22 @@ const sites = {
 
 function useSite(provider: ProviderId) {
   chrome.tabs.query.mockResolvedValue([sites[provider].tab]);
-  chrome.scripting.executeScript.mockResolvedValue([sites[provider].probe]);
+  chrome.scripting.executeScript.mockImplementation(
+    async ({ func }: { func: { name: string } }) => [
+      {
+        ...sites[provider].probe,
+        result:
+          func.name === 'readChatGptDocument' || func.name === 'readGoogleDocument'
+            ? {
+                status: 'success',
+                identityBefore: 'a'.repeat(64),
+                identityAfter: 'a'.repeat(64),
+                ...(provider === 'chatgpt' ? { body: null } : {}),
+              }
+            : sites[provider].probe.result,
+      },
+    ],
+  );
 }
 
 async function select(port: ReturnType<typeof connection>, provider: ProviderId = 'chatgpt') {
@@ -115,12 +130,12 @@ async function select(port: ReturnType<typeof connection>, provider: ProviderId 
   });
   await vi.waitFor(() =>
     expect(port.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ requestId, status: 'selected' }),
+      expect.objectContaining({ requestId, status: 'connected' }),
     ),
   );
   const reply = port.postMessage.mock.lastCall?.[0];
 
-  if (reply?.kind !== 'reply' || reply.status !== 'selected') {
+  if (reply?.kind !== 'reply' || reply.status !== 'connected') {
     throw new Error('Expected synthetic selection.');
   }
 
@@ -144,11 +159,97 @@ beforeEach(() => {
   chrome.tabs.remove.mockResolvedValue(undefined);
   chrome.permissions.contains.mockResolvedValue(true);
   chrome.tabs.query.mockResolvedValue([tab]);
-  chrome.scripting.executeScript.mockResolvedValue([probe]);
+  chrome.scripting.executeScript.mockImplementation(
+    async ({ func }: { func: { name: string } }) => [
+      {
+        ...probe,
+        result:
+          func.name === 'readChatGptDocument'
+            ? {
+                status: 'success',
+                body: null,
+                identityBefore: 'a'.repeat(64),
+                identityAfter: 'a'.repeat(64),
+              }
+            : probe.result,
+      },
+    ],
+  );
   registerChromeAccess();
 });
 
 describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
+  it.each(['chatgpt', 'google-ai-mode'] as const)(
+    'waits for a dedicated %s sign-in tab and injects only after a supported return',
+    async (provider) => {
+      const port = connection();
+      useSite(provider);
+      const metadata = sites[provider].probe;
+      chrome.scripting.executeScript.mockImplementation(
+        async ({ func }: { func: { name: string } }) => [
+          {
+            ...metadata,
+            result:
+              func.name === 'inspectSelectedDocument'
+                ? metadata.result
+                : { status: 'login-expired' },
+          },
+        ],
+      );
+      chrome.tabs.create.mockResolvedValue({ id: 19 });
+      chrome.tabs.get.mockResolvedValue({
+        id: 19,
+        windowId: 3,
+        incognito: false,
+        status: 'complete',
+        url: provider === 'chatgpt' ? 'https://chatgpt.com/auth/login' : undefined,
+      });
+      port.onMessage.emit({ operation: 'connect', provider, requestId: 'fiction-sign-in' });
+      await vi.waitFor(() =>
+        expect(chrome.tabs.create).toHaveBeenCalledWith(expect.objectContaining({ active: true })),
+      );
+      expect(port.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'waiting-for-sign-in' }),
+      );
+      expect(
+        chrome.scripting.executeScript.mock.calls.every(([call]) => call.target.tabId !== 19),
+      ).toBe(true);
+      const returned = { ...sites[provider].tab, id: 19 };
+      chrome.tabs.get.mockResolvedValue(returned);
+      chrome.tabs.query.mockResolvedValue([sites[provider].tab, returned]);
+      chrome.scripting.executeScript.mockImplementation(
+        async ({ func, target }: { func: { name: string }; target: { tabId: number } }) => [
+          {
+            ...metadata,
+            documentId: target.tabId === 19 ? 'fiction-returned-document' : metadata.documentId,
+            result:
+              func.name === 'inspectSelectedDocument'
+                ? metadata.result
+                : {
+                    status: 'success',
+                    identityBefore: 'a'.repeat(64),
+                    identityAfter: 'a'.repeat(64),
+                    ...(provider === 'chatgpt' ? { body: null } : {}),
+                  },
+          },
+        ],
+      );
+      chrome.tabs.onUpdated.emit(19, { status: 'complete' });
+      await vi.waitFor(() =>
+        expect(port.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            status: 'connected',
+            scope: expect.objectContaining({ generation: 3 }),
+          }),
+        ),
+      );
+      expect(chrome.tabs.create).toHaveBeenCalledOnce();
+      expect(chrome.tabs.remove).not.toHaveBeenCalled();
+      port.onMessage.emit({ operation: 'keepalive' });
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith({ kind: 'alive' }));
+      port.onDisconnect.emit();
+    },
+  );
   it('acknowledges strictly allowlisted keepalive messages without browser/provider access', () => {
     const port = connection();
     port.onMessage.emit({ operation: 'keepalive' });
@@ -182,7 +283,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     });
     await vi.waitFor(() =>
       expect(port.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ requestId: 'fiction-retained-chat', status: 'selected' }),
+        expect.objectContaining({ requestId: 'fiction-retained-chat', status: 'connected' }),
       ),
     );
     useSite('google-ai-mode');
@@ -194,7 +295,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     });
     await vi.waitFor(() =>
       expect(port.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ requestId: 'fiction-retained-google', status: 'selected' }),
+        expect.objectContaining({ requestId: 'fiction-retained-google', status: 'connected' }),
       ),
     );
     port.onDisconnect.emit();
@@ -221,8 +322,29 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
       return landing;
     });
     chrome.tabs.get.mockResolvedValue(landing);
-    chrome.scripting.executeScript.mockImplementation(async (options: { args: [string] }) =>
-      options.args[0] === 'https://www.google.com' ? [sites['google-ai-mode'].probe] : [probe],
+    chrome.scripting.executeScript.mockImplementation(
+      async (options: { args: [string]; func: { name: string } }) => {
+        const metadata =
+          options.args[0] === 'https://www.google.com' || options.func.name === 'readGoogleDocument'
+            ? sites['google-ai-mode'].probe
+            : probe;
+
+        return [
+          {
+            ...metadata,
+            result:
+              options.func.name === 'readChatGptDocument' ||
+              options.func.name === 'readGoogleDocument'
+                ? {
+                    status: 'success',
+                    ...(options.func.name === 'readChatGptDocument' ? { body: null } : {}),
+                    identityBefore: 'a'.repeat(64),
+                    identityAfter: 'a'.repeat(64),
+                  }
+                : metadata.result,
+          },
+        ];
+      },
     );
     port.onMessage.emit({
       operation: 'connect',
@@ -233,8 +355,8 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
       expect(port.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           requestId: 'fiction-background-chat',
-          status: 'selected',
-          session: 'unverified',
+          status: 'connected',
+          session: 'authenticated',
         }),
       ),
     );
@@ -253,13 +375,15 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
       expect(port.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           requestId: 'fiction-google-still-connected',
-          status: 'selected',
+          status: 'connected',
         }),
       ),
     );
-    expect(port.postMessage.mock.calls.some(([message]) => message.kind === 'invalidated')).toBe(
-      false,
-    );
+    expect(
+      port.postMessage.mock.calls.some(
+        ([message]) => message.kind === 'invalidated' && message.provider === 'chatgpt',
+      ),
+    ).toBe(false);
     expect(chrome.tabs.remove).not.toHaveBeenCalled();
     port.onDisconnect.emit();
     await vi.waitFor(() => expect(chrome.tabs.remove).toHaveBeenCalledExactlyOnceWith(10));
@@ -403,7 +527,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     await vi.waitFor(() => {
       for (const port of [first, second]) {
         expect(port.postMessage).toHaveBeenLastCalledWith(
-          expect.objectContaining({ status: 'selected' }),
+          expect.objectContaining({ status: 'connected' }),
         );
       }
     });
@@ -415,7 +539,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     first.onMessage.emit({ operation: 'connect', provider: 'chatgpt', requestId: 'fiction-retry' });
     await vi.waitFor(() =>
       expect(first.postMessage).toHaveBeenLastCalledWith(
-        expect.objectContaining({ status: 'selected' }),
+        expect.objectContaining({ status: 'connected' }),
       ),
     );
     expect(chrome.tabs.query).toHaveBeenLastCalledWith({
@@ -643,7 +767,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
         expect(port.postMessage).toHaveBeenLastCalledWith(
           expect.objectContaining({
             requestId: 'fiction-pending',
-            status: 'selected',
+            status: 'connected',
             scope: expect.objectContaining({ provider, generation: 1 }),
           }),
         ),
@@ -651,11 +775,19 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
       port.onDisconnect.emit();
     },
   );
-  it('uses the separate exact Google origin/permission and still labels session access unverified', async () => {
+  it('uses the separate exact Google origin/permission and authenticates before reporting connected', async () => {
     chrome.tabs.query.mockResolvedValue([{ ...tab, url: 'https://www.google.com/search?udm=50' }]);
-    chrome.scripting.executeScript.mockResolvedValue([
-      { ...probe, result: { origin: 'https://www.google.com', topLevel: true } },
-    ]);
+    chrome.scripting.executeScript.mockImplementation(
+      async ({ func }: { func: { name: string } }) => [
+        {
+          ...probe,
+          result:
+            func.name === 'readGoogleDocument'
+              ? { status: 'success', identityBefore: 'a'.repeat(64), identityAfter: 'a'.repeat(64) }
+              : { origin: 'https://www.google.com', topLevel: true },
+        },
+      ],
+    );
     const port = connection();
     port.onMessage.emit({
       operation: 'connect',
@@ -665,8 +797,8 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
     await vi.waitFor(() =>
       expect(port.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          status: 'selected',
-          session: 'unverified',
+          status: 'connected',
+          session: 'authenticated',
           scope: expect.objectContaining({ provider: 'google-ai-mode' }),
         }),
       ),
@@ -683,7 +815,7 @@ describe('Chrome lifecycle composition (mocked, not a browser probe)', () => {
   it('resolves omitted sender document metadata only from one canonical SIDE_PANEL context', async () => {
     const port = connection({ documentId: undefined, documentLifecycle: undefined });
     await select(port);
-    expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ status: 'selected' }));
+    expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ status: 'connected' }));
     expect(chrome.runtime.getContexts).toHaveBeenCalledWith({ documentUrls: [sender.url] });
     port.onDisconnect.emit();
   });

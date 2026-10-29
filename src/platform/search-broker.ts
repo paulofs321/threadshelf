@@ -1,4 +1,4 @@
-import { sameScope, validate } from '../contracts';
+import { sameScope, validate, SessionOutcomeSchema } from '../contracts';
 import type {
   ConversationContextPort,
   ProviderId,
@@ -22,7 +22,11 @@ type ProviderFactory = (binding: SelectedDocumentBinding) => BoundProvider;
 /** One engine per validated panel connection, sharing its in-process document capabilities. */
 export class PanelSearchBroker {
   private readonly engine: KeywordSearch;
-  private readonly providers = new Map<ProviderId, { scope: SessionScope; port: BoundProvider }>();
+  private readonly providers = new Map<
+    ProviderId,
+    { scope: SessionScope; port: BoundProvider; verified?: boolean }
+  >();
+  private readonly checks = new Map<ProviderId, AbortController>();
   private readonly seen = new Set<string>();
   private group: { id: string; key: string; visited: Map<ProviderId, Set<string>> } | undefined;
   private active:
@@ -86,6 +90,73 @@ export class PanelSearchBroker {
     });
   }
 
+  async inspectSession(scope: SessionScope, signal: AbortSignal): Promise<unknown> {
+    const binding = this.access.bindSelectedDocument(scope);
+
+    if (!binding)
+      return { provider: scope.provider, generation: scope.generation, status: 'scope-changed' };
+
+    this.checks.get(scope.provider)?.abort();
+    this.checks.delete(scope.provider);
+
+    let bound = this.providers.get(scope.provider);
+
+    if (!bound || !sameScope(bound.scope, scope)) {
+      this.invalidate(scope.provider);
+      bound = { scope, port: this.factories[scope.provider](binding), verified: false };
+      this.providers.set(scope.provider, bound);
+    }
+
+    // Explicit verification owns this adapter until fresh readiness is established again.
+    bound.verified = false;
+    const port = bound.port;
+    const raw = await port.inspectSession({ signal });
+    const result = validate(SessionOutcomeSchema, raw);
+    bound.verified =
+      result.ok && result.value.status === 'ready' && sameScope(result.value.scope, scope);
+
+    return raw;
+  }
+
+  async recheckSessions(): Promise<void> {
+    if (this.closed || this.active) return;
+
+    await Promise.all(
+      [...this.providers].map(async ([provider, bound]) => {
+        if (!bound.verified || this.checks.has(provider)) return;
+
+        const controller = new AbortController();
+        this.checks.set(provider, controller);
+
+        try {
+          const result = validate(
+            SessionOutcomeSchema,
+            await bound.port.inspectSession({ signal: controller.signal }),
+          );
+
+          if (controller.signal.aborted || this.providers.get(provider) !== bound) return;
+
+          if (
+            !result.ok ||
+            result.value.status !== 'ready' ||
+            !sameScope(result.value.scope, bound.scope)
+          ) {
+            const status =
+              result.ok && result.value.status === 'login-expired'
+                ? 'login-expired'
+                : 'scope-changed';
+            this.access.invalidate(provider, status);
+          }
+        } catch {
+          if (!controller.signal.aborted && this.providers.get(provider) === bound)
+            this.access.invalidate(provider, 'scope-changed');
+        } finally {
+          if (this.checks.get(provider) === controller) this.checks.delete(provider);
+        }
+      }),
+    );
+  }
+
   receive(input: unknown): boolean {
     const parsed = validate(SearchCommandSchema, input);
 
@@ -131,6 +202,9 @@ export class PanelSearchBroker {
 
     this.seen.add(request.requestId);
     this.active?.controller.abort();
+
+    for (const controller of this.checks.values()) controller.abort();
+
     const run = {
       request,
       controller: new AbortController(),
@@ -153,6 +227,8 @@ export class PanelSearchBroker {
   }
 
   invalidate(provider: ProviderId): void {
+    this.checks.get(provider)?.abort();
+    this.checks.delete(provider);
     this.group?.visited.delete(provider);
     const bound = this.providers.get(provider);
 

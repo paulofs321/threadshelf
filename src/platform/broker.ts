@@ -2,7 +2,13 @@ import { requireValid, validate } from '../contracts/validation';
 import { EphemeralScopeSchema, sameScope } from '../contracts/session';
 import type { ProviderId, RequestId } from '../contracts/primitives';
 import type { SessionScope } from '../contracts/session';
-import { AccessRequestSchema, maximumRequestsPerPort, operationTimeoutMs } from './protocol';
+import { SessionOutcomeSchema } from '../contracts/session';
+import {
+  AccessRequestSchema,
+  maximumRequestsPerPort,
+  operationTimeoutMs,
+  signInTimeoutMs,
+} from './protocol';
 import type { AccessEvent, AccessMessage, AccessOperation, FailureStatus } from './protocol';
 import { permittedUrl, SelectedTabSchema, validateProbe } from './policy';
 import type { SelectedTab } from './policy';
@@ -26,6 +32,11 @@ export interface SelectedTabAccessPort {
   inspectDocument(provider: ProviderId, target: ProbeTarget, signal: AbortSignal): Promise<unknown>;
 }
 
+export interface SessionAccessPort {
+  inspect(scope: SessionScope, signal: AbortSignal): Promise<unknown>;
+  signIn(provider: ProviderId, windowId: number, signal: AbortSignal): Promise<number | null>;
+}
+
 interface Selection {
   tab: SelectedTab;
   documentId: string;
@@ -45,6 +56,7 @@ interface Pending {
   timer: ReturnType<typeof setTimeout>;
   tabId?: number;
   generation: number;
+  signInStarted?: boolean;
 }
 
 export class AccessBroker {
@@ -59,6 +71,7 @@ export class AccessBroker {
     private readonly send: (message: AccessMessage) => void,
     private readonly closeTransport: () => void,
     private readonly freshId: () => string,
+    private readonly sessions?: SessionAccessPort,
   ) {}
 
   bindSelectedDocument(scope: SessionScope): SelectedDocumentBinding | null {
@@ -124,12 +137,39 @@ export class AccessBroker {
       return;
     }
 
+    if (request.operation === 'verify-session') {
+      const item: Pending = {
+        request,
+        generation: request.scope.generation,
+        controller: new AbortController(),
+        timer: setTimeout(
+          () => this.invalidate(request.provider, 'scope-changed', 'timeout'),
+          operationTimeoutMs,
+        ),
+      };
+      this.pending.set(request.requestId, item);
+      void this.verify(item, request.scope).catch(() => {
+        if (this.current(item)) this.invalidate(request.provider, 'unavailable');
+      });
+
+      return;
+    }
+
     // Unknown identity never shares an earlier operation's partition, even in the same document.
     this.selected.delete(request.provider);
     const generation = this.nextGeneration(request.provider);
+
+    if (selection)
+      this.send({
+        kind: 'invalidated',
+        provider: request.provider,
+        status: 'scope-changed',
+        generation,
+      });
+
     const pending: Pending = {
       request,
-      generation,
+      generation: selection ? this.nextGeneration(request.provider) : generation,
       controller: new AbortController(),
       timer: setTimeout(() => {
         this.invalidate(request.provider, 'scope-changed', 'timeout');
@@ -220,13 +260,14 @@ export class AccessBroker {
     this.pending.delete(item.request.requestId);
     clearTimeout(item.timer);
     item.controller.abort();
+    this.selected.delete(item.request.provider);
 
     this.port.release?.(item.request.provider);
 
     this.send({ kind: 'reply', requestId: item.request.requestId, status });
   }
 
-  private async run(item: Pending, previous?: Selection): Promise<void> {
+  private async run(item: Pending, previous?: Selection, returnedTabId?: number): Promise<void> {
     const provider = item.request.provider;
     const windowId = await this.port.ownerWindow();
 
@@ -240,7 +281,12 @@ export class AccessBroker {
 
     const tabResult = validate(
       SelectedTabSchema,
-      await this.port.selectedTab(windowId, provider, item.controller.signal, previous?.tab.id),
+      await this.port.selectedTab(
+        windowId,
+        provider,
+        item.controller.signal,
+        returnedTabId ?? previous?.tab.id,
+      ),
     );
 
     if (!this.current(item)) return;
@@ -313,14 +359,126 @@ export class AccessBroker {
       partition: this.freshId(),
     });
     this.selected.set(provider, { tab, documentId, scope });
+
+    if (this.sessions) {
+      this.send({
+        kind: 'connection-progress',
+        requestId: item.request.requestId,
+        provider,
+        status: item.signInStarted ? 'verifying-session' : 'checking-session',
+      });
+      const result = validate(
+        SessionOutcomeSchema,
+        await this.sessions.inspect(scope, item.controller.signal),
+      );
+
+      if (!this.current(item)) return;
+
+      if (!result.ok) return this.fail(item, 'unavailable');
+
+      if (result.value.status === 'ready') {
+        if (!sameScope(scope, result.value.scope)) return this.fail(item, 'scope-changed');
+      } else {
+        if (result.value.provider !== provider || result.value.generation !== scope.generation)
+          return this.fail(item, 'scope-changed');
+
+        if (result.value.status !== 'login-expired' || item.signInStarted)
+          return this.fail(item, result.value.status);
+
+        // Only an explicit Connect/Recheck request can reach this path. No search opens sign-in.
+        // Retire every old capability, retaining only this bounded pending intent.
+        this.selected.delete(provider);
+        this.port.release?.(provider);
+        delete item.tabId;
+        item.signInStarted = true;
+        const generation = this.nextGeneration(provider);
+        this.send({ kind: 'invalidated', provider, status: 'scope-changed', generation });
+        item.generation = this.nextGeneration(provider);
+        clearTimeout(item.timer);
+        item.timer = setTimeout(
+          () => this.invalidate(provider, 'scope-changed', 'expired-wait'),
+          signInTimeoutMs,
+        );
+        this.send({
+          kind: 'connection-progress',
+          requestId: item.request.requestId,
+          provider,
+          status: 'waiting-for-sign-in',
+        });
+        const returned = await this.sessions.signIn(provider, windowId, item.controller.signal);
+
+        if (!this.current(item)) return;
+
+        if (returned === null) return this.fail(item, 'cancelled');
+
+        clearTimeout(item.timer);
+        item.timer = setTimeout(
+          () => this.invalidate(provider, 'scope-changed', 'timeout'),
+          operationTimeoutMs,
+        );
+        this.send({
+          kind: 'connection-progress',
+          requestId: item.request.requestId,
+          provider,
+          status: 'verifying-session',
+        });
+        await this.run(item, undefined, returned);
+
+        return;
+      }
+    }
+
+    if (!this.current(item)) return;
+
+    this.pending.delete(item.request.requestId);
+    clearTimeout(item.timer);
+    this.send(
+      this.sessions
+        ? {
+            kind: 'reply',
+            requestId: item.request.requestId,
+            status: 'connected',
+            scope,
+            session: 'authenticated',
+          }
+        : {
+            kind: 'reply',
+            requestId: item.request.requestId,
+            status: 'selected',
+            scope,
+            session: 'unverified',
+          },
+    );
+  }
+
+  private async verify(
+    item: Pending,
+    scope: Extract<SessionScope, { kind: 'ephemeral' }>,
+  ): Promise<void> {
+    const result = validate(
+      SessionOutcomeSchema,
+      await this.sessions?.inspect(scope, item.controller.signal),
+    );
+
+    if (!this.current(item)) return;
+
+    if (!result.ok || result.value.status !== 'ready' || !sameScope(result.value.scope, scope)) {
+      this.invalidate(
+        scope.provider,
+        result.ok && result.value.status === 'login-expired' ? 'login-expired' : 'scope-changed',
+      );
+
+      return;
+    }
+
     this.pending.delete(item.request.requestId);
     clearTimeout(item.timer);
     this.send({
       kind: 'reply',
       requestId: item.request.requestId,
-      status: 'selected',
+      status: 'verified',
       scope,
-      session: 'unverified',
+      session: 'authenticated',
     });
   }
 }

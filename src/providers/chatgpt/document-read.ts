@@ -230,6 +230,10 @@ export async function readChatGptDocument(
   let observedIdentity: string | undefined;
 
   async function fresh() {
+    // A fresh explicit HTTP 401 is logout evidence even if the rendered bootstrap disappeared.
+    // Missing/malformed bootstrap on a 200 page remains schema-changed, never guessed sign-out.
+    const html = await get('https://chatgpt.com/', 'html');
+    check();
     const current = bootstrap(document);
 
     if (current.structure !== 'personal')
@@ -241,8 +245,6 @@ export async function readChatGptDocument(
         ),
       );
 
-    const html = await get('https://chatgpt.com/', 'html');
-    check();
     const server = bootstrap(new DOMParser().parseFromString(html, 'text/html'));
 
     if (current.userId !== server.userId || current.accountId !== server.accountId)

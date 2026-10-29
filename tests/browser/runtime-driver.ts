@@ -23,9 +23,11 @@ browser.runtime.onMessage.addListener((input: unknown, _sender, sendResponse) =>
 
   if (input.command === 'continue') button('Continue to search')?.click();
 
-  if (input.command === 'connect-chat') button('Connect ChatGPT')?.click();
+  if (input.command === 'connect-chat')
+    (button('Connect ChatGPT') ?? button('Reconnect ChatGPT'))?.click();
 
-  if (input.command === 'connect-google') button('Connect Google Search AI Mode')?.click();
+  if (input.command === 'connect-google')
+    (button('Connect Google Search AI Mode') ?? button('Reconnect Google Search AI Mode'))?.click();
 
   if (input.command === 'check-ai') button('Check AI support')?.click();
 

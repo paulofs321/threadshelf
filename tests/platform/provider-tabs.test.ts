@@ -29,12 +29,11 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 describe('independent provider document ownership', () => {
-  it('opens supported default AI Mode when other Google pages or account selectors are open', async () => {
+  it('opens supported default AI Mode when other Google pages are open', async () => {
     const { manager, controller } = harness();
     const google = { ...tab, id: 8, active: false, url: 'https://www.google.com/search?udm=50' };
     chrome.tabs.query.mockResolvedValue([
       { ...google, url: 'https://www.google.com/' },
-      { ...google, id: 9, url: 'https://www.google.com/search?udm=50&authuser=1' },
       { ...google, id: 10, url: 'https://www.google.com/search?q=fiction' },
     ]);
     chrome.tabs.create.mockResolvedValue(google);
@@ -45,6 +44,37 @@ describe('independent provider document ownership', () => {
       active: false,
       url: google.url,
     });
+  });
+
+  it.each(['active', 'inactive', 'active-with-default'] as const)(
+    'rejects an unsupported Google account selector (%s) without substituting the default account',
+    async (kind) => {
+      const { manager, controller } = harness();
+      const unsupported = {
+        ...tab,
+        url: 'https://www.google.com/search?udm=50&authuser=1',
+        active: kind !== 'inactive',
+      };
+      chrome.tabs.query.mockResolvedValue([
+        unsupported,
+        ...(kind === 'active-with-default'
+          ? [{ ...tab, id: 8, active: false, url: 'https://www.google.com/search?udm=50' }]
+          : []),
+      ]);
+      expect(await manager.select(3, 'google-ai-mode', controller.signal)).toBeNull();
+      expect(chrome.tabs.create).not.toHaveBeenCalled();
+    },
+  );
+  it('keeps a pinned default Google source while the user browses another account tab', async () => {
+    const { manager, controller } = harness();
+    const source = { ...tab, url: 'https://www.google.com/search?udm=50', active: false };
+    chrome.tabs.query.mockResolvedValue([source]);
+    expect(await manager.select(3, 'google-ai-mode', controller.signal)).toEqual(source);
+    chrome.tabs.query.mockResolvedValue([
+      source,
+      { ...source, id: 8, active: true, url: 'https://www.google.com/search?udm=50&authuser=1' },
+    ]);
+    expect(await manager.select(3, 'google-ai-mode', controller.signal, source.id)).toEqual(source);
   });
 
   it.each([
