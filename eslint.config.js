@@ -19,7 +19,7 @@ export default defineConfig([
   ]),
   { files: ['**/*.js'], extends: [js.configs.recommended] },
   {
-    files: ['**/*.{ts,tsx}'],
+    files: ['**/*.{ts,tsx,mts,cts}'],
     extends: [js.configs.recommended],
     languageOptions: {
       parser: babelParser,

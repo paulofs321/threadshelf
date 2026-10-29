@@ -328,7 +328,18 @@ try {
       (command) => chrome.runtime.sendMessage({ kind: 'synthetic-panel-driver', command }),
       command,
     );
-  await expect.poll(async () => (await drive('snapshot').catch(() => null))?.ready).toBe(true);
+
+  try {
+    await expect.poll(async () => (await drive('snapshot').catch(() => null))?.ready).toBe(true);
+  } catch {
+    const contexts = await worker.evaluate(async () =>
+      (await chrome.runtime.getContexts({})).map((item) => item.contextType),
+    );
+    throw new Error(
+      `Synthetic panel did not mount: ${JSON.stringify({ contexts, errors, snapshot: await drive('snapshot').catch(() => null) })}`,
+    );
+  }
+
   await drive('connect-chat');
   await expect
     .poll(async () => (await drive('snapshot')).statuses[0])
@@ -496,6 +507,35 @@ try {
     await source.reload();
     await expect.poll(async () => (await drive('snapshot')).statuses[index]).toContain('changed');
     const originalUrl = source.url();
+    // Cancel an actual panel-owned wait; a late synthetic login return must not reconnect.
+    const cancelledCreated = context.waitForEvent('page');
+    await drive(command);
+    const cancelledLogin = await cancelledCreated;
+    await cancelledLogin.goto(entry);
+    await expect
+      .poll(async () => (await drive('snapshot')).statuses[index])
+      .toContain('Waiting for sign-in');
+    await drive('cancel-connect');
+    await expect.poll(async () => (await drive('snapshot')).statuses[index]).toContain('cancelled');
+    assert.equal(cancelledLogin.isClosed(), false);
+    signedOut.delete(provider);
+    await cancelledLogin.goto(destination);
+    await expect.poll(async () => (await drive('snapshot')).statuses[index]).toContain('cancelled');
+    assert.equal(source.url(), originalUrl);
+    await cancelledLogin.close();
+
+    // Closing the foreground sign-in tab also terminates waiting without an authenticated scope.
+    signedOut.add(provider);
+    const closedCreated = context.waitForEvent('page');
+    await drive(command);
+    const closedLogin = await closedCreated;
+    await closedLogin.goto(entry);
+    await expect
+      .poll(async () => (await drive('snapshot')).statuses[index])
+      .toContain('Waiting for sign-in');
+    await closedLogin.close();
+    await expect.poll(async () => (await drive('snapshot')).statuses[index]).toContain('cancelled');
+
     const loginCreated = context.waitForEvent('page');
     await drive(command);
     const login = await loginCreated;

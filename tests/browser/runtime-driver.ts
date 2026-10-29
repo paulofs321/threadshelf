@@ -23,6 +23,8 @@ browser.runtime.onMessage.addListener((input: unknown, _sender, sendResponse) =>
 
   if (input.command === 'continue') button('Continue to search')?.click();
 
+  if (input.command === 'cancel-connect') button('Cancel')?.click();
+
   if (input.command === 'connect-chat')
     (button('Connect ChatGPT') ?? button('Reconnect ChatGPT'))?.click();
 
