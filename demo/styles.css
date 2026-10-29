@@ -1,0 +1,74 @@
+@import '../src/ui/styles.css';
+@source './**/*.{ts,tsx}';
+
+.demo-shell {
+  display: grid;
+  grid-template-columns: minmax(15rem, 22rem) minmax(0, 36rem);
+  justify-content: center;
+  align-items: start;
+  gap: 3rem;
+  padding: 3rem 1.5rem;
+}
+.demo-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding-top: 1rem;
+  line-height: 1.65;
+}
+.demo-guide h2 {
+  font-size: 2rem;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+.demo-guide select {
+  width: 100%;
+  border: 1px solid var(--input);
+  border-radius: 0.5rem;
+  padding: 0.65rem;
+  background: var(--background);
+}
+.demo-guide summary {
+  cursor: pointer;
+  color: var(--primary);
+}
+.demo-guide ul {
+  padding: 0.75rem 0 0 1.25rem;
+  list-style: disc;
+}
+.demo-guide li + li {
+  margin-top: 0.75rem;
+}
+.demo-panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: clip;
+}
+.demo-panel main {
+  min-height: 40rem;
+}
+.demo-notice {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  padding: 0.75rem 1rem;
+  font-size: 0.8rem;
+}
+::selection {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+@media (max-width: 760px) {
+  .demo-shell {
+    grid-template-columns: minmax(0, 36rem);
+    gap: 1.5rem;
+    padding: 1rem 0.5rem;
+  }
+  .demo-guide {
+    padding: 0.5rem;
+  }
+  .demo-guide h2 {
+    font-size: 1.5rem;
+  }
+}

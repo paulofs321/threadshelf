@@ -19,7 +19,11 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run typecheck && npm run format:check",
-    "test:browser": "PLAYWRIGHT_BROWSERS_PATH=./node_modules/.cache/ms-playwright node tests/browser/smoke.mjs"
+    "test:browser": "PLAYWRIGHT_BROWSERS_PATH=./node_modules/.cache/ms-playwright node tests/browser/smoke.mjs",
+    "demo:dev": "vite --config vite.demo.config.ts --host 127.0.0.1",
+    "demo:build": "vite build --config vite.demo.config.ts",
+    "demo:preview": "vite preview --config vite.demo.config.ts --host 127.0.0.1",
+    "test:demo": "PLAYWRIGHT_BROWSERS_PATH=./node_modules/.cache/ms-playwright node tests/browser/demo.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "1.5.0",

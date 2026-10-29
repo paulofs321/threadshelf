@@ -9,4 +9,5 @@ node_modules/
 dist/
 coverage/
 .vitest/
+output/playwright/
 package-lock.json

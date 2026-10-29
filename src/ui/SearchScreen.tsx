@@ -29,6 +29,7 @@ import { Input } from './components/input';
 import type { Preferences } from '../storage/preferences';
 
 export interface SearchScreenProps extends SetupScreenProps {
+  environment?: 'extension' | 'demo';
   scopes: readonly SessionScope[];
   search: SearchPort | null;
   verifiers: LinkVerifiers;
@@ -305,14 +306,16 @@ export function SearchScreen(props: SearchScreenProps) {
         </div>
         {page === 'search' ? (
           <div className="ml-auto flex items-center gap-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setPage('connections')}
-            >
-              Connect
-            </Button>
+            {props.environment !== 'demo' && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPage('connections')}
+              >
+                Connect
+              </Button>
+            )}
             <Button
               type="button"
               variant="ghost"
@@ -482,7 +485,10 @@ export function SearchScreen(props: SearchScreenProps) {
                   {props.ai
                     ? 'Description uses optional local AI with a keyword/topic fallback.'
                     : 'Description uses keyword/topic fallback matching. Optional model support is unavailable.'}
-                  {mode === 'description' &&
+                  {props.environment === 'demo' &&
+                    ' This demo searches only the fictional excerpts below; no model or provider is contacted.'}
+                  {props.environment !== 'demo' &&
+                    mode === 'description' &&
                     ' Searches read limited conversation excerpts to find matching subtopics. Google reads saved threads in a hidden frame within its connected page, without opening tabs.'}
                 </p>
               </div>
@@ -507,8 +513,9 @@ export function SearchScreen(props: SearchScreenProps) {
               )}
               <div className="flex flex-col gap-2">
                 <p className="text-xs text-muted-foreground">
-                  Queries and excerpts stay in memory. Only search mode is saved locally. No excerpt
-                  cache or account consent is stored.
+                  {props.environment === 'demo'
+                    ? 'All demo state stays in memory and resets on reload. Nothing is saved or sent to a provider.'
+                    : 'Queries and excerpts stay in memory. Only search mode is saved locally. No excerpt cache or account consent is stored.'}
                 </p>
                 <Button
                   type="button"
@@ -525,7 +532,7 @@ export function SearchScreen(props: SearchScreenProps) {
                     props.preferences?.clear();
                     props.ai?.disable();
                     props.onClearLocalData?.();
-                    setPage('connections');
+                    setPage(props.environment === 'demo' ? 'search' : 'connections');
                   }}
                 >
                   Clear local data and preferences
@@ -601,6 +608,7 @@ export function SearchScreen(props: SearchScreenProps) {
             outcome={outcome}
             verifiers={props.verifiers}
             timeZone={props.timeZone}
+            environment={props.environment}
             onConnect={(provider) => {
               setPage('connections');
               props.onConnect(provider);
