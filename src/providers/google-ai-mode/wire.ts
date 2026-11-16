@@ -136,7 +136,8 @@ export function parseGoogleRecords(
 
   for (const record of records) {
     const match = kind === 'search' ? tuple(record, 16, 16) : undefined;
-    const row = tuple(match ? match[15] : record, 25, 28);
+    // November 16, 2026 native replies append metadata; consumed positions stay unchanged.
+    const row = tuple(match ? match[15] : record, 25, 31);
     const identifiers = tuple(row[0], 2, 2);
     const id = text(identifiers[1], limits.id);
     const url = originalLink(row, id);
@@ -177,7 +178,7 @@ export function parseGoogleRecords(
     }
 
     if (match?.[14] != null) {
-      const snippet = tuple(match[14], 1, 4);
+      const snippet = tuple(match[14], 1, 6);
       const raw = text(snippet[0], 64_000);
       const value = excerpt(raw);
 

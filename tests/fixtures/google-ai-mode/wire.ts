@@ -28,6 +28,18 @@ export function googleMatch(
   return match;
 }
 
+// November 16, 2026: native records append metadata without moving consumed fields.
+export function googleExtendedThread(id = 'fictional-thread-1'): unknown[] {
+  return [...googleThread(id), null, null, 7];
+}
+
+export function googleExtendedMatch(row = googleExtendedThread()): unknown[] {
+  const match = googleMatch(row);
+  match[14] = ['An exact fictional orchard passage.', 1, 21, 14, 0, 'fictional metadata'];
+
+  return match;
+}
+
 export function googleJson(value: unknown): string {
   return ")]}'\n" + JSON.stringify(value);
 }
