@@ -302,7 +302,9 @@ try {
 
       return route.fulfill({
         contentType: 'application/json',
-        body: googleFixtures.googleJson([[googleFixtures.googleMatch(googleResultThread)]]),
+        body: googleFixtures.googleJson([
+          [googleFixtures.googleExtendedMatch([...googleResultThread, null, null, 7])],
+        ]),
       });
     }
 

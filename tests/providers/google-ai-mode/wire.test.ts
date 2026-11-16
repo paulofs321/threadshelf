@@ -7,7 +7,13 @@ import {
   verifyGoogleOriginalLink,
 } from '../../../src/providers/google-ai-mode/wire';
 import { googleAiModeRequest } from '../../fixtures/google-ai-mode/requests';
-import { googleJson, googleMatch, googleThread } from '../../fixtures/google-ai-mode/wire';
+import {
+  googleExtendedMatch,
+  googleExtendedThread,
+  googleJson,
+  googleMatch,
+  googleThread,
+} from '../../fixtures/google-ai-mode/wire';
 
 function parse(value: unknown, kind: 'search' | 'list' = 'search') {
   let next = 0;
@@ -55,6 +61,33 @@ describe('observed Google Search AI Mode wire forms', () => {
       candidate?.conversationId,
     );
     expect(result.coverage).toEqual({ extent: 'unknown', reasons: ['unknown-reach'] });
+  });
+
+  it('accepts appended native thread metadata in search and list without changing normalized fields', () => {
+    const legacy = parse([[googleMatch()]]);
+    const extended = parse([[googleMatch(googleExtendedThread())]]);
+    expect(extended).toEqual(legacy);
+    expect(parse([[googleExtendedThread()]], 'list')).toEqual(parse([[googleThread()]], 'list'));
+  });
+
+  it('preserves only the exact snippet text when native snippet metadata is extended', () => {
+    const extended = googleExtendedMatch(googleThread());
+    const legacy = googleMatch(googleThread(), 'An exact fictional orchard passage.');
+    expect(parse([[extended]])).toEqual(parse([[legacy]]));
+    expect(parse([[googleExtendedMatch()]])).toEqual(parse([[legacy]]));
+  });
+
+  it('still rejects oversized records and malformed consumed fields in the extended format', () => {
+    expect(() => parse([[googleMatch([...googleExtendedThread(), null])]])).toThrow();
+    const snippet = googleExtendedMatch();
+    (snippet[14] as unknown[]).push(null);
+    expect(() => parse([[snippet]])).toThrow();
+    const invalidText = googleExtendedMatch();
+    (invalidText[14] as unknown[])[0] = 12;
+    expect(() => parse([[invalidText]])).toThrow();
+    const invalidLink = googleExtendedThread();
+    (invalidLink[22] as unknown[][])[0] = ['mtid', 'fictional-wrong-thread'];
+    expect(() => parse([[googleExtendedMatch(invalidLink)]])).toThrow();
   });
 
   it('recognizes the observed empty envelope without treating malformed emptiness as success', () => {

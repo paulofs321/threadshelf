@@ -92,6 +92,11 @@ Successful bodies start with `)]}'`. Search returns a bounded match array; the o
 no-match envelope is `[]`. List responses contain a bounded first array; other observed list fields
 are not interpreted as continuation tokens. Malformed or missing envelopes never become empty success.
 
+Native search responses observed on 16 November 2026 extended thread records to 31 fields and
+snippet tuples to six fields. The parser accepts these bounded additions and earlier shorter
+records. Consumed ID, link, date and snippet-text positions remain unchanged; appended metadata
+is not interpreted. Oversized records and invalid consumed fields still fail validation.
+
 Conversation identity uses the observed short thread ID. Duplicate records merge bounded distinct
 snippets; conflicting original-link metadata or raw titles fail validation, including conflicting
 titles too long to display. Candidate IDs are independently generated opaque references scoped to

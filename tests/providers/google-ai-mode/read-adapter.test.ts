@@ -3,7 +3,13 @@ import { GoogleAiModeProvider } from '../../../src/providers/google-ai-mode/adap
 import type { GoogleAiModeReadPort } from '../../../src/providers/google-ai-mode/transport';
 import type { ProviderOutcome } from '../../../src/contracts';
 import { googleAiModeRequest } from '../../fixtures/google-ai-mode/requests';
-import { googleJson, googleMatch, googleThread } from '../../fixtures/google-ai-mode/wire';
+import {
+  googleExtendedMatch,
+  googleExtendedThread,
+  googleJson,
+  googleMatch,
+  googleThread,
+} from '../../fixtures/google-ai-mode/wire';
 
 const context = () => ({ signal: new AbortController().signal });
 const identity = 'a'.repeat(64);
@@ -122,6 +128,32 @@ describe('Google native read adapter', () => {
       status: 'success',
       candidates: [],
       coverage: { extent: 'unknown', reasons: ['unknown-reach'] },
+    });
+  });
+
+  it('normalizes extended native search and list replies instead of reporting schema-changed', async () => {
+    const { provider, port, request } = fixture(success(googleJson([[googleExtendedMatch()]])));
+    expect(await provider.search(request, context())).toMatchObject({
+      status: 'success',
+      candidates: [
+        {
+          conversationId: 'fictional-thread-1',
+          title: 'Clockwork orchard maintenance',
+          evidence: expect.arrayContaining([
+            {
+              id: 'snippet-1',
+              source: 'native-snippet',
+              text: 'An exact fictional orchard passage.',
+            },
+          ]),
+        },
+      ],
+      coverage: { extent: 'unknown', reasons: ['unknown-reach'] },
+    });
+    port.read.mockResolvedValue(success(googleJson([[googleExtendedThread()]])));
+    expect(await provider.list(request, context())).toMatchObject({
+      status: 'success',
+      candidates: [{ conversationId: 'fictional-thread-1' }],
     });
   });
 
