@@ -9,6 +9,11 @@ The shared shadcn/ui panel provides provider/date filters, source tabs, exact ex
 validated original links, evidence-backed explanations, cancellation and explicit partial/failure
 states. Search is bounded; complete account history is never promised.
 
+![ThreadShelf searching conversations, switching source tabs, and expanding matching evidence](docs/assets/threadshelf-demo.gif)
+
+_A 19-second walkthrough using fictional conversations: keyword search, ChatGPT and Google AI Mode
+tabs, and description search with literal keyword fallback. No live accounts or AI inference._
+
 ## Try it
 
 Use a regular Chrome 116+ profile. With Node 22.12+ within Node 22 and npm:
