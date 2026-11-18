@@ -15,6 +15,10 @@ read personal conversation history, or establish the stability of undocumented p
 | Fictional static demo                                                   | Root and nested-path production previews; filters, exact evidence, cancellation, partial/empty states; 240–1200px rendering                    | Simulation only; no authenticated or model capabilities                                                                    |
 | Production outputs                                                      | Exact path allowlists, manifest permissions, local HTML references, privileged-import negative builds and public local-link checks             | ZIP checks compare exact bytes to the fresh build; extracted Chromium installation is checked separately                   |
 
+On November 16, 2026, the updated Google AI Mode reader and parser returned six matches in the
+native page’s main world. The isolated extension reader and panel handled the same response shape
+with synthetic HTTP. Live isolated-panel acceptance for that revision remains unverified.
+
 ## Repeat the automated checks
 
 Use Node 22 and npm:

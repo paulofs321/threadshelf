@@ -20,9 +20,9 @@
 | `demo/`                         | Fictional static composition using shared views and pure search engines      |
 | `public/`                       | Only deliberately public extension assets                                    |
 
-Empty directories contain `.gitkeep` files. They do not implement the reserved capability. Keep
-shared contracts, orchestration, and presentation independent of authenticated adapters so a future
-demo can supply synthetic capabilities without importing browser session access.
+Empty directories contain `.gitkeep` files. They do not implement the reserved capability.
+The static demo injects fictional provider ports into the shared search engines and views.
+Its build checks enforce the boundary around browser session access.
 
 ## Build and checks
 
@@ -303,8 +303,8 @@ The search client's 256-request budget closes both the search capability and sha
 when exhausted, so explicit reconnect creates fresh clients. Provider-tab cleanup is tracked per
 provider; a new selection waits for prior owned-tab removal, with lifecycle checks before lookup.
 
-Every document check creates a new opaque ephemeral partition/generation, including checks in the
-same document. There is no private-data cache or persistence. This access foundation does not itself
+Connect and explicit context inspection create a new opaque partition and generation.
+Idle rechecks and final pre-display verification check the existing scope. There is no private-data cache or persistence. This access foundation does not itself
 read account data or produce a verified account scope. Both provider readers add fresh identity checks
 around their own reads within ephemeral selections and reject changed sessions. Lifecycle owners
 must retire adapters with their broker selections before displaying or reusing results. Unknown

@@ -2,7 +2,7 @@
 
 `src/search` exports `KeywordSearch`, a browser-independent implementation of `SearchPort`.
 Construct one instance per search surface with normalized `ProviderPort` implementations and their
-original-link verifiers. It also accepts synthetic ports for tests or a future demo. The engine
+original-link verifiers. Tests and the [fictional demo](demo.md) inject synthetic provider ports. The engine
 imports no UI, Chrome APIs, provider transports, model or storage implementation.
 
 `search(request, { signal })` validates and snapshots a keyword `SearchRequest`, calls only its
@@ -97,7 +97,8 @@ cancellation, timeout and scope races. Fake timers verify deadlines and cleanup 
 These checks do not establish live Chrome or provider authentication.
 
 The engine stays independent of UI and browser APIs. The [side panel](sidepanel.md) now invokes it
-through the validated runtime bridge with current document-bound provider factories. Composition
-uses only each provider’s `provider` and `search` capabilities. No model call or persistent storage
-is enabled. Provider authentication and native docked-panel acceptance remain separate from synthetic
-engine/UI tests.
+through the validated runtime bridge with current document-bound provider factories. Direct keyword
+retrieval uses each port’s `provider` and `search` capabilities.
+For [description search](description-search.md), the worker also collects bounded message context
+and the panel ranks the returned candidates. The [acceptance matrix](acceptance.md) records the
+evidence for provider authentication and docked-panel behavior.

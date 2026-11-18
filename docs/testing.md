@@ -133,8 +133,9 @@ Screen-reader acceptance and final authenticated panel interaction remain separa
 Provider-connection regressions cover independent inactive source bindings, default AI Mode route
 selection, fixed landing-page creation with multiple inactive matches, automatic background tab
 creation when no source exists, creation/loading cancellation, late tab creation cleanup, preserving user tabs, rechecking pinned IDs/documents,
-continued reads across tab/window activation, targeted revocation, local keepalive without provider
-reads, malformed heartbeat rejection and interval teardown. Existing cancellation, identity-change,
+continued reads across tab/window activation, targeted revocation, heartbeat acknowledgement,
+malformed heartbeat rejection and interval teardown. Session lifecycle tests also exercise
+idle identity rechecks and suppression of overlapping checks. Existing cancellation, identity-change,
 login, permission and stale-response tests remain enforced; their old focus-invalidation expectations
 were updated to the requested persistent-connection behavior.
 

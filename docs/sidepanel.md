@@ -75,8 +75,9 @@ matching conversation is already visible in the connected Google tab, its messag
 a time-only label uses the local date when read. Search creates no tabs and does not open conversations
 for dates. Missing or unreadable dates remain unavailable.
 
-The search bridge carries normalized keyword requests and cancellation IDs, alongside strict
-access commands and empty local keepalive messages. The worker
+The panel sends keyword requests and cancellation IDs over the search bridge. Description
+retrieval adds the original description and a group ID so the worker can select message context
+from native results across terms. The panel releases the group when the description run ends. The worker
 requires current in-process broker capabilities before creating provider adapters, then runs the
 existing bounded keyword engine. The panel validates request IDs, full scopes/generations, dates
 and original links before display. After retrieval and optional local ranking, a separate short

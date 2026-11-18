@@ -38,8 +38,9 @@ headers, account selectors or executable code.
 The panel's **Connect** action reuses an unambiguous supported Google page in its window, preferring
 an active matching page when several exist. If none exists, or several match and all are inactive,
 it opens the fixed AI Mode landing page in a new inactive tab. The binding survives tab and window
-focus changes; searching does not require keeping Google active. A local 20-second
-heartbeat keeps the worker available while the panel has connected scopes, without provider reads.
+focus changes. The panel sends a heartbeat every 20 seconds while connected or connecting.
+When the worker is idle it uses the heartbeat to recheck verified provider sessions.
+An identity change retires the binding, including when the tab URL stays the same.
 Connections remain in memory for the panel session. Closing the panel/browser or losing the bound
 source or access can require reconnecting. Disconnect removes only unchanged inactive source tabs
 created by the connection, preserving existing user tabs and pages the user activated or navigated.
